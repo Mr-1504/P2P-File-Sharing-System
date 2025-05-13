@@ -1,6 +1,7 @@
 package model;
 
 import java.io.*;
+import java.net.Socket;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -9,10 +10,12 @@ import java.util.stream.Collectors;
 
 public class FileManager {
     public static final String SHARED_DIR = "shared_files/";
+    public static final String DOWNLOADED_DIR = "downloaded_files/";
     public static final int CHUNK_SIZE = 1024 * 1024; // 1MB
 
     public FileManager() {
         new File(SHARED_DIR).mkdirs();
+        new File(DOWNLOADED_DIR).mkdirs();
     }
 
     public List<String> getFileList() {
@@ -20,6 +23,14 @@ public class FileManager {
         return Arrays.stream(dir.listFiles())
                 .filter(File::isFile)
                 .map(File::getName)
+                .collect(Collectors.toList());
+    }
+
+    public List<FileInfor> getFileList(String clientIp, int clientPort) {
+        File dir = new File(SHARED_DIR);
+        return Arrays.stream(dir.listFiles())
+                .filter(File::isFile)
+                .map(file ->  new FileInfor(file.getName(), new PeerInfor(clientIp, clientPort)))
                 .collect(Collectors.toList());
     }
 
@@ -48,7 +59,7 @@ public class FileManager {
     }
 
     public void saveFile(String filename, List<byte[]> chunks) throws IOException {
-        try (FileOutputStream fos = new FileOutputStream("downloaded_" + filename)) {
+        try (FileOutputStream fos = new FileOutputStream(DOWNLOADED_DIR + filename)) {
             for (byte[] chunk : chunks) {
                 fos.write(chunk);
             }

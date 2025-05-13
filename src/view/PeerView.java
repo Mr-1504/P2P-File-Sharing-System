@@ -1,7 +1,10 @@
 package view;
 
+import model.FileInfor;
+
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
 
 public class PeerView {
@@ -13,6 +16,7 @@ public class PeerView {
     private JButton downloadButton;
     private JButton refreshPeerButton;
     private JLabel statusLabel;
+    private List<FileInfor> fileData = new ArrayList<>();
     private DefaultListModel<String> fileListModel;
     private DefaultListModel<String> peerListModel;
 
@@ -69,9 +73,16 @@ public class PeerView {
         frame.setVisible(true);
     }
 
-    public void updateFileList(List<String> files) {
-        fileListModel.clear();
-        files.forEach(fileListModel::addElement);
+    public void updateFileList(List<FileInfor> files) {
+        fileData.clear(); // Xóa dữ liệu file cũ
+        fileListModel.clear(); // Xóa danh sách hiển thị cũ
+
+        files.forEach(file -> {
+            fileData.add(file); // Lưu file vào danh sách thực
+            String displayText = file.getFileName() + " (Peer: " +
+                    file.getPeerInfor().getHost() + ":" + file.getPeerInfor().getPort() + ")";
+            fileListModel.addElement(displayText); // Hiển thị chuỗi thông tin
+        });
     }
 
     public void updatePeerList(List<String> peers) {
@@ -87,8 +98,12 @@ public class PeerView {
         return searchField.getText();
     }
 
-    public String getSelectedFile() {
-        return fileList.getSelectedValue();
+    public FileInfor getSelectedFile() {
+        int selectedIndex = fileList.getSelectedIndex();
+        if (selectedIndex >= 0 && selectedIndex < fileData.size()) {
+            return fileData.get(selectedIndex);
+        }
+        return null;
     }
 
     public void setSearchAction(Runnable action) {

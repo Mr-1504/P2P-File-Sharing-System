@@ -1,5 +1,6 @@
 package controller;
 
+import model.FileInfor;
 import model.PeerInfor;
 import model.PeerModel;
 import view.PeerView;
@@ -25,7 +26,7 @@ public class PeerController {
         updatePeerList();
 
         // Cập nhật danh sách peer định kỳ (mỗi 10 giây)
-        new Timer(10000, e -> updatePeerList()).start();
+        new Timer(2000, e -> updatePeerList()).start();
     }
 
     private void handleSearch() {
@@ -36,7 +37,7 @@ public class PeerController {
         }
         try {
             view.setStatus("Đang tìm kiếm...");
-            List<String> files = model.searchFile(query);
+            List<FileInfor> files = model.searchFile(query);
             view.updateFileList(files);
             view.setStatus("Tìm kiếm hoàn tất");
         } catch (IOException e) {
@@ -45,7 +46,7 @@ public class PeerController {
     }
 
     private void handleDownload() {
-        String selectedFile = view.getSelectedFile();
+        FileInfor selectedFile = view.getSelectedFile();
         if (selectedFile == null) {
             view.setStatus("Vui lòng chọn file");
             return;

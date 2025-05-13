@@ -1,6 +1,7 @@
 package model;
 
 import com.google.gson.Gson;
+
 import java.io.*;
 import java.net.*;
 import java.security.NoSuchAlgorithmException;
@@ -99,25 +100,71 @@ public class PeerModel {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
              PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true)) {
             String requestJson = reader.readLine();
-            Map<String, Object> request = gson.fromJson(requestJson, Map.class);
-            Map<String, Object> response = new HashMap<>();
+            if (requestJson == null || requestJson.trim().isEmpty()) {
+                sendErrorResponse(writer, "Yêu cầu rỗng");
+                return;
+            }
 
-            switch (request.get("type").toString()) {
+            Map<String, Object> request;
+            try {
+                request = gson.fromJson(requestJson, Map.class);
+            } catch (Exception e) {
+                sendErrorResponse(writer, "Yêu cầu không phải JSON hợp lệ");
+                return;
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            String requestType = (String) request.get("type");
+            if (requestType == null) {
+                sendErrorResponse(writer, "Loại yêu cầu không được chỉ định");
+                return;
+            }
+
+            switch (requestType) {
                 case "SEARCH":
-                    response.put("files", fileManager.searchFiles(request.get("filename").toString()));
+                    String filename = (String) request.get("filename");
+                    if (filename == null) {
+                        sendErrorResponse(writer, "Tên file không được chỉ định");
+                        return;
+                    }
+                    response.put("files", fileManager.searchFiles(filename));
+                    response.put("status", "success");
                     break;
                 case "LIST":
                     response.put("files", fileManager.getFileList());
+                    response.put("status", "success");
                     break;
                 case "DOWNLOAD":
-                    sendChunk(clientSocket, request.get("filename").toString(),
-                            ((Double) request.get("chunk")).intValue());
+                    String downloadFile = (String) request.get("filename");
+                    Object chunkObj = request.get("chunk");
+                    if (downloadFile == null || chunkObj == null) {
+                        sendErrorResponse(writer, "Thiếu thông tin file hoặc chunk");
+                        return;
+                    }
+                    sendChunk(clientSocket, downloadFile, ((Double) chunkObj).intValue());
                     return;
+                case "GET_SIZE":
+                    String fileName = (String) request.get("filename");
+                    if (fileName == null) {
+                        sendErrorResponse(writer, "Tên file không được chỉ định");
+                        return;
+                    }
+                    File file = new File(fileManager.SHARED_DIR + fileName);
+                    if (!file.exists()) {
+                        sendErrorResponse(writer, "File không tồn tại trên peer này");
+                        return;
+                    }
+                    response.put("size", file.length());
+                    response.put("status", "success");
+                    break;
                 case "PEER_LIST":
                     response.put("peers", peerList);
+                    response.put("status", "success");
                     break;
+                default:
+                    sendErrorResponse(writer, "Loại yêu cầu không hợp lệ: " + requestType);
+                    return;
             }
-            response.put("status", "success");
             writer.println(gson.toJson(response));
         } catch (IOException e) {
             e.printStackTrace();
@@ -128,6 +175,13 @@ public class PeerModel {
                 e.printStackTrace();
             }
         }
+    }
+
+    private void sendErrorResponse(PrintWriter writer, String message) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("status", "error");
+        errorResponse.put("message", message);
+        writer.println(gson.toJson(errorResponse));
     }
 
     private void sendChunk(Socket socket, String filename, int chunkIndex) throws IOException {
@@ -144,8 +198,8 @@ public class PeerModel {
         }
     }
 
-    public List<String> searchFile(String filename) throws IOException {
-        List<String> results = new ArrayList<>();
+    public List<FileInfor> searchFile(String filename) throws IOException {
+        List<FileInfor> results = new ArrayList<>();
         for (PeerInfor peer : peerList) {
             try (Socket socket = new Socket(peer.getHost(), peer.getPort());
                  PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
@@ -155,23 +209,52 @@ public class PeerModel {
                 request.put("filename", filename);
                 writer.println(gson.toJson(request));
 
-                Map<String, Object> response = gson.fromJson(reader.readLine(), Map.class);
+                String responseJson = reader.readLine();
+                if (responseJson == null || responseJson.trim().isEmpty()) {
+                    System.err.println("Phản hồi rỗng từ " + peer.getHost() + ":" + peer.getPort());
+                    continue;
+                }
+
+                // Kiểm tra xem chuỗi có phải JSON object không
+                if (!responseJson.startsWith("{")) {
+                    System.err.println("Phản hồi không phải JSON object từ " + peer.getHost() + ":" + peer.getPort() + ": " + responseJson);
+                    continue;
+                }
+
+                Map<String, Object> response;
+                try {
+                    response = gson.fromJson(responseJson, Map.class);
+                } catch (Exception e) {
+                    System.err.println("Lỗi parse JSON từ " + peer.getHost() + ":" + peer.getPort() + ": " + responseJson);
+                    e.printStackTrace();
+                    continue;
+                }
+
                 if ("success".equals(response.get("status"))) {
                     List<String> files = (List<String>) response.get("files");
-                    results.addAll(files);
+                    if (files != null) {
+                        for (String fileName : files) {
+                            if (fileName != null) {
+                                FileInfor fileInfo = new FileInfor(fileName, peer);
+                                results.add(fileInfo);
+                            }
+                        }
+                    }
+                } else {
+                    System.err.println("Phản hồi không thành công từ " + peer.getHost() + ":" + peer.getPort() + ": " + response.get("message"));
                 }
             } catch (IOException e) {
+                System.err.println("Lỗi kết nối tới " + peer.getHost() + ":" + peer.getPort());
                 e.printStackTrace();
             }
         }
         return results;
     }
 
-    public void downloadFile(String filename, List<PeerInfor> peers) throws IOException, NoSuchAlgorithmException {
-        File file = new File(fileManager.SHARED_DIR + filename);
-        if (!file.exists()) throw new IOException("File không tồn tại");
-
-        int chunkCount = (int) Math.ceil(file.length() / (double) fileManager.CHUNK_SIZE);
+    public void downloadFile(FileInfor fileInfor, List<PeerInfor> peers) throws IOException, NoSuchAlgorithmException {
+        // Lấy kích thước file từ peer chứa file
+        long fileSize = getFileSize(fileInfor.getPeerInfor(), fileInfor.getFileName());
+        int chunkCount = (int) Math.ceil(fileSize / (double) fileManager.CHUNK_SIZE);
         List<byte[]> chunks = new ArrayList<>(Collections.nCopies(chunkCount, null));
         ExecutorService executor = Executors.newFixedThreadPool(peers.size());
 
@@ -181,7 +264,12 @@ public class PeerModel {
             PeerInfor peer = peers.get(i % peers.size());
             futures.add(executor.submit(() -> {
                 try {
-                    chunks.set(chunkIndex, downloadChunk(peer.getHost(), peer.getPort(), filename, chunkIndex));
+                    chunks.set(chunkIndex, downloadChunk(
+                            fileInfor.getPeerInfor().getHost(),
+                            fileInfor.getPeerInfor().getPort(),
+                            fileInfor.getFileName(),
+                            chunkIndex)
+                    );
                 } catch (IOException | NoSuchAlgorithmException e) {
                     e.printStackTrace();
                 }
@@ -197,8 +285,47 @@ public class PeerModel {
             }
         }
 
-        fileManager.saveFile(filename, chunks);
+        fileManager.saveFile(fileInfor.getFileName(), chunks);
         executor.shutdown();
+    }
+
+    public long getFileSize(PeerInfor peer, String filename) throws IOException {
+        try (Socket socket = new Socket(peer.getHost(), peer.getPort());
+             PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            Map<String, String> request = new HashMap<>();
+            request.put("type", "GET_SIZE");
+            request.put("filename", filename);
+            writer.println(gson.toJson(request));
+
+            String responseJson = reader.readLine();
+            if (responseJson == null || responseJson.trim().isEmpty()) {
+                throw new IOException("Phản hồi rỗng từ " + peer.getHost() + ":" + peer.getPort());
+            }
+
+            // Kiểm tra xem chuỗi có phải JSON object không
+            if (!responseJson.startsWith("{")) {
+                throw new IOException("Phản hồi không phải JSON object từ " + peer.getHost() + ":" + peer.getPort() + ": " + responseJson);
+            }
+
+            Map<String, Object> response;
+            try {
+                response = gson.fromJson(responseJson, Map.class);
+            } catch (Exception e) {
+                throw new IOException("Lỗi parse JSON từ " + peer.getHost() + ":" + peer.getPort() + ": " + responseJson, e);
+            }
+
+            if ("success".equals(response.get("status"))) {
+                Object sizeObj = response.get("size");
+                if (sizeObj instanceof Number) {
+                    return ((Number) sizeObj).longValue();
+                } else {
+                    throw new IOException("Kích thước file không phải là số từ " + peer.getHost() + ":" + peer.getPort());
+                }
+            } else {
+                throw new IOException("Không thể lấy kích thước file từ " + peer.getHost() + ":" + peer.getPort() + ": " + response.get("message"));
+            }
+        }
     }
 
     private byte[] downloadChunk(String host, int port, String filename, int chunkIndex)
