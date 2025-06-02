@@ -72,10 +72,18 @@ public class PeerModel {
         try {
             SocketChannel client = (SocketChannel) key.channel();
             ByteBuffer buffer = ByteBuffer.allocate(1024);
-            client.read(buffer);
-            buffer.flip();
-            String request = new String(buffer.array(), 0, buffer.limit());
+            StringBuilder requestBuilder = new StringBuilder();
 
+            while (true) {
+                int bytesRead = client.read(buffer);
+                if (bytesRead == -1) break; // End of stream
+
+                buffer.flip();
+                requestBuilder.append(new String(buffer.array(), 0, buffer.limit()));
+                buffer.clear();
+            }
+
+            String request = requestBuilder.toString();
             if (request.startsWith(RequestInfor.SEARCH)) {
                 String fileName = request.split(":")[1];
                 sendFileInfor(client, fileName);
