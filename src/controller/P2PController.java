@@ -8,8 +8,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
-import java.io.IOException;
-import java.util.List;
 
 public class P2PController {
     private PeerModel peerModel;
