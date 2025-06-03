@@ -2,8 +2,13 @@ package controller;
 
 import model.FileInfor;
 import model.PeerModel;
+import utils.GetDir;
+import utils.LogTag;
 import view.P2PView;
 
+import javax.swing.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -57,20 +62,44 @@ public class P2PController {
     }
 
     private void setupListeners() {
-        view.setShareButtonListener(this::shareFile);
         view.setSearchButtonListener(this::searchFile);
-        view.setDownloadButtonListener(this::downloadFile);
+        view.setChooseFileButtonListener(this::shareFile);
+        view.setChooseDownload(this::downloadFile);
+        this.setChooseFileForDownload();
+    }
+
+    private void setChooseFileForDownload() {
+        view.getFileTable().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    int row = view.getFileTable().rowAtPoint(e.getPoint());
+                    if (row >= 0 && row < view.getTableModel().getRowCount()) {
+                        view.setRowSelectionInterval(row, row);
+                        String fileName = (String) view.getTableModel().getValueAt(row, 0);
+                        if (!fileName.isEmpty()) {
+                            view.appendLog("Đã chọn file: " + fileName + " để tải xuống.");
+                            view.showMenu();
+                        } else {
+                            view.appendLog("Không có tên file để tải xuống.");
+                        }
+                    }
+                }
+            }
+        });
     }
 
     private void shareFile() {
-        String filePath = view.getFilePath();
-        if (filePath.isEmpty()) {
-            view.displayMessage("Vui lòng nhập đường dẫn file.");
+        String fileName = view.openFileChooserForShare();
+
+        if (fileName.isEmpty() || fileName.equals(LogTag.CANCELLED) || fileName.equals(LogTag.ERROR)) {
+            view.displayMessage("Vui lòng chọn file file.");
             return;
         }
+        String filePath = GetDir.getDir() + "\\shared_files\\" + fileName;
         File file = new File(filePath);
         if (!file.exists()) {
-            view.displayMessage("File không tồn tại: " + filePath);
+            view.showError("File không tồn tại: " + filePath);
             return;
         }
         peerModel.shareFile(filePath);
@@ -104,10 +133,22 @@ public class P2PController {
     }
 
     private void downloadFile() {
-        String fileName = view.getFileName();
-        String savePath = view.getSavePath();
-        if (fileName.isEmpty() || savePath.isEmpty()) {
-            view.displayMessage("Vui lòng nhập tên file và đường dẫn lưu.");
+        int selected = view.getFileTable().getSelectedRow();
+        String fileName = "";
+        if (selected != -1) {
+            fileName = (String) view.getTableModel().getValueAt(selected, 0);
+        }
+
+        if (fileName == null || fileName.isEmpty()) {
+            view.displayMessage("Tên file không hợp lệ.");
+            view.showError("Vui lòng chọn file hợp lệ.");
+            return;
+        }
+
+        String savePath = view.openFileChooserForDownload(fileName);
+        if (savePath.isEmpty() || savePath.equals(LogTag.CANCELLED) || savePath.equals(LogTag.ERROR)) {
+            view.displayMessage("Đường dẫn lưu không hợp lệ.");
+            view.showError("Vui lòng chọn đường dẫn lưu hợp lệ.");
             return;
         }
         try {
