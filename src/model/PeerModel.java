@@ -1,7 +1,9 @@
 package model;
 
-import ultis.Infor;
-import ultis.RequestInfor;
+import utils.GetDir;
+import utils.Infor;
+import utils.LogTag;
+import utils.RequestInfor;
 
 import java.io.*;
 import java.net.*;
@@ -118,12 +120,12 @@ public class PeerModel {
                 return;
             }
             if (request.startsWith(RequestInfor.SEARCH)) {
-                String fileName = new File(request.split("\\|")[1]).getName();
+                String fileName = request.split("\\|")[1];
                 System.out.println("Processing SEARCH for file: " + fileName);
                 sendFileInfor(client, fileName);
             } else if (request.startsWith(RequestInfor.GET_CHUNK)) {
                 String[] parts = request.split("\\|");
-                String fileName = new File(parts[1]).getName();
+                String fileName = parts[1];
                 int chunkIndex = Integer.parseInt(parts[2]);
                 System.out.println("Processing GET_CHUNK for file: " + fileName + ", chunk: " + chunkIndex);
                 sendChunk(client, fileName, chunkIndex);
@@ -137,7 +139,7 @@ public class PeerModel {
             try {
                 client.close();
                 key.cancel();
-                System.out.println("Closed client connection: " + client.getRemoteAddress());
+                System.out.println("Closed client connection: " + client.getLocalAddress() + " -> " + client.getRemoteAddress());
             } catch (IOException e) {
                 System.err.println("Error closing client: " + e.getMessage());
             }
@@ -171,25 +173,37 @@ public class PeerModel {
 
     private void sendChunk(SocketChannel client, String fileName, int chunkIndex) {
         FileInfor fileInfor = sharedFiles.get(fileName);
-        if (fileInfor != null) {
-            File file = new File(fileInfor.getFileName());
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                byte[] chunk = new byte[CHUNK_SIZE];
-                raf.seek((long) chunkIndex * CHUNK_SIZE);
-                int bytesRead = raf.read(chunk);
-                if (bytesRead > 0) {
-                    ByteBuffer buffer = ByteBuffer.allocate(bytesRead + 4);
-                    buffer.putInt(chunkIndex);
-                    buffer.put(chunk, 0, bytesRead);
-                    buffer.flip();
-                    client.write(buffer);
-                    System.out.println("Sent chunk " + chunkIndex + " of file " + fileName);
-                } else {
-                    System.out.println("No more data to send for chunk " + chunkIndex);
+        if (fileInfor == null) {
+            System.out.println("File " + fileName + " không có trong danh sách chia sẻ.");
+            return;
+        }
+        String filePath = GetDir.getDir() + "\\shared_files\\" + fileName;
+        File file = new File(filePath);
+        if (!file.exists() || !file.canRead()) {
+            System.out.println("File không tồn tại hoặc không đọc được tại: " + filePath);
+            return;
+        }
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            byte[] chunk = new byte[CHUNK_SIZE];
+            raf.seek((long) chunkIndex * CHUNK_SIZE);
+            int bytesRead = raf.read(chunk);
+            if (bytesRead > 0) {
+                ByteBuffer buffer = ByteBuffer.allocate(bytesRead + 4);
+                buffer.putInt(chunkIndex);
+                buffer.put(chunk, 0, bytesRead);
+                buffer.flip();
+                int totalBytesWritten = 0;
+                while (buffer.hasRemaining()) {
+                    int written = client.write(buffer);
+                    totalBytesWritten += written;
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
+                System.out.println("Gửi chunk " + chunkIndex + " của file " + fileName + " (" + totalBytesWritten + " bytes)");
+            } else {
+                System.out.println("Không có dữ liệu để gửi cho chunk " + chunkIndex);
             }
+        } catch (IOException e) {
+            System.err.println("Lỗi gửi chunk " + chunkIndex + " của file " + fileName + ": " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -244,7 +258,7 @@ public class PeerModel {
         }
     }
 
-    public void shareFile(String filePath) {
+    public boolean shareFile(String filePath) {
         File file = new File(filePath);
         List<String> chunkHashes = new ArrayList<>();
         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
@@ -258,10 +272,12 @@ public class PeerModel {
             }
         } catch (IOException | NoSuchAlgorithmException e) {
             e.printStackTrace();
+            return false;
         }
         sharedFiles.put(file.getName(), new FileInfor(file.getName(), file.length(), chunkHashes, SERVER_HOST));
         System.out.println("Shared file: " + file.getName() + ", details: " + sharedFiles.get(file.getName()));
         notifyTracker(file.getName());
+        return true;
     }
 
     private void notifyTracker(String fileName) {
@@ -282,107 +298,140 @@ public class PeerModel {
         return sb.toString();
     }
 
-    public void downloadFile(String filePath, String savePath) {
+    public void downloadFile(String fileName, String savePath) {
         executor.submit(() -> {
             try {
-                String fileName = new File(filePath).getName();
-                System.out.println("Querying tracker for file: " + fileName);
+                File saveFile = new File(savePath);
+                if (!saveFile.getParentFile().exists()) {
+                    String errorMessage = "Lỗi: Thư mục lưu không tồn tại: " + saveFile.getParent();
+                    System.out.println(errorMessage);
+                    return;
+                }
+                if (!saveFile.getParentFile().canWrite()) {
+                    String errorMessage = "Lỗi: Không có quyền ghi vào thư mục: " + saveFile.getParent();
+                    System.out.println(errorMessage);
+                    return;
+                }
+
+                System.out.println("Truy vấn tracker cho file: " + fileName);
                 List<String> peers = queryTracker(fileName);
                 if (peers.isEmpty()) {
-                    System.out.println("No peers found for file: " + fileName);
+                    String errorMessage = "Không tìm thấy peer nào cho file: " + fileName;
+                    System.out.println(errorMessage);
                     return;
                 }
                 FileInfor fileInfor = getFileInforFromPeers(peers.get(0), fileName);
                 if (fileInfor == null) {
-                    System.out.println("File not found on any peer.");
+                    String errorMessage = "File không tìm thấy trên bất kỳ peer nào.";
+                    System.out.println(errorMessage);
                     return;
                 }
-                File saveFile = new File(savePath);
                 try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
                     raf.setLength(fileInfor.getFileSize());
-                    List<Future<?>> futures = new ArrayList<>();
+                    List<Future<Boolean>> futures = new ArrayList<>();
                     for (int i = 0; i < fileInfor.getChunkHashes().size(); i++) {
                         final int chunkIndex = i;
                         futures.add(executor.submit(() -> downloadChunk(peers, fileName, chunkIndex, raf, fileInfor.getChunkHashes().get(chunkIndex))));
                     }
-                    for (Future<?> future : futures) {
+                    boolean allChunksDownloaded = true;
+                    for (Future<Boolean> future : futures) {
                         try {
-                            future.get();
+                            if (!future.get()) {
+                                allChunksDownloaded = false;
+                            }
                         } catch (Exception e) {
-                            System.out.println("Error downloading chunk: " + e.getMessage());
+                            String errorMessage = "Lỗi khi tải chunk: " + e.getMessage();
+                            System.out.println(errorMessage);
+                            allChunksDownloaded = false;
                         }
                     }
-                    System.out.println("Download completed for file: " + fileName);
+                    if (allChunksDownloaded) {
+                        System.out.println("Tải file hoàn tất: " + fileName + " vào " + savePath);
+                    } else {
+                        System.out.println("Tải file thất bại: Một số chunk không tải được.");
+                    }
                 }
             } catch (IOException e) {
-                System.err.println("Error downloading file: " + e.getMessage());
+                System.err.println("Lỗi khi tải file: " + e.getMessage());
                 e.printStackTrace();
             }
         });
     }
 
-    private void downloadChunk(List<String> peers, String fileName, int chunkIndex, RandomAccessFile raf, String expectedHash) {
+    private boolean downloadChunk(List<String> peers, String fileName, int chunkIndex, RandomAccessFile raf, String expectedHash) {
+        int maxRetries = 3;
         for (String peer : peers) {
-            try {
-                String[] peerInfor = peer.split("\\|");
-                try (SocketChannel channel = SocketChannel.open(
-                        new InetSocketAddress(peerInfor[0], Integer.parseInt(peerInfor[1])))) {
-                    String request = RequestInfor.GET_CHUNK + "|" + fileName + "|" + chunkIndex + "\n";
-                    ByteBuffer buffer = ByteBuffer.wrap(request.getBytes());
-                    while (buffer.hasRemaining()) {
-                        channel.write(buffer);
-                    }
-                    buffer = ByteBuffer.allocate(4 + CHUNK_SIZE);
-                    buffer.clear();
-                    int totalBytesRead = 0;
-                    while (totalBytesRead < 4) {
-                        int bytesRead = channel.read(buffer);
-                        if (bytesRead == -1) break;
-                        totalBytesRead += bytesRead;
-                    }
-                    buffer.flip();
-                    int receivedChunkIndex = buffer.getInt();
-                    if (receivedChunkIndex != chunkIndex) {
-                        System.out.println("Received chunk index " + receivedChunkIndex + ", expected " + chunkIndex);
-                        continue;
-                    }
-                    buffer.clear();
-                    ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
-                    while (true) {
-                        int bytesRead = channel.read(buffer);
-                        if (bytesRead == -1) break;
-                        if (bytesRead == 0) {
-                            Thread.sleep(100);
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    String[] peerInfor = peer.split("\\|");
+                    try (SocketChannel channel = SocketChannel.open(
+                            new InetSocketAddress(peerInfor[0], Integer.parseInt(peerInfor[1])))) {
+                        channel.socket().setSoTimeout(10000); // Timeout 10 giây
+                        String request = RequestInfor.GET_CHUNK + "|" + fileName + "|" + chunkIndex + "\n";
+                        ByteBuffer buffer = ByteBuffer.wrap(request.getBytes());
+                        while (buffer.hasRemaining()) {
+                            channel.write(buffer);
+                        }
+                        buffer = ByteBuffer.allocate(4 + CHUNK_SIZE * 2); // Tăng buffer
+                        buffer.clear();
+                        int totalBytesRead = 0;
+                        long startTime = System.currentTimeMillis();
+                        while (totalBytesRead < 4 && (System.currentTimeMillis() - startTime) < 10000) {
+                            int bytesRead = channel.read(buffer);
+                            if (bytesRead == -1) break;
+                            totalBytesRead += bytesRead;
+                        }
+                        if (totalBytesRead < 4) {
+                            System.out.println("Không nhận được index chunk từ peer " + peer + " (lần thử " + attempt + ")");
                             continue;
                         }
                         buffer.flip();
-                        chunkData.write(buffer.array(), 0, bytesRead);
+                        int receivedChunkIndex = buffer.getInt();
+                        if (receivedChunkIndex != chunkIndex) {
+                            System.out.println("Nhận chunk index " + receivedChunkIndex + ", kỳ vọng " + chunkIndex);
+                            continue;
+                        }
                         buffer.clear();
+                        ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
+                        startTime = System.currentTimeMillis();
+                        while ((System.currentTimeMillis() - startTime) < 10000) {
+                            int bytesRead = channel.read(buffer);
+                            if (bytesRead == -1) break;
+                            if (bytesRead == 0) {
+                                Thread.sleep(100);
+                                continue;
+                            }
+                            buffer.flip();
+                            chunkData.write(buffer.array(), 0, bytesRead);
+                            buffer.clear();
+                        }
+                        byte[] chunkBytes = chunkData.toByteArray();
+                        if (chunkBytes.length == 0) {
+                            System.out.println("Không nhận được dữ liệu cho chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + ")");
+                            continue;
+                        }
+                        MessageDigest md = MessageDigest.getInstance("SHA-256");
+                        md.update(chunkBytes);
+                        String chunkHash = bytesToHex(md.digest());
+                        if (!chunkHash.equals(expectedHash)) {
+                            System.out.println("Hash không khớp cho chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + ")");
+                            continue;
+                        }
+                        synchronized (raf) {
+                            raf.seek((long) chunkIndex * CHUNK_SIZE);
+                            raf.write(chunkBytes);
+                        }
+                        System.out.println("Tải xuống chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + ")");
+                        return true;
                     }
-                    byte[] chunkBytes = chunkData.toByteArray();
-                    if (chunkBytes.length == 0) {
-                        System.out.println("No data received for chunk " + chunkIndex);
-                        continue;
-                    }
-                    MessageDigest md = MessageDigest.getInstance("SHA-256");
-                    md.update(chunkBytes);
-                    String chunkHash = bytesToHex(md.digest());
-                    if (!chunkHash.equals(expectedHash)) {
-                        System.out.println("Hash mismatch for chunk " + chunkIndex + " from peer " + peer);
-                        continue;
-                    }
-                    synchronized (raf) {
-                        raf.seek((long) chunkIndex * CHUNK_SIZE);
-                        raf.write(chunkBytes);
-                    }
-                    System.out.println("Downloaded chunk " + chunkIndex + " from peer " + peer);
-                    break;
+                } catch (IOException | NoSuchAlgorithmException | InterruptedException e) {
+                    System.err.println("Lỗi tải chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + "): " + e.getMessage());
+                    e.printStackTrace();
                 }
-            } catch (IOException | NoSuchAlgorithmException | InterruptedException e) {
-                System.err.println("Error downloading chunk from " + peer + ": " + e.getMessage());
-                e.printStackTrace();
             }
         }
+        System.out.println("Không thể tải chunk " + chunkIndex + " từ bất kỳ peer nào sau " + maxRetries + " lần thử.");
+        return false;
     }
 
     public FileInfor getFileInforFromPeers(String peer, String fileName) {
