@@ -9,4 +9,5 @@ public interface RequestInfor {
     String FILE_INFO = "FILE_INFO";
     String FILE_NOT_FOUND = "FILE_NOT_FOUND";
     String DISCOVER = "DISCOVER";
+    String ERROR = "ERROR";
 }
