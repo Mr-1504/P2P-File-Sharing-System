@@ -1,7 +1,7 @@
 package model;
 
-import ultis.Infor;
-import ultis.RequestInfor;
+import utils.Infor;
+import utils.RequestInfor;
 
 import java.io.BufferedReader;
 import java.io.PrintWriter;
