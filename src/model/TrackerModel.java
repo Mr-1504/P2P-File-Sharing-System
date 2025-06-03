@@ -29,16 +29,16 @@ public class TrackerModel {
                     String request = in.readLine();
                     System.out.println("Received request: " + request);
 
-                    String[] parts = request.split(":");
+                    String[] parts = request.split("\\|");
                     if (request.startsWith(RequestInfor.REGISTER)) {
                         if (parts.length == 3) {
                             String peerIp = parts[1];
                             String peerPort = parts[2];
-                            String peerInfor = peerIp + ":" + peerPort;
+                            String peerInfor = peerIp + "|" + peerPort;
                             fileToPeers.computeIfAbsent("peers", k -> new java.util.ArrayList<>()).add(peerIp);
                             out.println(peerInfor);
                         } else {
-                            out.println("Invalid REGISTER request format. Use: REGISTER:<peerIp>:<peerPort>");
+                            out.println("Invalid REGISTER request format. Use: REGISTER|<peerIp>|<peerPort>");
                         }
                     } else if (request.startsWith(RequestInfor.SHARE)) {
                         if (parts.length == 4) {
@@ -46,19 +46,24 @@ public class TrackerModel {
                             String peerIp = parts[2];
                             String peerPort = parts[3];
 
-                            String peerInfor = peerIp + ":" + peerPort;
+                            String peerInfor = peerIp + "|" + peerPort;
                             fileToPeers.computeIfAbsent(fileName, k -> new java.util.ArrayList<>()).add(peerInfor);
                             out.println("File " + fileName + " shared successfully by " + peerInfor);
+                            System.out.println("File " + fileName + " shared successfully by " + peerInfor);
                         } else {
-                            out.println("Invalid SHARE request format. Use: SHARE:<fileName>:<fileSize>:<peerInfor>");
+                            out.println("Invalid SHARE request format. Use: SHARE|<fileName>|<fileSize>|<peerInfor>");
                         }
                     } else if (request.startsWith(RequestInfor.QUERY)) {
+                        System.out.println(parts.length);
                         if (parts.length == 2) {
-                            String fileName = parts[1];
-                            List<String> peers = fileToPeers.getOrDefault(fileName, Collections.emptyList());
+                            StringBuilder fileName = new StringBuilder(parts[1]);
+                            for (int i = 2; i < parts.length; i++) {
+                                fileName.append("|").append(parts[i]);
+                            }
+                            List<String> peers = fileToPeers.getOrDefault(fileName.toString(), Collections.emptyList());
                             out.println(String.join(",", peers));
                         } else {
-                            out.println("Invalid QUERY request format. Use: QUERY:<fileName>");
+                            out.println("Invalid QUERY request format. Use: QUERY|<fileName>");
                         }
                     } else {
                         out.println("Unknown command");
