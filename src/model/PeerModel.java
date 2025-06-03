@@ -24,30 +24,29 @@ public class PeerModel {
     private ExecutorService executor;
 
     public PeerModel() throws IOException {
-        sharedFiles = new java.util.HashMap<>();
-        knownPeers = new java.util.HashSet<>();
+        sharedFiles = new HashMap<>();
+        knownPeers = new HashSet<>();
         executor = java.util.concurrent.Executors.newFixedThreadPool(10);
 
         this.selector = Selector.open();
         this.serverSocket = ServerSocketChannel.open();
-        this.serverSocket.bind(new InetSocketAddress(SERVER_HOST.getPeerPort()));
+        this.serverSocket.bind(new InetSocketAddress(SERVER_HOST.getPeerIp(), SERVER_HOST.getPeerPort()));
         this.serverSocket.configureBlocking(false);
         this.serverSocket.register(selector, SelectionKey.OP_ACCEPT);
+        System.out.println("Server socket initialized on " + SERVER_HOST.getPeerIp() + ":" + SERVER_HOST.getPeerPort());
     }
 
     public void startServer() {
         new Thread(() -> {
             try {
+                System.out.println("Starting server loop...");
                 while (true) {
                     selector.select();
                     Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
-
                     while (keys.hasNext()) {
                         SelectionKey key = keys.next();
                         keys.remove();
-
                         if (!key.isValid()) continue;
-
                         try {
                             if (key.isAcceptable()) {
                                 acceptConnection(key);
@@ -55,8 +54,13 @@ public class PeerModel {
                                 handleRead(key);
                             }
                         } catch (IOException ex) {
+                            System.err.println("Error processing key: " + ex.getMessage());
                             key.cancel();
-                            key.channel().close();
+                            try {
+                                key.channel().close();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
                         }
                     }
                 }
@@ -64,60 +68,103 @@ public class PeerModel {
                 e.printStackTrace();
             }
         }).start();
-
-
     }
 
     private void handleRead(SelectionKey key) {
+        SocketChannel client = (SocketChannel) key.channel();
         try {
-            SocketChannel client = (SocketChannel) key.channel();
-            ByteBuffer buffer = ByteBuffer.allocate(1024);
             StringBuilder requestBuilder = new StringBuilder();
+            int initialBufferSize = 8192;
+            ByteBuffer buffer = ByteBuffer.allocate(initialBufferSize);
+            System.out.println("Handling read operation for key: " + key + ", client: " + client.getRemoteAddress());
+            int totalBytesRead = 0;
 
             while (true) {
-                int bytesRead = client.read(buffer);
-                if (bytesRead == -1) break; // End of stream
-
-                buffer.flip();
-                requestBuilder.append(new String(buffer.array(), 0, buffer.limit()));
                 buffer.clear();
+                int bytesRead = client.read(buffer);
+                System.out.println("Read " + bytesRead + " bytes from " + client.getRemoteAddress());
+                if (bytesRead == -1) {
+                    System.out.println("Client closed connection");
+                    break;
+                }
+                if (bytesRead == 0 && totalBytesRead > 0) {
+                    System.out.println("No more data to read, processing request");
+                    break;
+                }
+                if (bytesRead == 0) {
+                    Thread.sleep(100);
+                    continue;
+                }
+                totalBytesRead += bytesRead;
+                buffer.flip();
+                String chunk = new String(buffer.array(), 0, buffer.limit());
+                requestBuilder.append(chunk);
+                System.out.println("Current request: [" + requestBuilder.toString() + "]");
+                if (requestBuilder.toString().contains("\n")) {
+                    System.out.println("Request complete, breaking loop");
+                    break;
+                }
+                if (bytesRead == buffer.capacity()) {
+                    initialBufferSize *= 2;
+                    System.out.println("Increasing buffer size to " + initialBufferSize + " bytes");
+                    buffer = ByteBuffer.allocate(initialBufferSize);
+                }
             }
 
-            String request = requestBuilder.toString();
+            String request = requestBuilder.toString().trim();
+            System.out.println("Final request: [" + request + "]");
+            if (request.isEmpty()) {
+                System.out.println("Empty request received");
+                return;
+            }
             if (request.startsWith(RequestInfor.SEARCH)) {
-                String fileName = request.split(":")[1];
+                String fileName = new File(request.split("\\|")[1]).getName();
+                System.out.println("Processing SEARCH for file: " + fileName);
                 sendFileInfor(client, fileName);
-                System.out.println("Handling search request for: " + fileName);
             } else if (request.startsWith(RequestInfor.GET_CHUNK)) {
-                String[] parts = request.split(":");
-                String fileName = parts[1];
+                String[] parts = request.split("\\|");
+                String fileName = new File(parts[1]).getName();
                 int chunkIndex = Integer.parseInt(parts[2]);
+                System.out.println("Processing GET_CHUNK for file: " + fileName + ", chunk: " + chunkIndex);
                 sendChunk(client, fileName, chunkIndex);
-                System.out.println("Handling download request for: " + fileName);
             } else {
-                System.out.println("Unknown request: " + request);
+                System.out.println("Unknown request: [" + request + "]");
             }
-
-            System.out.println("Handling read operation for key: " + key);
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
+            System.err.println("Error handling read: " + e.getMessage());
             e.printStackTrace();
-            key.cancel();
+        } finally {
+            try {
+                client.close();
+                key.cancel();
+                System.out.println("Closed client connection: " + client.getRemoteAddress());
+            } catch (IOException e) {
+                System.err.println("Error closing client: " + e.getMessage());
+            }
         }
     }
 
     private void sendFileInfor(SocketChannel client, String fileName) {
-        FileInfor fileInfor = sharedFiles.get(fileName);
-
-        String response = fileInfor != null
-                ? RequestInfor.FILE_INFO + ":" + fileInfor.getFileName() + ":" + fileInfor.getFileSize()
-                + ":" + fileInfor.getPeerInfor().getPeerIp() + ":" + fileInfor.getPeerInfor().getPeerPort() +
-                ":" + String.join(",", fileInfor.getChunkHashes())
-                : RequestInfor.FILE_NOT_FOUND + ":" + fileName;
         try {
+            FileInfor fileInfor = sharedFiles.get(fileName);
+            String response;
+            if (fileInfor != null) {
+                response = RequestInfor.FILE_INFO + "|" + fileInfor.getFileName() + "|" + fileInfor.getFileSize()
+                        + "|" + fileInfor.getPeerInfor().getPeerIp() + "|" + fileInfor.getPeerInfor().getPeerPort()
+                        + "|" + String.join(",", fileInfor.getChunkHashes()) + "\n";
+            } else {
+                response = RequestInfor.FILE_NOT_FOUND + "|" + fileName + "\n";
+            }
             ByteBuffer buffer = ByteBuffer.wrap(response.getBytes());
-            client.write(buffer);
-            System.out.println("Sent file information for: " + fileName);
+            int totalBytesWritten = 0;
+            while (buffer.hasRemaining()) {
+                int bytesWritten = client.write(buffer);
+                totalBytesWritten += bytesWritten;
+                System.out.println("Wrote " + bytesWritten + " bytes, total: " + totalBytesWritten);
+            }
+            System.out.println("Sent file information for: " + fileName + ", response: [" + response.trim() + "]");
         } catch (IOException e) {
+            System.err.println("Error sending file info: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -125,15 +172,14 @@ public class PeerModel {
     private void sendChunk(SocketChannel client, String fileName, int chunkIndex) {
         FileInfor fileInfor = sharedFiles.get(fileName);
         if (fileInfor != null) {
-            File file = new File(fileName);
-
+            File file = new File(fileInfor.getFileName());
             try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
                 byte[] chunk = new byte[CHUNK_SIZE];
-                raf.seek(chunkIndex * CHUNK_SIZE);
+                raf.seek((long) chunkIndex * CHUNK_SIZE);
                 int bytesRead = raf.read(chunk);
                 if (bytesRead > 0) {
                     ByteBuffer buffer = ByteBuffer.allocate(bytesRead + 4);
-                    buffer.putInt(chunkIndex); // Send chunk index first
+                    buffer.putInt(chunkIndex);
                     buffer.put(chunk, 0, bytesRead);
                     buffer.flip();
                     client.write(buffer);
@@ -150,6 +196,7 @@ public class PeerModel {
     private void acceptConnection(SelectionKey key) throws IOException {
         ServerSocketChannel server = (ServerSocketChannel) key.channel();
         SocketChannel client = server.accept();
+        System.out.println("Accepted connection from: " + client.getRemoteAddress());
         client.configureBlocking(false);
         client.register(selector, SelectionKey.OP_READ);
     }
@@ -158,29 +205,28 @@ public class PeerModel {
         executor.submit(() -> {
             try (DatagramSocket socket = new DatagramSocket()) {
                 socket.setBroadcast(true);
-                String message = RequestInfor.DISCOVER + ":" + SERVER_HOST.getPeerIp() + ":" + SERVER_HOST.getPeerPort();
-
+                String message = RequestInfor.DISCOVER + "|" + SERVER_HOST.getPeerIp() + "|" + SERVER_HOST.getPeerPort();
                 byte[] buffer = message.getBytes();
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length,
                         InetAddress.getByName("255.255.255.255"), TRACKER_HOST.getPeerPort());
                 socket.send(packet);
-
-                byte[] receiveBuffer = new byte[1024];
+                System.out.println("Sent DISCOVER request: " + message);
+                byte[] receiveBuffer = new byte[8192];
                 DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
                 socket.setSoTimeout(5000);
                 try {
                     socket.receive(receivePacket);
                     String response = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                    System.out.println("Received response: " + response);
-                    String[] parts = response.split(":");
-                    if (parts.length == 3) {
+                    System.out.println("Received DISCOVER response: " + response);
+                    String[] parts = response.split("\\|");
+                    if (parts.length == 3 && parts[0].equals(RequestInfor.DISCOVER)) {
                         String peerIp = parts[1];
                         int peerPort = Integer.parseInt(parts[2]);
-                        knownPeers.add(peerIp + ":" + peerPort);
+                        knownPeers.add(peerIp + "|" + peerPort);
                         System.out.println("Discovered peer: " + peerIp + ":" + peerPort);
                     }
                 } catch (SocketTimeoutException e) {
-                    System.out.println("No response from tracker.");
+                    System.out.println("No response from tracker for DISCOVER.");
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -190,7 +236,7 @@ public class PeerModel {
 
     public void registerWithTracker() {
         try (Socket socket = new Socket(TRACKER_HOST.getPeerIp(), TRACKER_HOST.getPeerPort())) {
-            String message = RequestInfor.REGISTER + ":" + SERVER_HOST.getPeerIp() + ":" + SERVER_HOST.getPeerPort();
+            String message = RequestInfor.REGISTER + "|" + SERVER_HOST.getPeerIp() + "|" + SERVER_HOST.getPeerPort();
             socket.getOutputStream().write(message.getBytes());
             System.out.println("Registered with tracker: " + message);
         } catch (IOException e) {
@@ -201,30 +247,26 @@ public class PeerModel {
     public void shareFile(String filePath) {
         File file = new File(filePath);
         List<String> chunkHashes = new ArrayList<>();
-
         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
             byte[] chunk = new byte[CHUNK_SIZE];
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             int bytesRead;
-
             while ((bytesRead = raf.read(chunk)) != -1) {
                 md.update(chunk, 0, bytesRead);
                 String chunkHash = bytesToHex(md.digest());
                 chunkHashes.add(chunkHash);
             }
-        } catch (IOException e) {
+        } catch (IOException | NoSuchAlgorithmException e) {
             e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
         }
-
         sharedFiles.put(file.getName(), new FileInfor(file.getName(), file.length(), chunkHashes, SERVER_HOST));
+        System.out.println("Shared file: " + file.getName() + ", details: " + sharedFiles.get(file.getName()));
         notifyTracker(file.getName());
     }
 
     private void notifyTracker(String fileName) {
         try (Socket socket = new Socket(TRACKER_HOST.getPeerIp(), TRACKER_HOST.getPeerPort())) {
-            String message = RequestInfor.SHARE + ":" + fileName + ":" + SERVER_HOST.getPeerIp() + ":" + SERVER_HOST.getPeerPort();
+            String message = RequestInfor.SHARE + "|" + fileName + "|" + SERVER_HOST.getPeerIp() + "|" + SERVER_HOST.getPeerPort();
             socket.getOutputStream().write(message.getBytes());
             System.out.println("Notified tracker about shared file: " + fileName);
         } catch (IOException e) {
@@ -240,42 +282,41 @@ public class PeerModel {
         return sb.toString();
     }
 
-    public void downloadFile(String fileName, String savePath) {
+    public void downloadFile(String filePath, String savePath) {
         executor.submit(() -> {
             try {
+                String fileName = new File(filePath).getName();
+                System.out.println("Querying tracker for file: " + fileName);
                 List<String> peers = queryTracker(fileName);
+                if (peers.isEmpty()) {
+                    System.out.println("No peers found for file: " + fileName);
+                    return;
+                }
                 FileInfor fileInfor = getFileInforFromPeers(peers.get(0), fileName);
-
-            if (fileInfor == null) {
-                System.out.println("File not found on any peer.");
-                return;
-            }
-
-            File file = new File(savePath);
-
-
-            try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
-                List<Future<?>> futures = new ArrayList<>();
-
-
-
-                raf.setLength(fileInfor.getFileSize());
-                for (int i = 0; i < fileInfor.getChunkHashes().size(); i++) {
-                    final  int chunkIndex = i;
-                    futures.add(executor.submit(() -> downloadChunk(peers, fileName, chunkIndex, raf, fileInfor.getChunkHashes().get(chunkIndex)))) ;
+                if (fileInfor == null) {
+                    System.out.println("File not found on any peer.");
+                    return;
                 }
-
-                for (Future<?> future : futures) {
-                    try {
-                        future.get();
-                    } catch (Exception e) {
-                        System.out.println("Error downloading chunk: " + e.getMessage());
+                File saveFile = new File(savePath);
+                try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
+                    raf.setLength(fileInfor.getFileSize());
+                    List<Future<?>> futures = new ArrayList<>();
+                    for (int i = 0; i < fileInfor.getChunkHashes().size(); i++) {
+                        final int chunkIndex = i;
+                        futures.add(executor.submit(() -> downloadChunk(peers, fileName, chunkIndex, raf, fileInfor.getChunkHashes().get(chunkIndex))));
                     }
+                    for (Future<?> future : futures) {
+                        try {
+                            future.get();
+                        } catch (Exception e) {
+                            System.out.println("Error downloading chunk: " + e.getMessage());
+                        }
+                    }
+                    System.out.println("Download completed for file: " + fileName);
                 }
-                System.out.println("Download completed for file: " + fileName);
-            }
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                System.err.println("Error downloading file: " + e.getMessage());
+                e.printStackTrace();
             }
         });
     }
@@ -283,72 +324,135 @@ public class PeerModel {
     private void downloadChunk(List<String> peers, String fileName, int chunkIndex, RandomAccessFile raf, String expectedHash) {
         for (String peer : peers) {
             try {
-                String[] peerInfor = peer.split(":");
+                String[] peerInfor = peer.split("\\|");
                 try (SocketChannel channel = SocketChannel.open(
                         new InetSocketAddress(peerInfor[0], Integer.parseInt(peerInfor[1])))) {
-                    ByteBuffer buffer = ByteBuffer.wrap((RequestInfor.GET_CHUNK + ":" + fileName + ":" + chunkIndex).getBytes());
-                    channel.write(buffer);
+                    String request = RequestInfor.GET_CHUNK + "|" + fileName + "|" + chunkIndex + "\n";
+                    ByteBuffer buffer = ByteBuffer.wrap(request.getBytes());
+                    while (buffer.hasRemaining()) {
+                        channel.write(buffer);
+                    }
+                    buffer = ByteBuffer.allocate(4 + CHUNK_SIZE);
                     buffer.clear();
-
-                    // Read the chunk index first
-                    channel.read(buffer);
+                    int totalBytesRead = 0;
+                    while (totalBytesRead < 4) {
+                        int bytesRead = channel.read(buffer);
+                        if (bytesRead == -1) break;
+                        totalBytesRead += bytesRead;
+                    }
                     buffer.flip();
                     int receivedChunkIndex = buffer.getInt();
-
                     if (receivedChunkIndex != chunkIndex) {
                         System.out.println("Received chunk index " + receivedChunkIndex + ", expected " + chunkIndex);
                         continue;
                     }
-
-                    // Read the actual chunk data
                     buffer.clear();
-                    int bytesRead = channel.read(buffer);
-                    if (bytesRead > 0) {
-                        byte[] chunkData = new byte[bytesRead];
-                        buffer.flip();
-                        buffer.get(chunkData);
-
-                        // Verify the hash
-                        MessageDigest md = MessageDigest.getInstance("SHA-256");
-                        md.update(chunkData);
-                        String chunkHash = bytesToHex(md.digest());
-
-                        if (!chunkHash.equals(expectedHash)) {
-                            System.out.println("Hash mismatch for chunk " + chunkIndex + " from peer " + peer);
+                    ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
+                    while (true) {
+                        int bytesRead = channel.read(buffer);
+                        if (bytesRead == -1) break;
+                        if (bytesRead == 0) {
+                            Thread.sleep(100);
                             continue;
                         }
-                        synchronized (raf) {
-                            // Write the chunk to the file
-                            raf.seek(chunkIndex * CHUNK_SIZE);
-                            raf.write(chunkData);
-                        }
-                        System.out.println("Downloaded chunk " + chunkIndex + " from peer " + peer);
-                        break;
+                        buffer.flip();
+                        chunkData.write(buffer.array(), 0, bytesRead);
+                        buffer.clear();
                     }
+                    byte[] chunkBytes = chunkData.toByteArray();
+                    if (chunkBytes.length == 0) {
+                        System.out.println("No data received for chunk " + chunkIndex);
+                        continue;
+                    }
+                    MessageDigest md = MessageDigest.getInstance("SHA-256");
+                    md.update(chunkBytes);
+                    String chunkHash = bytesToHex(md.digest());
+                    if (!chunkHash.equals(expectedHash)) {
+                        System.out.println("Hash mismatch for chunk " + chunkIndex + " from peer " + peer);
+                        continue;
+                    }
+                    synchronized (raf) {
+                        raf.seek((long) chunkIndex * CHUNK_SIZE);
+                        raf.write(chunkBytes);
+                    }
+                    System.out.println("Downloaded chunk " + chunkIndex + " from peer " + peer);
+                    break;
                 }
-            } catch (IOException | NoSuchAlgorithmException e) {
+            } catch (IOException | NoSuchAlgorithmException | InterruptedException e) {
+                System.err.println("Error downloading chunk from " + peer + ": " + e.getMessage());
                 e.printStackTrace();
             }
         }
-        System.out.println("Failed to download chunk " + chunkIndex + " from all peers.");
     }
 
     public FileInfor getFileInforFromPeers(String peer, String fileName) {
-        System.out.println(peer);
-        String[] peerInfor = peer.split(":");
+        String[] peerInfor = peer.split("\\|");
         System.out.println("Searching for file " + fileName + " on peer: " + peerInfor[0] + ":" + peerInfor[1]);
         try (SocketChannel channel = SocketChannel.open(
                 new InetSocketAddress(peerInfor[0], Integer.parseInt(peerInfor[1])))) {
-            ByteBuffer buffer = ByteBuffer.wrap((RequestInfor.SEARCH + ":" + fileName).getBytes());
-            channel.write(buffer);
-            buffer.clear();
-            channel.read(buffer);
-            buffer.flip();
+            channel.socket().setSoTimeout(5000);
+            System.out.println("Connected to peer: " + channel.getRemoteAddress());
 
-            String response = new String(buffer.array(), 0, buffer.limit());
+            // Gửi yêu cầu
+            String request = RequestInfor.SEARCH + "|" + new File(fileName).getName() + "\n";
+            ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
+            while (requestBuffer.hasRemaining()) {
+                channel.write(requestBuffer);
+            }
+            System.out.println("Sent SEARCH request: " + request.trim());
 
+            // Đọc phản hồi
+            StringBuilder responseBuilder = new StringBuilder();
+            int initialBufferSize = 8192;
+            ByteBuffer buffer = ByteBuffer.allocate(initialBufferSize);
+            long startTime = System.currentTimeMillis();
+            long timeoutMillis = 5000;
+            int totalBytesRead = 0;
+
+            while (System.currentTimeMillis() - startTime < timeoutMillis) {
+                buffer.clear();
+                int bytesRead = channel.read(buffer);
+                System.out.println("Read " + bytesRead + " bytes");
+                if (bytesRead == -1) {
+                    System.out.println("Peer closed connection");
+                    break;
+                }
+                if (bytesRead == 0) {
+                    if (totalBytesRead > 0 && responseBuilder.toString().contains("\n")) {
+                        System.out.println("Received complete response");
+                        break;
+                    }
+                    Thread.sleep(100);
+                    continue;
+                }
+                totalBytesRead += bytesRead;
+                buffer.flip();
+                String chunk = new String(buffer.array(), 0, buffer.limit());
+                responseBuilder.append(chunk);
+                System.out.println("Current response: [" + responseBuilder.toString() + "]");
+                if (responseBuilder.toString().contains("\n")) {
+                    System.out.println("Response complete, breaking loop");
+                    break;
+                }
+                if (bytesRead == buffer.capacity()) {
+                    initialBufferSize *= 2;
+                    System.out.println("Increasing buffer size to " + initialBufferSize + " bytes");
+                    buffer = ByteBuffer.allocate(initialBufferSize);
+                }
+            }
+
+            String response = responseBuilder.toString().trim();
+            System.out.println("Final response: [" + response + "]");
+            if (response.isEmpty()) {
+                System.out.println("No response received from peer: " + peer);
+                return null;
+            }
             if (response.startsWith(RequestInfor.FILE_INFO)) {
-                String[] parts = response.split(":");
+                String[] parts = response.split("\\|");
+                if (parts.length < 6) {
+                    System.out.println("Invalid FILE_INFO response: [" + response + "]");
+                    return null;
+                }
                 String name = parts[1];
                 long size = Long.parseLong(parts[2]);
                 PeerInfor peerInfo = new PeerInfor(parts[3], Integer.parseInt(parts[4]));
@@ -358,10 +462,10 @@ public class PeerModel {
                 System.out.println("File not found on peer: " + peer);
                 return null;
             }
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
+            System.err.println("Error connecting to peer " + peer + ": " + e.getMessage());
             e.printStackTrace();
             return null;
-
         }
     }
 
@@ -370,10 +474,11 @@ public class PeerModel {
         try (Socket socket = new Socket(TRACKER_HOST.getPeerIp(), TRACKER_HOST.getPeerPort())) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-            out.println(RequestInfor.QUERY + ":" + fileName);
+            out.println(RequestInfor.QUERY + "|" + new File(fileName).getName());
             String response = in.readLine();
-            peers.addAll(Arrays.asList(response.split(",")));
+            if (response != null && !response.isEmpty()) {
+                peers.addAll(Arrays.asList(response.split(",")));
+            }
         }
         return peers;
     }
