@@ -60,6 +60,8 @@ public class P2PController {
 
         System.out.println("Hệ thống P2P đã khởi động hoàn tất.");
         view.displayMessage("Hệ thống P2P đã khởi động hoàn tất.");
+
+        peerModel.getFileSharingList();
     }
 
     private void setupListeners() {
