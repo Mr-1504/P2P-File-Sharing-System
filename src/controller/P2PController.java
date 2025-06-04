@@ -41,21 +41,22 @@ public class P2PController {
             view.displayMessage("Lỗi khi khởi động server: " + e.getMessage());
         }
 
+        try {
+            System.out.println("Đang khởi động UDP Server...");
+            peerModel.startUDPServer();
+            System.out.println("UDP Server đã khởi động.");
+            view.displayMessage("UDP Server đã khởi động.");
+        }
+        catch (Exception e) {
+            System.err.println("Lỗi khi khởi động UDP Server: " + e.getMessage());
+            e.printStackTrace();
+            view.displayMessage("Lỗi khi khởi động UDP Server: " + e.getMessage());
+        }
+
         System.out.println("Đang đăng ký với tracker...");
         peerModel.registerWithTracker();
         System.out.println("Đã đăng ký với tracker.");
         view.displayMessage("Đã đăng ký với tracker.");
-
-        try {
-            System.out.println("Đang khám phá peer...");
-            peerModel.discoverPeers();
-            System.out.println("Đã khám phá peer.");
-            view.displayMessage("Đã khám phá peer.");
-        } catch (Exception e) {
-            System.err.println("Lỗi khi khám phá peer: " + e.getMessage());
-            e.printStackTrace();
-            view.displayMessage("Lỗi khi khám phá peer: " + e.getMessage());
-        }
 
         System.out.println("Hệ thống P2P đã khởi động hoàn tất.");
         view.displayMessage("Hệ thống P2P đã khởi động hoàn tất.");
