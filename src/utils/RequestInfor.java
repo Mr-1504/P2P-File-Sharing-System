@@ -11,4 +11,5 @@ public interface RequestInfor {
     String PONG = "PONG";
     String ERROR = "ERROR";
     String PING = "PING";
+    String SHARE_LIST = "LSHARE";
 }
