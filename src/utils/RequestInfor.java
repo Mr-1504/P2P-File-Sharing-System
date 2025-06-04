@@ -8,6 +8,7 @@ public interface RequestInfor {
     String GET_CHUNK = "GET_CHUNK";
     String FILE_INFO = "FILE_INFO";
     String FILE_NOT_FOUND = "FILE_NOT_FOUND";
-    String DISCOVER = "DISCOVER";
+    String PONG = "PONG";
     String ERROR = "ERROR";
+    String PING = "PING";
 }
