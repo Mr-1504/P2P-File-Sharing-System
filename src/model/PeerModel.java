@@ -241,6 +241,18 @@ public class PeerModel {
         return true;
     }
 
+    public void shareFileList(List<String> filePaths) {
+        try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
+            String message = RequestInfor.SHARE_LIST + "|" + filePaths.size() + "|" + String.join(",", filePaths)
+                    + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort();
+            socket.getOutputStream().write(message.getBytes());
+
+            System.out.println("Shared file list with tracker: " + message);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private void notifyTracker(String fileName) {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             String message = RequestInfor.SHARE + "|" + fileName + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort();
@@ -548,5 +560,53 @@ public class PeerModel {
             }
         }
         return peers;
+    }
+
+    public void getFileSharingList() {
+        // lấy danh sách file đang chia sẻ trong folder shared_files
+        String path = GetDir.getDir() + "\\shared_files\\";
+        File sharedDir = new File(path);
+        if (!sharedDir.exists() || !sharedDir.isDirectory()) {
+            System.out.println("Thư mục chia sẻ không tồn tại hoặc không phải là thư mục: " + sharedDir.getAbsolutePath());
+            return;
+        }
+
+        File[] files = sharedDir.listFiles();
+        if (files == null || files.length == 0) {
+            System.out.println("Không có file nào được chia sẻ trong thư mục: " + sharedDir.getAbsolutePath());
+            return;
+        }
+
+        System.out.println("Danh sách file đang chia sẻ:");
+        List<String> filenames = new ArrayList<>();
+        for (File file : files) {
+            if (file.isFile()) {
+                String fileName = file.getName();
+                long fileSize = file.length();
+                System.out.println(" - " + fileName + " (" + fileSize + " bytes)");
+                filenames.add(fileName);
+
+                List<String> chunkHashes = new ArrayList<>();
+                try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                    byte[] chunk = new byte[CHUNK_SIZE];
+                    MessageDigest md = MessageDigest.getInstance("SHA-256");
+                    int bytesRead;
+                    while ((bytesRead = raf.read(chunk)) != -1) {
+                        md.update(chunk, 0, bytesRead);
+                        String chunkHash = bytesToHex(md.digest());
+                        chunkHashes.add(chunkHash);
+                    }
+                } catch (IOException | NoSuchAlgorithmException e) {
+                    e.printStackTrace();
+                }
+                sharedFiles.put(fileName, new FileInfor(fileName, fileSize, chunkHashes, SERVER_HOST));
+            }
+        }
+
+        if (!filenames.isEmpty()) {
+            shareFileList(filenames);
+        } else {
+            System.out.println("Không có file nào để chia sẻ.");
+        }
     }
 }
