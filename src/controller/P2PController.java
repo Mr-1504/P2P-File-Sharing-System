@@ -65,11 +65,21 @@ public class P2PController {
             if (result == LogTag.SUCCESS) {
                 System.out.println("Đăng ký thành công với tracker.");
                 view.displayMessage("Đăng ký thành công với tracker.");
+
+                Set<FileBase> sharedFiles = peerModel.getSharedFileNames();
+
+                for(Map.Entry<String, FileInfor> entry : peerModel.getMySharedFiles().entrySet()) {
+                    FileInfor fileInfo = entry.getValue();
+                    sharedFiles.add(new FileBase(fileInfo.getFileName(), fileInfo.getFileSize(), fileInfo.getPeerInfor()));
+                }
+
+                peerModel.setSharedFileNames(sharedFiles);
+
                 view.displayData(peerModel.getSharedFileNames());
-            } else if (result == LogTag.NOT_FOUND){
+            } else if (result == LogTag.NOT_FOUND) {
                 System.out.println("Đăng ký thành công với tracker nhưng không có file chia sẻ.");
                 view.displayMessage("Đăng ký thành công với tracker nhưng không có file chia sẻ.");
-            }else if (result == LogTag.iERROR) {
+            } else if (result == LogTag.iERROR) {
                 System.err.println("Lỗi khi đăng ký với tracker.");
                 view.displayMessage("Lỗi khi đăng ký với tracker.");
                 return; // Dừng khởi động nếu không đăng ký được
@@ -84,7 +94,7 @@ public class P2PController {
             System.out.println("Hệ thống P2P đã khởi động hoàn tất.");
             view.displayMessage("Hệ thống P2P đã khởi động hoàn tất.");
 
-            peerModel.getFileSharingList();
+            peerModel.shareFileList();
         });
     }
 
@@ -105,6 +115,7 @@ public class P2PController {
             view.displayMessage("Không có file nào được chia sẻ.");
             return;
         }
+
         view.displayData(sharedFiles);
         view.displayMessage("Đã cập nhật danh sách file chia sẻ.");
     }

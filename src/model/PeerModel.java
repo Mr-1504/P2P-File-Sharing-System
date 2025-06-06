@@ -22,7 +22,7 @@ public class PeerModel {
     private final Selector selector;
     private ServerSocketChannel serverSocket;
     private final Map<String, FileInfor> mySharedFiles;
-    private final Set<FileBase> sharedFileNames;
+    private Set<FileBase> sharedFileNames;
     private final Set<String> knownPeers;
     private final ExecutorService executor;
 
@@ -38,6 +38,8 @@ public class PeerModel {
         this.serverSocket.configureBlocking(false);
         this.serverSocket.register(selector, SelectionKey.OP_ACCEPT);
         System.out.println("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
+
+        getFileSharingList();
     }
 
     public void startServer() {
@@ -301,7 +303,9 @@ public class PeerModel {
         return true;
     }
 
-    public void shareFileList(Set<FileBase> files) {
+    public void shareFileList() {
+        Set<FileBase> files = convertSharedFilesToFileBase();
+
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             StringBuilder messageBuilder = new StringBuilder(RequestInfor.SHARED_LIST + "|");
             messageBuilder.append(files.size()).append("|");
@@ -321,6 +325,17 @@ public class PeerModel {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private Set<FileBase> convertSharedFilesToFileBase() {
+        Set<FileBase> fileList = new HashSet<>();
+
+        for (Map.Entry<String, FileInfor> entry : mySharedFiles.entrySet()) {
+            FileInfor fileInfor = entry.getValue();
+            fileList.add(new FileBase(fileInfor.getFileName(), fileInfor.getFileSize(), fileInfor.getPeerInfor()));
+        }
+
+        return fileList;
     }
 
     private void notifyTracker(String fileName) {
@@ -648,13 +663,11 @@ public class PeerModel {
         }
 
         System.out.println("Danh sách file đang chia sẻ:");
-        Set<FileBase> fileList = new HashSet<>();
         for (File file : files) {
             if (file.isFile()) {
                 String fileName = file.getName();
                 long fileSize = file.length();
                 System.out.println(" - " + fileName + " (" + fileSize + " bytes)");
-                fileList.add(new FileBase(fileName, fileSize, SERVER_HOST));
 
                 List<String> chunkHashes = new ArrayList<>();
                 try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
@@ -672,16 +685,14 @@ public class PeerModel {
                 mySharedFiles.put(fileName, new FileInfor(fileName, fileSize, chunkHashes, SERVER_HOST));
             }
         }
-
-        if (!fileList.isEmpty()) {
-            shareFileList(fileList);
-        } else {
-            System.out.println("Không có file nào để chia sẻ.");
-        }
     }
 
     public Set<FileBase> getSharedFileNames() {
         return sharedFileNames;
+    }
+
+    public void setSharedFileNames(Set<FileBase> sharedFileNames) {
+        ;this.sharedFileNames = sharedFileNames;
     }
 
     public Map<String, FileInfor> getMySharedFiles() {
