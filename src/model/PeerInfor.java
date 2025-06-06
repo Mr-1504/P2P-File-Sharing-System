@@ -27,9 +27,6 @@ public class PeerInfor {
 
     @Override
     public String toString() {
-        return "PeerInfor{" +
-                "Ip='" + ip + '\'' +
-                ", Port=" + port +
-                '}';
+        return ip + "|" + port;
     }
 }
