@@ -1,5 +1,6 @@
 package view;
 
+import model.FileBase;
 import utils.LogTag;
 
 import javax.swing.*;
@@ -10,17 +11,20 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
+import java.util.Set;
 
 public class P2PView extends JFrame {
     private final JTextArea logArea;
     private final JTextField fileNameField;
     private final JPopupMenu popupMenu;
-    private JMenuItem downloadItem;
-    private JTable fileTable;
-    private DefaultTableModel tableModel;
-    private JButton chooseFileButton;
-    private JButton searchButton;
+    private final JMenuItem downloadItem;
+    private final JTable fileTable;
+    private final DefaultTableModel tableModel;
+    private final JButton chooseFileButton;
+    private final JButton searchButton;
+    private final JButton myFilesButton;
+    private final JButton refreshButton;
+    private final JButton allFilesButton;
 
     public P2PView() {
         setTitle("Hệ thống chia sẻ file P2P");
@@ -38,14 +42,20 @@ public class P2PView extends JFrame {
         fileNameField = new JTextField();
         inputPanel.add(fileNameField);
         searchButton = new JButton("Tìm kiếm");
+        myFilesButton = new JButton("File của tôi");
+        refreshButton = new JButton("Làm mới");
+        allFilesButton = new JButton("Tất cả file");
         JPanel buttonPanel = new JPanel();
         buttonPanel.add(searchButton);
+        buttonPanel.add(myFilesButton);
+        buttonPanel.add(allFilesButton);
+        buttonPanel.add(refreshButton);
         inputPanel.add(buttonPanel);
 
         add(inputPanel, BorderLayout.NORTH);
 
         // Bảng hiển thị file và peer
-        tableModel = new DefaultTableModel(new String[]{"Tên file", "Kích thước", "Số chunk", "Peers"}, 0);
+        tableModel = new DefaultTableModel(new String[]{"Tên file", "Kích thước", "Peers"}, 0);
         fileTable = new JTable(tableModel);
         JScrollPane tableScroll = new JScrollPane(fileTable);
         add(tableScroll, BorderLayout.CENTER);
@@ -130,6 +140,15 @@ public class P2PView extends JFrame {
     public void setChooseDownload(Runnable listener) {
         downloadItem.addActionListener(e -> listener.run());
     }
+    public void setMyFilesButtonListener(Runnable listener) {
+        myFilesButton.addActionListener(e -> listener.run());
+    }
+    public void setAllFilesButtonListener(Runnable listener) {
+        allFilesButton.addActionListener(e -> listener.run());
+    }
+    public void setRefreshButtonListener(Runnable listener) {
+        refreshButton.addActionListener(e -> listener.run());
+    }
 
     public void setChooseFileButtonListener(Runnable listener) {
         chooseFileButton.addActionListener(e -> listener.run());
@@ -139,8 +158,8 @@ public class P2PView extends JFrame {
         logArea.append(message + "\n");
     }
 
-    public void displayFileInfo(String fileName, long fileSize, int chunkCount, List<String> peers) {
-        tableModel.addRow(new Object[]{fileName, fileSize, chunkCount, String.join(",", peers)});
+    public void displayFileInfo(String fileName, long fileSize, String peer) {
+        tableModel.addRow(new Object[]{fileName, fileSize, peer});
     }
 
     public void clearTable() {
@@ -166,5 +185,13 @@ public class P2PView extends JFrame {
 
     public DefaultTableModel getTableModel() {
         return tableModel;
+    }
+
+    public void displayData(Set<FileBase> sharedFileNames) {
+        clearTable();
+        for (FileBase file : sharedFileNames) {
+            displayFileInfo(file.getFileName(), file.getFileSize(), file.getPeerInfor().getIp() + ":" + file.getPeerInfor().getPort());
+        }
+        appendLog("Đã cập nhật danh sách file chia sẻ.");
     }
 }
