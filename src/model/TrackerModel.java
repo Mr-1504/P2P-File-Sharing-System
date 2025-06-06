@@ -3,234 +3,411 @@ package model;
 import utils.Infor;
 import utils.RequestInfor;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.net.*;
-import java.util.*;
-import java.util.concurrent.*;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.*;
 
 public class TrackerModel {
     private final int TRACKER_PORT = Infor.TRACKER_PORT;
     private final ConcurrentHashMap<String, Set<String>> fileToPeers;
     private final CopyOnWriteArraySet<String> knownPeers;
-    private final ExecutorService executor;
+    private final Set<FileBase> sharedFiles;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private final Selector selector;
+    private final ScheduledExecutorService pingExecutor;
 
-    public TrackerModel() {
+    // Lưu trữ trạng thái đọc/ghi và địa chỉ client
+    private static class ClientState {
+        StringBuilder request = new StringBuilder();
+        ByteBuffer readBuffer = ByteBuffer.allocate(1024);
+        ByteBuffer writeBuffer = null;
+        String clientAddress; // Lưu địa chỉ client
+        ClientState(String clientAddress) {
+            this.clientAddress = clientAddress;
+        }
+    }
+
+    public TrackerModel() throws IOException {
         fileToPeers = new ConcurrentHashMap<>();
+        sharedFiles = ConcurrentHashMap.newKeySet();
         knownPeers = new CopyOnWriteArraySet<>();
-        executor = Executors.newCachedThreadPool();
-        ScheduledExecutorService pingExecutor = Executors.newScheduledThreadPool(1);
+        selector = Selector.open();
+        pingExecutor = Executors.newScheduledThreadPool(1);
         pingExecutor.scheduleAtFixedRate(this::pingPeers, 0, 60, TimeUnit.SECONDS);
     }
 
     public void startTracker() {
-        try (ServerSocket serverSocket = new ServerSocket(TRACKER_PORT)) {
-            System.out.println("Tracker started on port " + TRACKER_PORT + " at " + getCurrentTime());
+        try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
+            serverSocketChannel.bind(new InetSocketAddress(TRACKER_PORT));
+            serverSocketChannel.configureBlocking(false);
+            serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+            System.out.println("Tracker khởi động trên cổng " + TRACKER_PORT + " lúc " + getCurrentTime());
+
             while (true) {
-                try (Socket client = serverSocket.accept()) {
-                    System.out.println("New client connected: " + client.getInetAddress().getHostAddress() + " at " + getCurrentTime());
+                selector.select(); // Chặn cho đến khi có sự kiện
+                Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
-                    BufferedReader in = new BufferedReader(new java.io.InputStreamReader(client.getInputStream()));
-                    PrintWriter out = new PrintWriter(client.getOutputStream(), true);
-                    String request = in.readLine();
-                    System.out.println("Received request: " + request + " at " + getCurrentTime());
+                while (keyIterator.hasNext()) {
+                    SelectionKey key = keyIterator.next();
+                    keyIterator.remove();
 
-                    String[] parts = request.split("\\|");
-                    if (request.startsWith(RequestInfor.REGISTER)) {
-                        if (parts.length == 3) {
-                            registerPeer(parts, out);
-                        } else {
-                            out.println("Invalid REGISTER request format. Use: REGISTER|<peerIp>|<peerPort>");
-                            System.out.println("Invalid REGISTER request: " + request + " at " + getCurrentTime());
-                        }
-                    } else if (request.startsWith(RequestInfor.SHARE)) {
-                        if (parts.length == 4) {
-                            shareFile(parts, out);
-                        } else {
-                            out.println("Invalid SHARE request format. Use: SHARE|<fileName>|<peerIp>|<peerPort>");
-                            System.out.println("Invalid SHARE request: " + request + " at " + getCurrentTime());
-                        }
-                    } else if (request.startsWith(RequestInfor.SHARE_LIST)) {
-                        if (parts.length == 5) {
-                            shareListFile(parts, out, request);
-                        } else {
-                            out.println("Invalid SHARE_LIST request format. Use: SHARE_LIST|<count>|<fileNames>|<peerIp>|<peerPort>");
-                            System.out.println("Invalid SHARE_LIST request: " + request + " at " + getCurrentTime());
-                        }
-                    } else if (request.startsWith(RequestInfor.QUERY)) {
-                        if (parts.length >= 2) {
-                            queryFile(parts, out);
-                        } else {
-                            out.println("Invalid QUERY request format. Use: QUERY|<fileName>");
-                            System.out.println("Invalid QUERY request: " + request + " at " + getCurrentTime());
-                        }
-                    } else {
-                        out.println("Unknown command");
-                        System.out.println("Unknown command: " + request + " at " + getCurrentTime());
+                    if (!key.isValid()) continue;
+
+                    if (key.isAcceptable()) {
+                        handleAccept(key);
+                    } else if (key.isReadable()) {
+                        handleRead(key);
+                    } else if (key.isWritable()) {
+                        handleWrite(key);
                     }
-                } catch (Exception e) {
-                    System.err.println("Error handling client connection: " + e.getMessage() + " at " + getCurrentTime());
                 }
             }
         } catch (IOException e) {
-            System.err.println("Tracker error: " + e.getMessage() + " at " + getCurrentTime());
+            System.err.println("Lỗi tracker: " + e.getMessage() + " lúc " + getCurrentTime());
             e.printStackTrace();
+        } finally {
+            pingExecutor.shutdown();
+            try {
+                selector.close();
+            } catch (IOException e) {
+                System.err.println("Lỗi khi đóng selector: " + e.getMessage() + " lúc " + getCurrentTime());
+            }
         }
     }
 
-    private void queryFile(String[] parts, PrintWriter out) {
+    private void handleAccept(SelectionKey key) throws IOException {
+        ServerSocketChannel server = (ServerSocketChannel) key.channel();
+        SocketChannel client = server.accept();
+        if (client != null) {
+            client.configureBlocking(false);
+            String clientAddress = client.getRemoteAddress().toString();
+            client.register(selector, SelectionKey.OP_READ, new ClientState(clientAddress));
+            System.out.println("Kết nối mới từ: " + clientAddress + " lúc " + getCurrentTime());
+        }
+    }
+
+    private void handleRead(SelectionKey key) throws IOException {
+        SelectableChannel channel = key.channel();
+        if (!(channel instanceof SocketChannel)) {
+            System.err.println("Kênh không phải SocketChannel trong handleRead: " + channel + " lúc " + getCurrentTime());
+            key.cancel();
+            return;
+        }
+
+        SocketChannel client = (SocketChannel) channel;
+        ClientState state = (ClientState) key.attachment();
+        ByteBuffer buffer = state.readBuffer;
+
+        int bytesRead;
+        try {
+            bytesRead = client.read(buffer);
+        } catch (IOException e) {
+            System.err.println("Lỗi khi đọc từ client " + state.clientAddress + ": " + e.getMessage() + " lúc " + getCurrentTime());
+            key.cancel();
+            client.close();
+            return;
+        }
+
+        if (bytesRead == -1) {
+            System.out.println("Client ngắt kết nối: " + state.clientAddress + " lúc " + getCurrentTime());
+            key.cancel();
+            client.close();
+            return;
+        }
+
+        if (bytesRead > 0) {
+            buffer.flip();
+            String data = new String(buffer.array(), 0, bytesRead).trim();
+            state.request.append(data);
+
+            // Chỉ xử lý khi nhận được request hoàn chỉnh (kết thúc bằng \n)
+            if (!data.isEmpty()) {
+                String request = state.request.toString().trim();
+                System.out.println("Nhận yêu cầu: " + request + " từ " + state.clientAddress + " lúc " + getCurrentTime());
+                String response = processRequest(request);
+
+                state.writeBuffer = ByteBuffer.wrap((response + "\n").getBytes());
+                key.interestOps(SelectionKey.OP_WRITE);
+                state.request.setLength(0);
+            }
+            buffer.clear();
+        }
+    }
+
+    private void handleWrite(SelectionKey key) throws IOException {
+        SelectableChannel channel = key.channel();
+        if (!(channel instanceof SocketChannel)) {
+            System.err.println("Kênh không phải SocketChannel trong handleWrite: " + channel + " lúc " + getCurrentTime());
+            key.cancel();
+            return;
+        }
+
+        SocketChannel client = (SocketChannel) channel;
+        ClientState state = (ClientState) key.attachment();
+        ByteBuffer buffer = state.writeBuffer;
+
+        if (buffer != null) {
+            try {
+                client.write(buffer);
+                if (!buffer.hasRemaining()) {
+                    state.writeBuffer = null;
+                    key.interestOps(SelectionKey.OP_READ);
+                    System.out.println("Gửi phản hồi đến " + state.clientAddress + " lúc " + getCurrentTime());
+                }
+            } catch (IOException e) {
+                System.err.println("Lỗi khi ghi dữ liệu đến client " + state.clientAddress + ": " + e.getMessage() + " lúc " + getCurrentTime());
+                key.cancel();
+                client.close();
+            }
+        }
+    }
+
+    private String processRequest(String request) {
+        if (request.isEmpty()) {
+            System.out.println("Yêu cầu rỗng nhận được lúc " + getCurrentTime());
+            return "Yêu cầu rỗng";
+        }
+
+        String[] parts = request.split("\\|");
+        if (request.startsWith(RequestInfor.REGISTER)) {
+            if (parts.length == 3) {
+                return registerPeer(parts);
+            }
+            System.out.println("Yêu cầu REGISTER không hợp lệ: " + request + " lúc " + getCurrentTime());
+            return "Định dạng yêu cầu REGISTER không hợp lệ. Sử dụng: REGISTER|<peerIp>|<peerPort>";
+        } else if (request.startsWith(RequestInfor.SHARED_LIST)) {
+            if (parts.length == 5) {
+                return receiveFileList(parts, request);
+            }
+            System.out.println("Yêu cầu SHARE_LIST không hợp lệ: " + request + " lúc " + getCurrentTime());
+            return "Định dạng yêu cầu SHARE_LIST không hợp lệ. Sử dụng: SHARE_LIST|<count>|<fileNames>|<peerIp>|<peerPort>";
+        }else if (request.startsWith(RequestInfor.SHARE)) {
+            if (parts.length == 4) {
+                return shareFile(parts);
+            }
+            System.out.println("Yêu cầu SHARE không hợp lệ: " + request + " lúc " + getCurrentTime());
+            return "Định dạng yêu cầu SHARE không hợp lệ. Sử dụng: SHARE|<fileName>|<peerIp>|<peerPort>";
+        }  else if (request.startsWith(RequestInfor.QUERY)) {
+            if (parts.length >= 2) {
+                return queryFile(parts);
+            }
+            System.out.println("Yêu cầu QUERY không hợp lệ: " + request + " lúc " + getCurrentTime());
+            return "Định dạng yêu cầu QUERY không hợp lệ. Sử dụng: QUERY|<fileName>";
+        }
+        System.out.println("Lệnh không xác định: " + request + " lúc " + getCurrentTime());
+        return "Lệnh không xác định";
+    }
+
+    private String queryFile(String[] parts) {
         StringBuilder fileName = new StringBuilder(parts[1]);
         for (int i = 2; i < parts.length; i++) {
             fileName.append("|").append(parts[i]);
         }
         List<String> peers = new ArrayList<>(fileToPeers.getOrDefault(fileName.toString(), Collections.emptySet()));
-        out.println(String.join(",", peers));
-        System.out.println("QUERY for file " + fileName + ": returned peers " + peers + " at " + getCurrentTime());
+        System.out.println("QUERY cho file " + fileName + ": trả về peers " + peers + " lúc " + getCurrentTime());
+        return String.join(",", peers);
     }
 
-    private void shareListFile(String[] parts, PrintWriter out, String request) {
-        int count = Integer.parseInt(parts[1]);
+    private String receiveFileList(String[] parts, String request) {
+        int count;
+        try {
+            count = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            System.out.println("Số lượng không hợp lệ trong SHARE_LIST: " + parts[1] + " lúc " + getCurrentTime());
+            return "Số lượng không hợp lệ.";
+        }
         List<String> files = Arrays.asList(parts[2].split(","));
         String peerIp = parts[3];
-        int peerPort = Integer.parseInt(parts[4]);
+        int peerPort;
+        try {
+            peerPort = Integer.parseInt(parts[4]);
+        } catch (NumberFormatException e) {
+            System.out.println("Cổng không hợp lệ trong SHARE_LIST: " + parts[4] + " lúc " + getCurrentTime());
+            return "Cổng không hợp lệ.";
+        }
         String peerInfor = peerIp + "|" + peerPort;
 
         if (files.isEmpty()) {
-            out.println("No files specified for SHARE_LIST request.");
-            System.out.println("No files specified for SHARE_LIST: " + request + " at " + getCurrentTime());
-            return;
+            System.out.println("Không có file nào được chỉ định trong SHARE_LIST: " + request + " lúc " + getCurrentTime());
+            return "Không có file nào được chỉ định trong yêu cầu SHARE_LIST.";
         }
         if (count <= 0) {
-            out.println("Count must be greater than 0.");
-            System.out.println("Invalid count for SHARE_LIST: " + count + " at " + getCurrentTime());
-            return;
+            System.out.println("Số lượng không hợp lệ trong SHARE_LIST: " + count + " lúc " + getCurrentTime());
+            return "Số lượng phải lớn hơn 0.";
         }
         if (count != files.size()) {
-            out.println("Count does not match the number of files specified.");
-            System.out.println("Count mismatch for SHARE_LIST: " + count + " vs " + files.size() + " at " + getCurrentTime());
-            return;
+            System.out.println("Số lượng không khớp với số file trong SHARE_LIST: " + count + " vs " + files.size() + " lúc " + getCurrentTime());
+            return "Số lượng không khớp với số file được chỉ định.";
         }
 
-        for (String fileName : files) {
+        for (String file : files) {
+            if (file.isEmpty()) {
+                System.out.println("Tên file rỗng trong SHARE_LIST: " + request + " lúc " + getCurrentTime());
+                continue;
+            }
+            String[] fileInfor = file.split("'");
+            if (fileInfor.length != 2) {
+                System.out.println("Định dạng file không hợp lệ trong SHARE_LIST: " + file + " lúc " + getCurrentTime());
+                continue;
+            }
+            String fileName = fileInfor[0];
+            long fileSize;
+            try {
+                fileSize = Long.parseLong(fileInfor[1]);
+            } catch (NumberFormatException e) {
+                System.out.println("Kích thước file không hợp lệ trong SHARE_LIST: " + fileInfor[1] + " lúc " + getCurrentTime());
+                continue;
+            }
             fileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-            System.out.println("File " + fileName + " shared by " + peerInfor + " at " + getCurrentTime());
+            sharedFiles.add(new FileBase(fileName, fileSize, new PeerInfor(peerIp, peerPort)));
+            System.out.println("File " + fileName + " được chia sẻ bởi " + peerInfor + " lúc " + getCurrentTime());
         }
-        out.println("Files shared successfully by " + peerInfor);
-        System.out.println("SHARE_LIST processed for " + peerInfor + " at " + getCurrentTime());
+        System.out.println("SHARE_LIST được xử lý cho " + peerInfor + " lúc " + getCurrentTime());
+        return "Các file được chia sẻ thành công bởi " + peerInfor;
     }
 
-    private void shareFile(String[] parts, PrintWriter out) {
+    private String shareFile(String[] parts) {
         String fileName = parts[1];
         String peerIp = parts[2];
         String peerPort = parts[3];
         String peerInfor = peerIp + "|" + peerPort;
         fileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-        out.println("File " + fileName + " shared successfully by " + peerInfor);
-        System.out.println("File " + fileName + " shared by " + peerInfor + " at " + getCurrentTime());
+        System.out.println("File " + fileName + " được chia sẻ bởi " + peerInfor + " lúc " + getCurrentTime());
+        return "File " + fileName + " được chia sẻ thành công bởi " + peerInfor;
     }
 
-    private void registerPeer(String[] parts, PrintWriter out) {
+    private String registerPeer(String[] parts) {
         String peerIp = parts[1];
-        String peerPort = parts[2];
+        String peerPort;
+        try {
+            peerPort = parts[2];
+            Integer.parseInt(peerPort); // Validate port
+        } catch (NumberFormatException e) {
+            System.out.println("Cổng không hợp lệ trong REGISTER: " + parts[2] + " lúc " + getCurrentTime());
+            return "Cổng không hợp lệ.";
+        }
         String peerInfor = peerIp + "|" + peerPort;
         knownPeers.add(peerInfor);
-        out.println(peerInfor);
-        System.out.println("Registered peer: " + peerInfor + " at " + getCurrentTime());
+        System.out.println("Đăng ký peer: " + peerInfor + " lúc " + getCurrentTime());
+
+        String shareListResponse = sendShareList(peerIp, Integer.parseInt(peerPort));
+        if (!shareListResponse.startsWith(RequestInfor.SHARED_LIST)) {
+            return RequestInfor.REGISTERED;
+        }
+        return shareListResponse;
+    }
+
+    private String sendShareList(String peerIp, int peerPort) {
+        if (sharedFiles.isEmpty()) {
+            System.out.println("Không có file nào được chia sẻ bởi peer: " + peerIp + "|" + peerPort + " lúc " + getCurrentTime());
+            return RequestInfor.FILE_NOT_FOUND;
+        }
+
+        StringBuilder msgBuilder = new StringBuilder();
+        for (FileBase file : sharedFiles) {
+            msgBuilder.append(file.getFileName())
+                    .append("'").append(file.getFileSize())
+                    .append("'").append(file.getPeerInfor().getIp())
+                    .append("'").append(file.getPeerInfor().getPort())
+                    .append(",");
+        }
+        if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {
+            msgBuilder.deleteCharAt(msgBuilder.length() - 1);
+        }
+        String shareList = msgBuilder.toString();
+        System.out.println("Gửi SHARE_LIST đến " + peerIp + "|" + peerPort + ": " + shareList + " lúc " + getCurrentTime());
+        return RequestInfor.SHARED_LIST + "|" + sharedFiles.size() + "|" + shareList;
     }
 
     private void pingPeers() {
-        executor.submit(() -> {
-            try (DatagramSocket socket = new DatagramSocket()) {
-                socket.setSoTimeout(2000); // Timeout 2 giây mỗi lần ping
-                Map<String, Integer> retryCount = new ConcurrentHashMap<>();
-                Set<String> alivePeers = ConcurrentHashMap.newKeySet();
+        try (DatagramChannel channel = DatagramChannel.open()) {
+            channel.configureBlocking(false);
+            channel.socket().setSoTimeout(5000); // Tăng timeout lên 5 giây
 
-                // Khởi tạo số lần thử cho mỗi peer
-                for (String peer : knownPeers) {
-                    retryCount.put(peer, 0);
-                }
+            Map<String, Integer> retryCount = new ConcurrentHashMap<>();
+            Set<String> alivePeers = ConcurrentHashMap.newKeySet();
 
-                // Gửi PING và nhận PONG
-                while (!retryCount.isEmpty()) {
-                    // Gửi PING cho các peer chưa alive
-                    for (String peer : retryCount.keySet()) {
-                        if (alivePeers.contains(peer)) continue; // Bỏ qua peer đã alive
-                        int attempts = retryCount.get(peer);
-                        if (attempts >= 3) continue; // Bỏ qua peer đã thử 3 lần
-
-                        String[] peerInfor = peer.split("\\|");
-                        String peerIp = peerInfor[0];
-                        int peerPort = Integer.parseInt(peerInfor[1]);
-                        byte[] pingMessage = RequestInfor.PING.getBytes();
-                        DatagramPacket packet = new DatagramPacket(pingMessage, pingMessage.length,
-                                InetAddress.getByName(peerIp), peerPort);
-
-                        try {
-                            socket.send(packet);
-                            retryCount.put(peer, attempts + 1);
-                            System.out.println("Sent PING to " + peer + " (attempt " + (attempts + 1) + ") at " + getCurrentTime());
-                        } catch (IOException e) {
-                            System.err.println("Error sending PING to " + peer + ": " + e.getMessage() + " at " + getCurrentTime());
-                            retryCount.put(peer, attempts + 1);
-                        }
-                    }
-
-                    // Nhận PONG trong 2 giây
-                    long startTime = System.currentTimeMillis();
-                    while (System.currentTimeMillis() - startTime < 2000) {
-                        try {
-                            byte[] buffer = new byte[1024];
-                            DatagramPacket response = new DatagramPacket(buffer, buffer.length);
-                            socket.receive(response);
-
-                            String responseMessage = new String(response.getData(), 0, response.getLength());
-                            if (responseMessage.equals(RequestInfor.PONG)) {
-                                String ip = response.getAddress().getHostAddress();
-                                int port = response.getPort();
-                                String peerInfor = ip + "|" + port;
-                                if (retryCount.containsKey(peerInfor)) {
-                                    alivePeers.add(peerInfor);
-                                    System.out.println("Received PONG from " + peerInfor + " at " + getCurrentTime());
-                                }
-                            }
-                        } catch (SocketTimeoutException e) {
-                            break; // Hết timeout, chuyển sang vòng lặp tiếp
-                        } catch (IOException e) {
-                            System.err.println("Error receiving PONG: " + e.getMessage() + " at " + getCurrentTime());
-                        }
-                    }
-
-                    // Xóa các peer đã thử đủ 3 lần hoặc alive
-                    retryCount.entrySet().removeIf(entry -> {
-                        String peer = entry.getKey();
-                        int attempts = entry.getValue();
-                        return alivePeers.contains(peer) || attempts >= 3;
-                    });
-                }
-
-                // Cập nhật danh sách peer
-                updateKnownPeers(alivePeers);
-                System.out.println("Ping cycle completed. Alive peers: " + alivePeers + " at " + getCurrentTime());
-
-            } catch (IOException e) {
-                System.err.println("Error in pingPeers: " + e.getMessage() + " at " + getCurrentTime());
-                e.printStackTrace();
+            // Khởi tạo số lần thử cho mỗi peer
+            for (String peer : knownPeers) {
+                retryCount.put(peer, 0);
             }
-        });
+
+            long startTime = System.currentTimeMillis();
+            while (!retryCount.isEmpty() && System.currentTimeMillis() - startTime < 5000) {
+                // Gửi PING
+                for (String peer : retryCount.keySet()) {
+                    if (alivePeers.contains(peer) || retryCount.get(peer) >= 3) continue;
+
+                    String[] peerInfor = peer.split("\\|");
+                    String peerIp = peerInfor[0];
+                    int peerPort;
+                    try {
+                        peerPort = Integer.parseInt(peerInfor[1]);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Cổng không hợp lệ cho peer " + peer + " lúc " + getCurrentTime());
+                        retryCount.remove(peer);
+                        continue;
+                    }
+                    ByteBuffer pingMessage = ByteBuffer.wrap(RequestInfor.PING.getBytes());
+                    try {
+                        channel.send(pingMessage, new InetSocketAddress(peerIp, peerPort));
+                        retryCount.compute(peer, (k, v) -> v + 1);
+                        System.out.println("Gửi PING đến " + peer + " (lần thử " + retryCount.get(peer) + ") lúc " + getCurrentTime());
+                    } catch (IOException e) {
+                        System.err.println("Lỗi khi gửi PING đến " + peer + ": " + e.getMessage() + " lúc " + getCurrentTime());
+                        retryCount.compute(peer, (k, v) -> v + 1);
+                    }
+                }
+
+                // Nhận PONG
+                try {
+                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    InetSocketAddress address = (InetSocketAddress) channel.receive(buffer);
+                    if (address != null) {
+                        buffer.flip();
+                        String response = new String(buffer.array(), 0, buffer.limit()).trim();
+                        if (response.equals(RequestInfor.PONG)) {
+                            String peerInfor = address.getAddress().getHostAddress() + "|" + address.getPort();
+                            if (retryCount.containsKey(peerInfor)) {
+                                alivePeers.add(peerInfor);
+                                System.out.println("Nhận PONG từ " + peerInfor + " lúc " + getCurrentTime());
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    // Bỏ qua timeout hoặc lỗi nhận
+                }
+
+                // Đợi một chút để tránh CPU overload
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            // Cập nhật danh sách peer
+            updateKnownPeers(alivePeers);
+            System.out.println("Chu kỳ ping hoàn tất. Peer còn sống: " + alivePeers + " lúc " + getCurrentTime());
+
+        } catch (IOException e) {
+            System.err.println("Lỗi trong pingPeers: " + e.getMessage() + " lúc " + getCurrentTime());
+            e.printStackTrace();
+        }
     }
 
     private void updateKnownPeers(Set<String> alivePeers) {
         synchronized (this) {
-            // Cập nhật knownPeers
             knownPeers.retainAll(alivePeers);
             knownPeers.addAll(alivePeers);
-            System.out.println("Known peers updated. Current count: " + knownPeers.size() + " at " + getCurrentTime());
+            System.out.println("Danh sách peer được cập nhật. Số lượng hiện tại: " + knownPeers.size() + " lúc " + getCurrentTime());
 
-            // Cập nhật fileToPeers
             Iterator<Map.Entry<String, Set<String>>> iterator = fileToPeers.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Set<String>> entry = iterator.next();
@@ -239,8 +416,11 @@ public class TrackerModel {
                 peers.retainAll(alivePeers);
                 if (peers.isEmpty()) {
                     iterator.remove();
-                    System.out.println("Removed empty file entry: " + fileName + " at " + getCurrentTime());
+                    System.out.println("Xóa mục file rỗng: " + fileName + " lúc " + getCurrentTime());
                 }
+                sharedFiles.removeIf(fileInfor ->
+                        fileInfor.getFileName().equals(fileName) &&
+                                !alivePeers.contains(fileInfor.getPeerInfor().toString()));
             }
         }
     }
