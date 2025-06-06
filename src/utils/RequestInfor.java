@@ -2,6 +2,7 @@ package utils;
 
 public interface RequestInfor {
     String REGISTER = "REGISTER";
+    String REGISTERED = "REGISTERED";
     String SHARE = "SHARE";
     String SEARCH = "SEARCH";
     String QUERY = "QUERY";
@@ -9,7 +10,7 @@ public interface RequestInfor {
     String FILE_INFO = "FILE_INFO";
     String FILE_NOT_FOUND = "FILE_NOT_FOUND";
     String PONG = "PONG";
-    String ERROR = "ERROR";
+    String SHARED_LIST = "SHARED_LIST";
     String PING = "PING";
     String SHARE_LIST = "LSHARE";
 }
