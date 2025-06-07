@@ -1,6 +1,7 @@
 package model;
 
 import utils.Infor;
+import utils.LogTag;
 import utils.RequestInfor;
 
 import java.io.IOException;
@@ -126,7 +127,6 @@ public class TrackerModel {
             String data = new String(buffer.array(), 0, bytesRead).trim();
             state.request.append(data);
 
-            // Chỉ xử lý khi nhận được request hoàn chỉnh (kết thúc bằng \n)
             if (!data.isEmpty()) {
                 String request = state.request.toString().trim();
                 System.out.println("Nhận yêu cầu: " + request + " từ " + state.clientAddress + " lúc " + getCurrentTime());
@@ -199,9 +199,37 @@ public class TrackerModel {
             }
             System.out.println("Yêu cầu QUERY không hợp lệ: " + request + " lúc " + getCurrentTime());
             return "Định dạng yêu cầu QUERY không hợp lệ. Sử dụng: QUERY|<fileName>";
+        } else if (request.startsWith(RequestInfor.UNSHARED_FILE)){
+            if (parts.length == 4) {
+                return unshareFile(parts);
+            }
         }
         System.out.println("Lệnh không xác định: " + request + " lúc " + getCurrentTime());
         return "Lệnh không xác định";
+    }
+
+    private String unshareFile(String[] parts) {
+        String fileName = parts[1];
+        String peerIp = parts[2];
+        String peerPort = parts[3];
+        String peerInfor = peerIp + "|" + peerPort;
+        Set<String> peers = fileToPeers.get(fileName);
+        if (peers == null || !peers.remove(peerInfor)) {
+            System.out.println("Không tìm thấy file " + fileName + " được chia sẻ bởi " + peerInfor + " lúc " + getCurrentTime());
+            return LogTag.S_NOT_FOUND;
+        }
+
+        // Xóa file khỏi danh sách chia sẻ
+        fileToPeers.get(fileName).remove(peerInfor);
+
+        sharedFiles.removeIf(fileBase -> fileBase.getFileName().equals(fileName) && fileBase.getPeerInfor().toString().equals(peerInfor));
+        if (peers.isEmpty()) {
+            fileToPeers.remove(fileName);
+            System.out.println("Đã xóa file " + fileName + " khỏi danh sách chia sẻ lúc " + getCurrentTime());
+        } else {
+            System.out.println("Đã xóa peer " + peerInfor + " khỏi file " + fileName + " lúc " + getCurrentTime());
+        }
+        return LogTag.S_SUCCESS;
     }
 
     private String queryFile(String[] parts) {
@@ -290,7 +318,7 @@ public class TrackerModel {
             Integer.parseInt(peerPort); // Validate port
         } catch (NumberFormatException e) {
             System.out.println("Cổng không hợp lệ trong REGISTER: " + parts[2] + " lúc " + getCurrentTime());
-            return "Cổng không hợp lệ.";
+            return LogTag.S_INVALID;
         }
         String peerInfor = peerIp + "|" + peerPort;
         knownPeers.add(peerInfor);
@@ -305,7 +333,7 @@ public class TrackerModel {
 
     private String sendShareList(String peerIp, int peerPort) {
         if (sharedFiles.isEmpty()) {
-            System.out.println("Không có file nào được chia sẻ bởi peer: " + peerIp + "|" + peerPort + " lúc " + getCurrentTime());
+            System.out.println("Không có file nào được chia sẻ tới peer: " + peerIp + "|" + peerPort + " lúc " + getCurrentTime());
             return RequestInfor.FILE_NOT_FOUND;
         }
 
