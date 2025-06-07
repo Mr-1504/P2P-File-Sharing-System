@@ -1,4 +1,4 @@
-package ultis;
+package utils;
 
 /**
  * This interface defines constants for server and tracker configurations.
