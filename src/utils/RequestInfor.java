@@ -13,4 +13,5 @@ public interface RequestInfor {
     String SHARED_LIST = "SHARED_LIST";
     String PING = "PING";
     String SHARE_LIST = "LSHARE";
+    String UNSHARED_FILE = "UNSHARED_FILE";
 }
