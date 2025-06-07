@@ -5,6 +5,7 @@ import utils.Infor;
 import utils.LogTag;
 import utils.RequestInfor;
 
+import javax.swing.*;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
@@ -228,7 +229,7 @@ public class PeerModel {
                 System.out.println("check: " + response);
                 if (response == null) {
                     System.out.println("Tracker did not respond.");
-                    return LogTag.iERROR;
+                    return LogTag.I_ERROR;
                 }
                 if (response.startsWith(RequestInfor.SHARED_LIST)) {
                     System.out.println("Tracker registration successful: " + response);
@@ -236,9 +237,8 @@ public class PeerModel {
                     String[] parts = response.split("\\|");
                     if (parts.length < 2) {
                         System.out.println("Invalid response format from tracker: " + response);
-                        return LogTag.INVALID;
+                        return LogTag.I_INVALID;
                     }
-                    int listSize = Integer.parseInt(parts[1]);
                     if (parts.length == 3) {
                         String[] sharedFilesList = parts[2].split(",");
                         System.out.println("Files shared by tracker: " + Arrays.toString(sharedFilesList));
@@ -254,16 +254,16 @@ public class PeerModel {
                             sharedFileNames.add(new FileBase(fileName, fileSize, peerInfor));
                         }
                         System.out.println("Total files shared by tracker: " + sharedFileNames.size());
-                        return LogTag.SUCCESS;
+                        return LogTag.I_SUCCESS;
                     } else {
                         System.out.println("Invalid response format from tracker: " + response);
-                        return LogTag.INVALID;
+                        return LogTag.I_INVALID;
                     }
                 } else if (response.startsWith(RequestInfor.REGISTERED)) {
-                    return LogTag.NOT_FOUND;
+                    return LogTag.I_NOT_FOUND;
                 }else {
                     System.out.println("Tracker registration failed or no response: " + response);
-                    return LogTag.iERROR;
+                    return LogTag.I_ERROR;
                 }
             } catch (ConnectException e) {
                 System.err.println("Lỗi kết nối tracker, thử lại... (" + retries + ")");
@@ -278,7 +278,7 @@ public class PeerModel {
             }
         }
         System.err.println("Không thể kết nối với tracker sau 3 lần thử.");
-        return LogTag.iERROR;
+        return LogTag.I_ERROR;
     }
 
     public boolean shareFile(String filePath) {
@@ -299,7 +299,7 @@ public class PeerModel {
         }
         mySharedFiles.put(file.getName(), new FileInfor(file.getName(), file.length(), chunkHashes, SERVER_HOST));
         System.out.println("Shared file: " + file.getName() + ", details: " + mySharedFiles.get(file.getName()));
-        notifyTracker(file.getName());
+        notifyTracker(file.getName(), true);
         return true;
     }
 
@@ -338,11 +338,15 @@ public class PeerModel {
         return fileList;
     }
 
-    private void notifyTracker(String fileName) {
+    private void notifyTracker(String fileName, boolean isShared) {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
-            String message = RequestInfor.SHARE + "|" + fileName + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort();
+
+            String message = (isShared ? RequestInfor.SHARE : RequestInfor.UNSHARED_FILE)
+                    + "|" + fileName + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort();
+
             socket.getOutputStream().write(message.getBytes());
-            System.out.println("Notified tracker about shared file: " + fileName);
+
+            System.out.println("Notified tracker about shared file: " + fileName + ", message: " + message);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -356,19 +360,19 @@ public class PeerModel {
         return sb.toString();
     }
 
-    public void downloadFile(String fileName, String savePath) {
-        executor.submit(() -> {
+    public Future<Integer> downloadFile(String fileName, String savePath) {
+         return executor.submit(() -> {
             try {
                 File saveFile = new File(savePath);
                 if (!saveFile.getParentFile().exists()) {
                     String errorMessage = "Lỗi: Thư mục lưu không tồn tại: " + saveFile.getParent();
                     System.out.println(errorMessage);
-                    return;
+                    return LogTag.I_NOT_EXIST;
                 }
                 if (!saveFile.getParentFile().canWrite()) {
                     String errorMessage = "Lỗi: Không có quyền ghi vào thư mục: " + saveFile.getParent();
                     System.out.println(errorMessage);
-                    return;
+                    return LogTag.I_NOT_PERMISSION;
                 }
 
                 System.out.println("Truy vấn tracker cho file: " + fileName);
@@ -376,13 +380,11 @@ public class PeerModel {
                 if (peers.isEmpty()) {
                     String errorMessage = "Không tìm thấy peer nào cho file: " + fileName;
                     System.out.println(errorMessage);
-                    return;
+                    return LogTag.I_NOT_READY;
                 }
                 FileInfor fileInfor = getFileInforFromPeers(peers.get(0), fileName);
                 if (fileInfor == null) {
-                    String errorMessage = "File không tìm thấy trên bất kỳ peer nào.";
-                    System.out.println(errorMessage);
-                    return;
+                    return LogTag.I_NOT_FOUND;
                 }
                 try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
                     raf.setLength(fileInfor.getFileSize());
@@ -405,13 +407,16 @@ public class PeerModel {
                     }
                     if (allChunksDownloaded) {
                         System.out.println("Tải file hoàn tất: " + fileName + " vào " + savePath);
+                        return LogTag.I_SUCCESS;
                     } else {
                         System.out.println("Tải file thất bại: Một số chunk không tải được.");
+                        return LogTag.I_FAILURE;
                     }
                 }
             } catch (IOException e) {
                 System.err.println("Lỗi khi tải file: " + e.getMessage());
                 e.printStackTrace();
+                return LogTag.I_ERROR;
             }
         });
     }
@@ -697,5 +702,29 @@ public class PeerModel {
 
     public Map<String, FileInfor> getMySharedFiles() {
         return mySharedFiles;
+    }
+
+    public  boolean isMe(String ip, int port) {
+        return SERVER_HOST.getIp().equals(ip) && SERVER_HOST.getPort() == port;
+    }
+
+    public void stopSharingFile(String fileName) {
+        if (mySharedFiles.containsKey(fileName)) {
+            mySharedFiles.remove(fileName);
+            sharedFileNames.removeIf(file -> file.getFileName().equals(fileName));
+            // xóa file khỏi thư mục chia sẻ
+            String filePath = GetDir.getDir() + "\\shared_files\\" + fileName;
+            File file = new File(filePath);
+            if (file.exists() && file.delete()) {
+                System.out.println("Đã xóa file khỏi thư mục chia sẻ: " + filePath);
+            } else {
+                System.out.println("Không thể xóa file khỏi thư mục chia sẻ: " + filePath);
+            }
+
+            System.out.println("Đã dừng chia sẻ file: " + fileName);
+            notifyTracker(fileName, false);
+        } else {
+            System.out.println("Không tìm thấy file để dừng chia sẻ: " + fileName);
+        }
     }
 }
