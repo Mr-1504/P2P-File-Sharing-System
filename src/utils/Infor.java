@@ -9,4 +9,11 @@ public interface Infor {
     int TRACKER_PORT = 5001;
     String SERVER_IP = GetLocalIP.getLocalIpAddress();
     String TRACKER_IP = "127.0.0.1";
+    int CHUNK_SIZE = 1024 * 64;
+    int SOCKET_TIMEOUT_MS = 5000;
+    int DOWNLOAD_TIMEOUT_MS = 10000;
+    int MAX_RETRIES = 3;
+    String FIELD_SEPARATOR = "\\|";
+    String FILE_SEPARATOR = "'";
+    String LIST_SEPARATOR = ",";
 }
