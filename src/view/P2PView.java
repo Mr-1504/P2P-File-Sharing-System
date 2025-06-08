@@ -27,25 +27,49 @@ public class P2PView extends JFrame {
     private final JButton allFilesButton;
 
     public P2PView() {
-        setTitle("Hệ thống chia sẻ file P2P");
-        setSize(600, 400);
+        String path = System.getProperty("user.dir");
+        File file = new File(path);
+        String projectName = file.getName();
+        setTitle("Hệ thống chia sẻ file P2P - " + projectName);
+        setSize(800, 500); // Tăng kích thước cửa sổ để có thêm không gian
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
 
         // Panel nhập liệu
-        JPanel inputPanel = new JPanel(new GridLayout(4, 2, 5, 5));
-        inputPanel.add(new JLabel("Chọn file để chia sẻ:"));
+        JPanel inputPanel = new JPanel();
+        inputPanel.setLayout(new BoxLayout(inputPanel, BoxLayout.Y_AXIS));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); // Margin 10px hai bên và trên dưới
+
+        // Panel cho chọn file
+        JPanel filePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        filePanel.add(new JLabel("Chọn file để chia sẻ:"));
         chooseFileButton = new JButton("Chọn file");
-        inputPanel.add(chooseFileButton);
-        inputPanel.add(new JLabel("Tên file để tìm kiếm:"));
-        fileNameField = new JTextField();
-        inputPanel.add(fileNameField);
+        filePanel.add(chooseFileButton);
+        inputPanel.add(filePanel);
+
+        // Panel cho tìm kiếm
+        JPanel searchPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 1, 5, 5); // Khoảng cách giữa các thành phần
+        gbc.anchor = GridBagConstraints.WEST; // Căn lề trái
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        searchPanel.add(new JLabel("Tên file để tìm kiếm:"), gbc);
+        gbc.gridx = 1;
+        gbc.weightx = 1.0; // Cho phép ô nhập văn bản co giãn theo chiều ngang
+        gbc.fill = GridBagConstraints.HORIZONTAL; // Điền đầy theo chiều ngang
+        fileNameField = new JTextField(30); // Ô nhập văn bản với 30 cột
+        fileNameField.setToolTipText("Nhập tên file để tìm kiếm trong hệ thống P2P");
+        searchPanel.add(fileNameField, gbc);
+        inputPanel.add(searchPanel);
+
+        // Panel cho các nút
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5)); // Khoảng cách giữa các nút
         searchButton = new JButton("Tìm kiếm");
         myFilesButton = new JButton("File của tôi");
         refreshButton = new JButton("Làm mới");
         allFilesButton = new JButton("Tất cả file");
-        JPanel buttonPanel = new JPanel();
         buttonPanel.add(searchButton);
         buttonPanel.add(myFilesButton);
         buttonPanel.add(allFilesButton);
@@ -57,6 +81,13 @@ public class P2PView extends JFrame {
         // Bảng hiển thị file và peer
         tableModel = new DefaultTableModel(new String[]{"Tên file", "Kích thước", "Peers"}, 0);
         fileTable = new JTable(tableModel);
+        fileTable.setRowHeight(30); // Tăng chiều cao hàng lên 30px
+        fileTable.setGridColor(Color.LIGHT_GRAY); // Thêm viền lưới
+        fileTable.setShowGrid(true); // Hiển thị lưới
+        fileTable.getColumnModel().getColumn(0).setPreferredWidth(200); // Cột Tên file
+        fileTable.getColumnModel().getColumn(1).setPreferredWidth(100); // Cột Kích thước
+        fileTable.getColumnModel().getColumn(2).setPreferredWidth(150); // Cột Peers
+        fileTable.setToolTipText("Danh sách các file chia sẻ trong hệ thống P2P");
         JScrollPane tableScroll = new JScrollPane(fileTable);
         add(tableScroll, BorderLayout.CENTER);
 
@@ -66,7 +97,7 @@ public class P2PView extends JFrame {
         JScrollPane logScroll = new JScrollPane(logArea);
         add(logScroll, BorderLayout.SOUTH);
 
-        // menu
+        // Menu
         popupMenu = new JPopupMenu();
         menuItem = new JMenuItem("Tải xuống");
         popupMenu.add(menuItem);
@@ -151,10 +182,6 @@ public class P2PView extends JFrame {
 
     public void setChooseFileButtonListener(Runnable listener) {
         chooseFileButton.addActionListener(e -> listener.run());
-    }
-
-    public void displayMessage(String message) {
-        logArea.append(message + "\n");
     }
 
     public void displayFileInfo(String fileName, long fileSize, String peer) {
