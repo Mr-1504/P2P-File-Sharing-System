@@ -14,4 +14,6 @@ public interface RequestInfor {
     String PING = "PING";
     String SHARE_LIST = "LSHARE";
     String UNSHARED_FILE = "UNSHARED_FILE";
+    String REFRESH = "REFRESH";
+    String REFRESHED = "REFRESHED";
 }
