@@ -1,6 +1,6 @@
 package model;
 
-import java.util.List;
+import java.util.Objects;
 
 public class FileBase {
     private String fileName;
@@ -30,6 +30,20 @@ public class FileBase {
     }
     public void setPeerInfor(PeerInfor peerInfor) {
         this.peerInfor = peerInfor;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        FileBase fileBase = (FileBase) o;
+        return fileName.equals(fileBase.fileName) &&
+                peerInfor.equals(fileBase.peerInfor);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(fileName, peerInfor);
     }
 
     @Override

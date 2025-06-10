@@ -8,4 +8,8 @@ public class GetDir {
         }
         return dir;
     }
+
+    public static String getShareDir(String fileName) {
+        return GetDir.getDir() + "\\shared_files\\" + fileName;
+    }
 }
