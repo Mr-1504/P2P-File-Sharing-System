@@ -29,6 +29,5 @@ bin/
 .DS_Store
 
 *.class
-peer-cert.cer
-peer-truststore.jks
-peer-keystore.jks
+*.cer
+*.jks
