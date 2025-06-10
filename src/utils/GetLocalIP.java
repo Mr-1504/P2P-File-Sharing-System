@@ -1,4 +1,4 @@
-package ultis;
+package utils;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;

@@ -11,7 +11,11 @@ public class Main {
     public static void main(String[] args) {
         // Khởi động Tracker
         Thread trackerThread = new Thread(() -> {
-            new TrackerModel().startTracker();
+            try {
+                new TrackerModel().startTracker();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         });
         trackerThread.setDaemon(true); // Đặt tracker thread là daemon để dừng khi đóng GUI
         trackerThread.start();

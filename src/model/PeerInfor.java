@@ -1,35 +1,32 @@
 package model;
 
 public class PeerInfor {
-    private String peerIp;
-    private int peerPort;
+    private String ip;
+    private int port;
 
-    public PeerInfor(String peerIp, int peerPort) {
-        this.peerIp = peerIp;
-        this.peerPort = peerPort;
+    public PeerInfor(String ip, int port) {
+        this.ip = ip;
+        this.port = port;
     }
 
-    public String getPeerIp() {
-        return peerIp;
+    public String getIp() {
+        return ip;
     }
 
-    public void setPeerIp(String peerIp) {
-        this.peerIp = peerIp;
+    public void setIp(String ip) {
+        this.ip = ip;
     }
 
-    public int getPeerPort() {
-        return peerPort;
+    public int getPort() {
+        return port;
     }
 
-    public void setPeerPort(int peerPort) {
-        this.peerPort = peerPort;
+    public void setPort(int port) {
+        this.port = port;
     }
 
     @Override
     public String toString() {
-        return "PeerInfor{" +
-                "peerIp='" + peerIp + '\'' +
-                ", peerPort=" + peerPort +
-                '}';
+        return ip + "|" + port;
     }
 }
