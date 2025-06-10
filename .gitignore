@@ -32,3 +32,4 @@ bin/
 *.cer
 *.jks
 .env
+.env
