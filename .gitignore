@@ -31,3 +31,4 @@ bin/
 *.class
 *.cer
 *.jks
+.env
