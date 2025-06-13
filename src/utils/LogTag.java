@@ -6,6 +6,8 @@ public interface LogTag {
     String S_NOT_FOUND = "NOT_FOUND";
     String S_SUCCESS = "SUCCESS";
     String S_INVALID = "INVALID";
+    String S_INVALID_COUNT = "INVALID_COUNT";
+    String S_UNKNOWN = "UNKNOWN";
     int I_ERROR = 0;
     int I_SUCCESS = 1;
     int I_NOT_FOUND = 2;
