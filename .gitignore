@@ -33,3 +33,4 @@ bin/
 *.jks
 .env
 .env
+/shared_files
