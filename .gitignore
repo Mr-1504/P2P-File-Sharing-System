@@ -32,5 +32,4 @@ bin/
 *.cer
 *.jks
 .env
-.env
 /shared_files
