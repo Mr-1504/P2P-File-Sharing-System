@@ -44,13 +44,15 @@ public class P2PController {
                 view.appendLog("Hệ thống P2P đã khởi động hoàn tất.");
                 showSharedFile();
                 peerModel.shareFileList();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             } finally {
                 shutdownExecutor(executor);
             }
         });
     }
 
-    private void registerWithTracker() {
+    private void registerWithTracker() throws InterruptedException {
         int result = peerModel.registerWithTracker();
 
         switch (result) {
@@ -280,7 +282,7 @@ public class P2PController {
             view.showMessage("Vui lòng chọn file để chia sẻ.", true);
             return;
         }
-        String filePath = GetDir.getShareDir(fileName);
+        String filePath = GetDir.getSharedFilePath(fileName);
         File file = new File(filePath);
         if (!file.exists()) {
             view.showMessage("File không tồn tại: " + filePath, true);
