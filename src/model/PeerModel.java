@@ -11,9 +11,12 @@ import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -31,11 +34,30 @@ public class PeerModel {
     private final Map<String, FileInfor> mySharedFiles;
     private Set<FileBase> sharedFileNames;
     private final ExecutorService executor;
+    private final CopyOnWriteArrayList<SocketChannel> openChannels = new CopyOnWriteArrayList<>();
+    private final List<Future<Boolean>> futures = new ArrayList<>();
     private final boolean isRunning;
     private final P2PView view;
+    private volatile boolean cancelled = false;
 
     public PeerModel(P2PView view) throws IOException {
         this.view = view;
+        this.view.setCancelAction(() -> {
+            cancelled = true;
+            for (Future<Boolean> future : futures) {
+                future.cancel(true);
+            }
+            for (SocketChannel channel : openChannels) {
+                try {
+                    channel.close();
+                } catch (IOException e) {
+                    logError("Error closing channel: " + channel, e);
+                }
+            }
+            openChannels.clear();
+            futures.clear();
+        });
+        this.view.setCancelButtonEnabled(false);
         mySharedFiles = new HashMap<>();
         sharedFileNames = new HashSet<>();
         executor = Executors.newFixedThreadPool(10);
@@ -299,6 +321,23 @@ public class PeerModel {
                 int bytesRead;
                 logInfo("Sharing file: " + file.getName() + ", size: " + file.length() + " bytes");
                 while ((bytesRead = raf.read(chunk)) != -1) {
+                    if (cancelled) {
+                        logInfo("File sharing cancelled by user: " + file.getName());
+                        SwingUtilities.invokeLater(() -> {
+                            view.updateProgress("Chia sẻ file " + file.getName() + " đã bị hủy", 0, 0, 0);
+                        });
+
+                        File sharedFile = new File(GetDir.getShareDir(file.getName()));
+                        Path path = sharedFile.toPath();
+
+                        if (Files.exists(path) && sharedFile.delete()) {
+                            logInfo("Đã xóa file chia sẻ: " + sharedFile.getAbsolutePath());
+                        } else {
+                            logInfo("Không thể xóa file chia sẻ: " + sharedFile.getAbsolutePath());
+                        }
+                        cancelled = false;
+                        return false;
+                    }
                     md.update(chunk, 0, bytesRead);
                     String chunkHash = bytesToHex(md.digest());
                     chunkHashes.add(chunkHash);
@@ -402,10 +441,12 @@ public class PeerModel {
                 }
                 try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
                     raf.setLength(fileInfor.getFileSize());
-                    List<Future<Boolean>> futures = new ArrayList<>();
                     AtomicInteger pregressCounter = new AtomicInteger(0);
                     for (int i = 0; i < fileInfor.getChunkHashes().size(); i++) {
                         final int chunkIndex = i;
+                        if (cancelled) {
+                            return LogTag.I_CANCELLED;
+                        }
                         futures.add(executor.submit(() -> downloadChunk(peerInfor, fileName, chunkIndex, raf, fileInfor, pregressCounter)));
                     }
                     boolean allChunksDownloaded = true;
@@ -419,6 +460,9 @@ public class PeerModel {
                             logInfo(errorMessage);
                             allChunksDownloaded = false;
                         }
+                        if (cancelled) {
+                            return LogTag.I_CANCELLED;
+                        }
                     }
                     if (allChunksDownloaded) {
                         logInfo("Tải file hoàn tất: " + fileName + " vào " + savePath);
@@ -429,108 +473,166 @@ public class PeerModel {
                     }
                 }
             } catch (IOException e) {
-                System.err.println("Lỗi khi tải file: " + e.getMessage());
-                e.printStackTrace();
+                logError("Lỗi khi tải file: " + e.getMessage(), e);
                 return LogTag.I_ERROR;
+            } finally {
+                cancelDownload(savePath);
+                cancelled = false;
+                for (Future<Boolean> future : futures) {
+                    future.cancel(true);
+                }
+                for (SocketChannel channel : openChannels) {
+                    try {
+                        channel.close();
+                    } catch (IOException e) {
+                        logError("Error closing channel: " + channel, e);
+                    }
+                }
+                openChannels.clear();
             }
         });
     }
 
+    private void cancelDownload(String savePath) {
+        logInfo("Tải xuống bị hủy bởi người dùng.");
+        SwingUtilities.invokeLater(() -> {
+            view.updateProgress("Quá trình tải file " + savePath + " đã bị hủy", 0, 0, 0);
+        });
+
+        File sharedFile = new File(savePath);
+        Path path = sharedFile.toPath();
+        if (Files.exists(path) && sharedFile.delete()) {
+            logInfo("Đã xóa file tải xuống: " + sharedFile.getAbsolutePath());
+        } else {
+            logInfo("Không thể xóa file chia sẻ: " + sharedFile.getAbsolutePath());
+        }
+    }
+
     private boolean downloadChunk(PeerInfor peer, String fileName, int chunkIndex, RandomAccessFile raf, FileInfor fileInfor, AtomicInteger progressCounter) {
         int maxRetries = 3;
+        if (cancelled) {
+            return false;
+        }
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            if (cancelled || Thread.currentThread().isInterrupted()) {
+                logInfo("Process cancelled by user while downloading chunk " + chunkIndex + " from peer " + peer);
+                return false;
+            }
+            SocketChannel channel = null;
             try {
-                try (SocketChannel channel = SocketChannel.open(new InetSocketAddress(peer.getIp(), peer.getPort()))) {
-                    channel.socket().setSoTimeout(10000); // timeout 10s
-
-                    // Gửi yêu cầu lấy chunk
-                    String request = RequestInfor.GET_CHUNK + "|" + fileName + "|" + chunkIndex + "\n";
-                    ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
-                    while (requestBuffer.hasRemaining()) {
-                        channel.write(requestBuffer);
-                    }
-
-                    // ==== 1. Đọc chunkIndex (4 byte đầu) ====
-                    ByteBuffer indexBuffer = ByteBuffer.allocate(4);
-                    int totalIndexBytes = 0;
-                    long startTime = System.currentTimeMillis();
-                    while (totalIndexBytes < 4 && (System.currentTimeMillis() - startTime) < 10000) {
-                        int bytesRead = channel.read(indexBuffer);
-                        if (bytesRead == -1) break;
-                        totalIndexBytes += bytesRead;
-                    }
-
-                    if (totalIndexBytes < 4) {
-                        logInfo("Không nhận được index chunk từ peer " + peer + " (lần thử " + attempt + ")");
-                        continue;
-                    }
-
-                    indexBuffer.flip();
-                    int receivedChunkIndex = indexBuffer.getInt();
-                    if (receivedChunkIndex != chunkIndex) {
-                        logInfo("Nhận chunk index " + receivedChunkIndex + ", kỳ vọng " + chunkIndex);
-                        continue;
-                    }
-
-                    // ==== 2. Đọc dữ liệu chunk ====
-                    ByteBuffer chunkBuffer = ByteBuffer.allocate(CHUNK_SIZE);
-                    ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
-                    startTime = System.currentTimeMillis();
-
-                    while ((System.currentTimeMillis() - startTime) < 10000) {
-                        int bytesRead = channel.read(chunkBuffer);
-                        if (bytesRead == -1) break;
-                        if (bytesRead == 0) {
-                            Thread.sleep(100); // chờ tiếp
-                            continue;
-                        }
-
-                        chunkBuffer.flip();
-                        chunkData.write(chunkBuffer.array(), 0, bytesRead);
-                        chunkBuffer.clear();
-                    }
-
-                    byte[] chunkBytes = chunkData.toByteArray();
-                    if (chunkBytes.length == 0) {
-                        logInfo("Không nhận được dữ liệu cho chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + ")");
-                        continue;
-                    }
-
-                    // ==== 3. Kiểm tra hash ====
-                    MessageDigest md = MessageDigest.getInstance("SHA-256");
-                    md.update(chunkBytes);
-                    String chunkHash = bytesToHex(md.digest());
-                    String expectedHash = fileInfor.getChunkHashes().get(chunkIndex);
-
-                    if (!chunkHash.equals(expectedHash)) {
-                        logInfo("Hash không khớp cho chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + ")");
-                        continue;
-                    }
-
-                    // ==== 4. Ghi chunk vào file ====
-                    synchronized (raf) {
-                        raf.seek((long) chunkIndex * CHUNK_SIZE);
-                        raf.write(chunkBytes);
-                    }
-
-                    long totalChunks = fileInfor.getChunkHashes().size();
-                    long downloadedChunks = progressCounter.incrementAndGet();
-                    int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
-
-                    SwingUtilities.invokeLater(() -> {
-                        view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize());
-                    });
-
-                    logInfo("Tải xuống chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + "), kích thước: " + chunkBytes.length + " bytes");
-                    return true;
+                channel = SocketChannel.open(new InetSocketAddress(peer.getIp(), peer.getPort()));
+                channel.socket().setSoTimeout(10000); // timeout 10s
+                openChannels.add(channel);
+                // Gửi yêu cầu lấy chunk
+                String request = RequestInfor.GET_CHUNK + "|" + fileName + "|" + chunkIndex + "\n";
+                ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
+                while (requestBuffer.hasRemaining()) {
+                    channel.write(requestBuffer);
                 }
+
+                // ==== 1. Đọc chunkIndex (4 byte đầu) ====
+                ByteBuffer indexBuffer = ByteBuffer.allocate(4);
+                int totalIndexBytes = 0;
+                long startTime = System.currentTimeMillis();
+                while (totalIndexBytes < 4 && (System.currentTimeMillis() - startTime) < 10000) {
+                    if (cancelled) {
+                        logInfo("Process cancelled by user while reading index chunk from peer " + peer);
+                        return false;
+                    }
+                    int bytesRead = channel.read(indexBuffer);
+                    if (bytesRead == -1) break;
+                    totalIndexBytes += bytesRead;
+                }
+
+                if (totalIndexBytes < 4) {
+                    logInfo("Don't receive enough bytes for index chunk from peer " + peer + " (attempt: " + attempt + ")");
+                    continue;
+                }
+
+                indexBuffer.flip();
+                int receivedChunkIndex = indexBuffer.getInt();
+                if (receivedChunkIndex != chunkIndex) {
+                    logInfo("Received chunk index " + receivedChunkIndex + " does not match requested index " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
+                    continue;
+                }
+
+                // ==== 2. Đọc dữ liệu chunk ====
+                ByteBuffer chunkBuffer = ByteBuffer.allocate(CHUNK_SIZE);
+                ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
+                startTime = System.currentTimeMillis();
+
+                while ((System.currentTimeMillis() - startTime) < 10000) {
+                    if (cancelled) {
+                        logInfo("Process cancelled by user while reading chunk data from peer " + peer);
+                        return false;
+                    }
+                    int bytesRead = channel.read(chunkBuffer);
+                    if (bytesRead == -1) break;
+                    if (bytesRead == 0) {
+                        Thread.sleep(100); // chờ tiếp
+                        continue;
+                    }
+
+                    chunkBuffer.flip();
+                    chunkData.write(chunkBuffer.array(), 0, bytesRead);
+                    chunkBuffer.clear();
+                }
+
+                byte[] chunkBytes = chunkData.toByteArray();
+                if (chunkBytes.length == 0) {
+                    logInfo("Received empty chunk data from peer " + peer + " for chunk index " + chunkIndex + " (attempt " + attempt + ")");
+                    continue;
+                }
+
+                // ==== 3. Kiểm tra hash ====
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                md.update(chunkBytes);
+                String chunkHash = bytesToHex(md.digest());
+                String expectedHash = fileInfor.getChunkHashes().get(chunkIndex);
+
+                if (!chunkHash.equals(expectedHash)) {
+                    logInfo("Hash mismatch for chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + "). Expected: " + expectedHash + ", Received: " + chunkHash);
+                    continue;
+                }
+
+                // ==== 4. Ghi chunk vào file ====
+                synchronized (raf) {
+                    raf.seek((long) chunkIndex * CHUNK_SIZE);
+                    raf.write(chunkBytes);
+                }
+
+                long totalChunks = fileInfor.getChunkHashes().size();
+                long downloadedChunks = progressCounter.incrementAndGet();
+                int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
+
+                SwingUtilities.invokeLater(() -> {
+                    view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize());
+                });
+
+                logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
+                return true;
+
             } catch (IOException | NoSuchAlgorithmException | InterruptedException e) {
-                System.err.println("Lỗi tải chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + "): " + e.getMessage());
-                e.printStackTrace();
+                logError("Error downloading chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + "): " + e.getMessage(), e);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            } finally {
+                if (channel != null) {
+                    openChannels.remove(channel);
+                    try {
+                        channel.close();
+                    } catch (IOException e) {
+                        logError("Error closing channel: " + channel, e);
+                    }
+                }
             }
         }
 
-        logInfo("Không thể tải chunk " + chunkIndex + " từ bất kỳ peer nào sau " + maxRetries + " lần thử.");
+        logInfo("Failed to download chunk " + chunkIndex + " from peer " + peer + " after " + maxRetries + " attempts.");
         return false;
     }
 
