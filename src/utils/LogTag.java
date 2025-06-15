@@ -14,4 +14,5 @@ public interface LogTag {
     int I_NOT_PERMISSION = 4;
     int I_NOT_READY = 5;
     int I_FAILURE = 6;
+    int I_CANCELLED = 7;
 }
