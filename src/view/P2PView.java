@@ -28,6 +28,8 @@ public class P2PView extends JFrame {
     private final JButton allFilesButton;
     private final JProgressBar progressBar;
     private final JLabel progressLabel;
+    private final JButton cancelButton;
+    private Runnable cancelAction;
 
     public P2PView() {
         String path = System.getProperty("user.dir");
@@ -102,14 +104,31 @@ public class P2PView extends JFrame {
         JScrollPane logScroll = new JScrollPane(logArea);
         bottomPanel.add(logScroll, BorderLayout.CENTER);
 
-        // Panel cho thanh tiến trình
         JPanel progressPanel = new JPanel(new BorderLayout());
         progressLabel = new JLabel("Sẵn sàng");
         progressBar = new JProgressBar(0, 100);
-        progressBar.setStringPainted(true); // Hiển thị phần trăm
+        progressBar.setStringPainted(true);
         progressBar.setValue(0);
+        cancelButton = new JButton("Hủy");
+        cancelButton.setEnabled(false);
+        cancelButton.addActionListener(e -> {
+            boolean isCancelled = JOptionPane.showConfirmDialog(
+                    this, "Bạn có chắc chắn muốn hủy tác vụ hiện tại?", "Xác nhận hủy",
+                    JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION;
+            if (isCancelled && cancelAction != null) {
+                cancelAction.run();
+                cancelButton.setEnabled(false);
+                progressError("Tác vụ", "Đã hủy tác vụ");
+            }
+        });
+
+        cancelButton.setEnabled(false);
+
+        JPanel progressBarPanel = new JPanel(new BorderLayout());
+        progressBarPanel.add(progressBar, BorderLayout.CENTER);
+        progressBarPanel.add(cancelButton, BorderLayout.EAST);
         progressPanel.add(progressLabel, BorderLayout.NORTH);
-        progressPanel.add(progressBar, BorderLayout.CENTER);
+        progressPanel.add(progressBarPanel, BorderLayout.CENTER);
         progressPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         bottomPanel.add(progressPanel, BorderLayout.SOUTH);
 
@@ -119,6 +138,15 @@ public class P2PView extends JFrame {
         popupMenu = new JPopupMenu();
         menuItem = new JMenuItem("Tải xuống");
         popupMenu.add(menuItem);
+    }
+
+    public void setCancelAction(Runnable action) {
+        this.cancelAction = action;
+        cancelButton.setEnabled(action != null); // Kích hoạt nút nếu có hành động
+    }
+
+    public void setCancelButtonEnabled(boolean enabled) {
+        cancelButton.setEnabled(enabled);
     }
 
     public String openFileChooserForShare() {
