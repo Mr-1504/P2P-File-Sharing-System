@@ -4,7 +4,9 @@ import utils.GetDir;
 import utils.Infor;
 import utils.LogTag;
 import utils.RequestInfor;
+import view.P2PView;
 
+import javax.swing.*;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
@@ -15,6 +17,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static utils.Infor.SOCKET_TIMEOUT_MS;
 import static utils.Log.*;
@@ -29,8 +32,10 @@ public class PeerModel {
     private Set<FileBase> sharedFileNames;
     private final ExecutorService executor;
     private final boolean isRunning;
+    private final P2PView view;
 
-    public PeerModel() throws IOException {
+    public PeerModel(P2PView view) throws IOException {
+        this.view = view;
         mySharedFiles = new HashMap<>();
         sharedFileNames = new HashSet<>();
         executor = Executors.newFixedThreadPool(10);
@@ -41,7 +46,6 @@ public class PeerModel {
         serverSocket.register(selector, SelectionKey.OP_ACCEPT);
         isRunning = true;
         logInfor("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
-        loadSharedFiles();
     }
 
     private void logInfor(String s) {
@@ -284,26 +288,40 @@ public class PeerModel {
         return LogTag.I_ERROR;
     }
 
-    public boolean shareFile(String filePath) {
-        File file = new File(filePath);
-        List<String> chunkHashes = new ArrayList<>();
-        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-            byte[] chunk = new byte[CHUNK_SIZE];
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            int bytesRead;
-            while ((bytesRead = raf.read(chunk)) != -1) {
-                md.update(chunk, 0, bytesRead);
-                String chunkHash = bytesToHex(md.digest());
-                chunkHashes.add(chunkHash);
+    public Future<Boolean> shareFileAsync(File file) {
+        return executor.submit(() -> {
+            List<String> chunkHashes = new ArrayList<>();
+            logInfo("File path: " + file.getAbsolutePath());
+            // show progress
+            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                byte[] chunk = new byte[CHUNK_SIZE];
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                int bytesRead;
+                logInfo("Sharing file: " + file.getName() + ", size: " + file.length() + " bytes");
+                while ((bytesRead = raf.read(chunk)) != -1) {
+                    md.update(chunk, 0, bytesRead);
+                    String chunkHash = bytesToHex(md.digest());
+                    chunkHashes.add(chunkHash);
+                    long sharedBytes = raf.getFilePointer();
+                    long totalBytes = file.length();
+                    int progress = (int) ((sharedBytes * 100.0) / totalBytes);
+
+                    logInfo(String.format("Progress: %d%% (%.2f/%.2f MB)",
+                            progress, sharedBytes / (1024.0 * 1024), totalBytes / (1024.0 * 1024)));
+                    SwingUtilities.invokeLater(() -> {
+                        view.updateProgress("Đang chia sẻ file " + file.getName(), progress, sharedBytes, totalBytes);
+                    });
+                }
+                logInfo("File " + file.getName() + " shared successfully with " + chunkHashes.size() + " chunks.");
+            } catch (IOException | NoSuchAlgorithmException e) {
+                e.printStackTrace();
+                return false;
             }
-        } catch (IOException | NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            return false;
-        }
-        mySharedFiles.put(file.getName(), new FileInfor(file.getName(), file.length(), chunkHashes, SERVER_HOST));
-        logInfo("Shared file: " + file.getName() + ", details: " + mySharedFiles.get(file.getName()));
-        notifyTracker(file.getName(), true);
-        return true;
+
+            mySharedFiles.put(file.getName(), new FileInfor(file.getName(), file.length(), chunkHashes, SERVER_HOST));
+            notifyTracker(file.getName(), true);
+            return true;
+        });
     }
 
     public void shareFileList() {
@@ -348,7 +366,6 @@ public class PeerModel {
                     + "|" + fileName + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort();
 
             socket.getOutputStream().write(message.getBytes());
-
             logInfo("Notified tracker about shared file: " + fileName + ", message: " + message);
         } catch (IOException e) {
             e.printStackTrace();
@@ -386,9 +403,10 @@ public class PeerModel {
                 try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
                     raf.setLength(fileInfor.getFileSize());
                     List<Future<Boolean>> futures = new ArrayList<>();
+                    AtomicInteger pregressCounter = new AtomicInteger(0);
                     for (int i = 0; i < fileInfor.getChunkHashes().size(); i++) {
                         final int chunkIndex = i;
-                        futures.add(executor.submit(() -> downloadChunk(peerInfor, fileName, chunkIndex, raf, fileInfor.getChunkHashes().get(chunkIndex))));
+                        futures.add(executor.submit(() -> downloadChunk(peerInfor, fileName, chunkIndex, raf, fileInfor, pregressCounter)));
                     }
                     boolean allChunksDownloaded = true;
                     for (Future<Boolean> future : futures) {
@@ -418,7 +436,7 @@ public class PeerModel {
         });
     }
 
-    private boolean downloadChunk(PeerInfor peer, String fileName, int chunkIndex, RandomAccessFile raf, String expectedHash) {
+    private boolean downloadChunk(PeerInfor peer, String fileName, int chunkIndex, RandomAccessFile raf, FileInfor fileInfor, AtomicInteger progressCounter) {
         int maxRetries = 3;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -482,6 +500,7 @@ public class PeerModel {
                     MessageDigest md = MessageDigest.getInstance("SHA-256");
                     md.update(chunkBytes);
                     String chunkHash = bytesToHex(md.digest());
+                    String expectedHash = fileInfor.getChunkHashes().get(chunkIndex);
 
                     if (!chunkHash.equals(expectedHash)) {
                         logInfo("Hash không khớp cho chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + ")");
@@ -493,6 +512,14 @@ public class PeerModel {
                         raf.seek((long) chunkIndex * CHUNK_SIZE);
                         raf.write(chunkBytes);
                     }
+
+                    long totalChunks = fileInfor.getChunkHashes().size();
+                    long downloadedChunks = progressCounter.incrementAndGet();
+                    int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
+
+                    SwingUtilities.invokeLater(() -> {
+                        view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize());
+                    });
 
                     logInfo("Tải xuống chunk " + chunkIndex + " từ peer " + peer + " (lần thử " + attempt + "), kích thước: " + chunkBytes.length + " bytes");
                     return true;
