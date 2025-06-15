@@ -44,6 +44,7 @@ public class P2PController {
                 initializeServer();
                 registerWithTracker();
                 view.appendLog("Hệ thống P2P đã khởi động hoàn tất.");
+                showSharedFile();
                 peerModel.loadSharedFiles();
                 showSharedFile();
                 peerModel.shareFileList();
@@ -289,7 +290,7 @@ public class P2PController {
             AtomicBoolean isCancelled = new AtomicBoolean(false);
             SwingUtilities.invokeLater(() -> {
                 dialog.set(view.createLoadingDialog(
-                        "Đang chuẩn bị filefile: " + filePath + "... File lớn có thể mất nhiều thời gian", () -> {
+                        "Đang chuẩn bị file: " + filePath + "...\nFile lớn có thể mất nhiều thời gian", () -> {
                             isCancelled.set(true);
                         }));
                 dialog.get().setVisible(true);
@@ -311,7 +312,7 @@ public class P2PController {
                 });
                 return;
             }
-
+            view.setCancelButtonEnabled(true);
             peerModel.shareFileAsync(file);
             SwingUtilities.invokeLater(() -> {
                 view.displayFileInfo(file.getName(), file.length(), Infor.SERVER_IP + ":" + Infor.SERVER_PORT);
@@ -431,6 +432,7 @@ public class P2PController {
         }
 
         try {
+            view.setCancelButtonEnabled(true);
             Future<Integer> result = peerModel.downloadFile(fileName, savePath, peer);
             view.appendLog("Đã bắt đầu tải file: " + fileName);
 
