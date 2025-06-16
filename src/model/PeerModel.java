@@ -13,10 +13,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static utils.Infor.SOCKET_TIMEOUT_MS;
@@ -27,7 +24,6 @@ public class PeerModel {
     private final PeerInfor SERVER_HOST = new PeerInfor(Infor.SERVER_IP, Infor.SERVER_PORT);
     private final PeerInfor TRACKER_HOST = new PeerInfor(Infor.TRACKER_IP, Infor.TRACKER_PORT);
     private final Selector selector;
-    private ServerSocketChannel serverSocket;
     private final Map<String, FileInfor> mySharedFiles;
     private Set<FileInfor> sharedFileNames;
     private final ExecutorService executor;
@@ -57,9 +53,9 @@ public class PeerModel {
         this.view.setCancelButtonEnabled(false);
         mySharedFiles = new HashMap<>();
         sharedFileNames = new HashSet<>();
-        executor = Executors.newFixedThreadPool(10);
+        executor = Executors.newFixedThreadPool(8);
         selector = Selector.open();
-        serverSocket = ServerSocketChannel.open();
+        ServerSocketChannel serverSocket = ServerSocketChannel.open();
         serverSocket.bind(new InetSocketAddress(SERVER_HOST.getIp(), SERVER_HOST.getPort()));
         serverSocket.configureBlocking(false);
         serverSocket.register(selector, SelectionKey.OP_ACCEPT);
@@ -214,14 +210,7 @@ public class PeerModel {
     private void sendFileInfor(SocketChannel client, String fileName) {
         try {
             FileInfor fileInfor = mySharedFiles.get(fileName);
-            String response;
-            if (fileInfor != null) {
-                response = RequestInfor.FILE_INFO + Infor.FIELD_SEPARATOR + fileInfor.getFileName() + Infor.FIELD_SEPARATOR + fileInfor.getFileSize()
-                        + Infor.FIELD_SEPARATOR + fileInfor.getPeerInfor().getIp() + Infor.FIELD_SEPARATOR + fileInfor.getPeerInfor().getPort()
-                        + Infor.FIELD_SEPARATOR + fileInfor.getFileHash() + "\n";
-            } else {
-                response = RequestInfor.FILE_NOT_FOUND + Infor.FIELD_SEPARATOR + fileName + "\n";
-            }
+            String response = getResponse(fileName, fileInfor);
             ByteBuffer buffer = ByteBuffer.wrap(response.getBytes());
             int totalBytesWritten = 0;
             while (buffer.hasRemaining()) {
@@ -234,6 +223,18 @@ public class PeerModel {
             System.err.println("Error sending file info: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private static String getResponse(String fileName, FileInfor fileInfor) {
+        String response;
+        if (fileInfor != null) {
+            response = RequestInfor.FILE_INFO + Infor.FIELD_SEPARATOR + fileInfor.getFileName() + Infor.FIELD_SEPARATOR + fileInfor.getFileSize()
+                    + Infor.FIELD_SEPARATOR + fileInfor.getPeerInfor().getIp() + Infor.FIELD_SEPARATOR + fileInfor.getPeerInfor().getPort()
+                    + Infor.FIELD_SEPARATOR + fileInfor.getFileHash() + "\n";
+        } else {
+            response = RequestInfor.FILE_NOT_FOUND + Infor.FIELD_SEPARATOR + fileName + "\n";
+        }
+        return response;
     }
 
     private void acceptConnection(SelectionKey key) throws IOException {
@@ -403,7 +404,6 @@ public class PeerModel {
 
     private void notifyTracker(FileInfor fileInfor, boolean isShared) {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
-
             String message = (isShared ? RequestInfor.SHARE : RequestInfor.UNSHARED_FILE)
                     + Infor.FIELD_SEPARATOR + fileInfor.getFileName() + Infor.FIELD_SEPARATOR
                     + fileInfor.getFileSize() + Infor.FIELD_SEPARATOR
@@ -425,7 +425,7 @@ public class PeerModel {
         return sb.toString();
     }
 
-    public Future<Integer> downloadFile(String fileName, String savePath, PeerInfor peerInfor) {
+    public Future<Integer> downloadFile(FileInfor fileInfor, String savePath, List<PeerInfor> peers) {
         return executor.submit(() -> {
             try {
                 File saveFile = new File(savePath);
@@ -440,21 +440,23 @@ public class PeerModel {
                     return LogTag.I_NOT_PERMISSION;
                 }
 
-                Future<FileInfor> result = getFileInforFromPeers(peerInfor, fileName);
-                FileInfor fileInfor = result.get();
-                if (fileInfor == null) {
-                    return LogTag.I_NOT_FOUND;
-                }
                 try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
                     raf.setLength(fileInfor.getFileSize());
-                    AtomicInteger pregressCounter = new AtomicInteger(0);
+                    AtomicInteger progressCounter = new AtomicInteger(0);
                     int totalChunks = (int) (fileInfor.getFileSize() / CHUNK_SIZE) + (fileInfor.getFileSize() % CHUNK_SIZE == 0 ? 0 : 1);
                     for (int i = 0; i < totalChunks; i++) {
                         final int chunkIndex = i;
                         if (cancelled) {
                             return LogTag.I_CANCELLED;
                         }
-                        futures.add(executor.submit(() -> downloadChunk(peerInfor, fileName, chunkIndex, raf, fileInfor, pregressCounter)));
+                        while (((ThreadPoolExecutor) executor).getActiveCount() >= 6) {
+                            Thread.sleep(100);
+                            if (cancelled) {
+                                return LogTag.I_CANCELLED;
+                            }
+                        }
+                        PeerInfor peer = peers.get(i % peers.size());
+                        futures.add(executor.submit(() -> downloadChunk(peer, fileInfor.getFileHash(), chunkIndex, raf, fileInfor, progressCounter)));
                     }
                     boolean allChunksDownloaded = true;
                     for (Future<Boolean> future : futures) {
@@ -487,12 +489,12 @@ public class PeerModel {
                         logInfo("Successfully downloaded file: " + saveFile.getAbsolutePath() + " with hash: " + downloadedFileHash);
                         return LogTag.I_SUCCESS;
                     } else {
-                        logInfo("Failed to download all chunks for file: " + fileName);
+                        logInfo("Failed to download all chunks for file: " + fileInfor.getFileName());
                         return LogTag.I_FAILURE;
                     }
                 }
             } catch (IOException e) {
-                logError("Error downloading file: " + fileName + " to " + savePath, e);
+                logError("Error downloading file: " + fileInfor.getFileName() + " to " + savePath, e);
                 return LogTag.I_ERROR;
             } finally {
                 cancelDownload(savePath);
@@ -510,6 +512,60 @@ public class PeerModel {
                 openChannels.clear();
             }
         });
+    }
+
+    public List<PeerInfor> getPeersWithFile(String fileHash) {
+        try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
+            String message = RequestInfor.GET_PEERS + Infor.FIELD_SEPARATOR + fileHash + "\n";
+
+            socket.getOutputStream().write(message.getBytes());
+            logInfo("Requesting peers with file hash: " + fileHash + ", message: " + message);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String response = in.readLine();
+            if (response == null || response.isEmpty()) {
+                logInfo("No response from tracker for file hash: " + fileHash);
+                return Collections.emptyList();
+            }
+
+            String[] parts = response.split(Infor.FIELD_SEPARATOR_REGEX);
+            if (parts.length != 3 || !parts[0].equals(RequestInfor.GET_PEERS)) {
+                logInfo("Invalid response format from tracker: " + response);
+                return Collections.emptyList();
+            }
+
+            int peerCount = Integer.parseInt(parts[1]);
+            if (peerCount == 0) {
+                logInfo("No peers found for file hash: " + fileHash);
+                return Collections.emptyList();
+            }
+            String[] peerInfos = parts[2].split(",");
+            List<PeerInfor> peers = new ArrayList<>();
+            for (String peerInfo : peerInfos) {
+                String[] peerParts = peerInfo.split("'");
+                if (peerParts.length != 2) {
+                    logInfo("Invalid peer info format: " + peerInfo);
+                    continue;
+                }
+                String ip = peerParts[0];
+                int port = Integer.parseInt(peerParts[1]);
+                peers.add(new PeerInfor(ip, port));
+            }
+
+            if (peers.isEmpty()) {
+                logInfo("No valid peers found for file hash: " + fileHash);
+                return Collections.emptyList();
+            }
+            if (peerCount != peers.size()) {
+                logInfo("Peer count mismatch: expected " + peerCount + ", found " + peers.size());
+                return Collections.emptyList();
+            }
+
+            logInfo("Received response from tracker: " + response);
+            return peers;
+        } catch (IOException e) {
+            logError("Error getting peers with file hash: " + fileHash, e);
+            return Collections.emptyList();
+        }
     }
 
     private String computeFileHash(File file) {
@@ -614,10 +670,7 @@ public class PeerModel {
                     logInfo("Received empty chunk data from peer " + peer + " for chunk index " + chunkIndex + " (attempt " + attempt + ")");
                     continue;
                 }
-                if (chunkBytes.length < CHUNK_SIZE) {
-                    logInfo("Received chunk data size " + chunkBytes.length + " bytes, which is less than expected " + CHUNK_SIZE + " bytes from peer " + peer + " for chunk index " + chunkIndex + " (attempt " + attempt + ")");
-                    continue;
-                }
+
                 synchronized (raf) {
                     raf.seek((long) chunkIndex * CHUNK_SIZE);
                     raf.write(chunkBytes);
@@ -659,13 +712,19 @@ public class PeerModel {
     }
 
 
-    private void sendChunk(SocketChannel client, String fileName, int chunkIndex) {
-        FileInfor fileInfor = mySharedFiles.get(fileName);
-        if (fileInfor == null) {
-            logInfo("File not found in shared files: " + fileName);
+    private void sendChunk(SocketChannel client, String fileHash, int chunkIndex) {
+        FileInfor orderedFile = null;
+        for (FileInfor fileInfor : mySharedFiles.values()) {
+            if (fileInfor.getFileHash().equals(fileHash)) {
+                orderedFile = fileInfor;
+                break;
+            }
+        }
+        if (orderedFile == null) {
+            logInfo("File not found in shared files: " + fileHash);
             return;
         }
-        String filePath = GetDir.getDir() + "\\shared_files\\" + fileName;
+        String filePath = GetDir.getDir() + "\\shared_files\\" + orderedFile.getFileName();
         File file = new File(filePath);
         if (!file.exists() || !file.canRead()) {
             logInfo("File does not exist or cannot be read: " + filePath);
@@ -685,18 +744,19 @@ public class PeerModel {
                     int written = client.write(buffer);
                     totalBytesWritten += written;
                 }
-                logInfo("Chunk " + chunkIndex + " of file " + fileName + " sent successfully.");
+                logInfo("Chunk " + chunkIndex + " of file " + orderedFile.getFileName() + " for " + fileHash + " sent successfully.");
                 logInfo("Chunk index sent: " + chunkIndex);
                 logInfo("Total bytes written: " + totalBytesWritten);
                 if (totalBytesWritten < bytesRead + 4) {
-                    logInfo("Warning: Not all bytes were sent for chunk " + chunkIndex + " of file " + fileName);
+                    logInfo("Warning: Not all bytes were sent for chunk " + chunkIndex + " of file " + orderedFile.getFileName() + ". Expected: " + (bytesRead + 4) + ", Sent: " + totalBytesWritten);
+                } else {
+                    logInfo("All bytes sent successfully for chunk " + chunkIndex + " of file " + orderedFile.getFileName());
                 }
             } else {
-                logInfo("No bytes read for chunk " + chunkIndex + " of file " + fileName + ". File may be empty or chunk index is out of bounds.");
+                logInfo("No bytes read for chunk " + chunkIndex + " of file " + orderedFile.getFileName() + ". File may be empty or chunk index is out of bounds.");
             }
         } catch (IOException e) {
-            logError("Error sending chunk " + chunkIndex + " of file " + fileName + ": " + e.getMessage(), e);
-            e.printStackTrace();
+            logError("Error sending chunk " + chunkIndex + " of file " + orderedFile.getFileName() + ": " + e.getMessage(), e);
         }
     }
 

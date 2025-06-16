@@ -1,6 +1,5 @@
 package controller;
 
-import model.FileBase;
 import model.FileInfor;
 import model.PeerInfor;
 import model.PeerModel;
@@ -17,7 +16,6 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +23,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static utils.Log.logInfo;
 
 
 public class P2PController {
@@ -462,15 +462,28 @@ public class P2PController {
             return;
         }
 
-        PeerInfor peer = parsePeerInfo(peerInfor);
-        if (peer == null) {
-            view.showMessage("Thông tin peer không hợp lệ.", true);
+        FileInfor fileInfor = null;
+        for (FileInfor file : peerModel.getSharedFileNames()) {
+            if (file.getFileName().equals(fileName) && file.getPeerInfor().toString().equals(peerInfor.replace(":", "|"))) {
+                fileInfor = file;
+                break;
+            }
+        }
+        if (fileInfor == null) {
+            logInfo("File not found in shared files: " + fileName);
+            return;
+        }
+
+        List<PeerInfor> peers = peerModel.getPeersWithFile(fileInfor.getFileHash());
+        if (peers == null || peers.isEmpty()) {
+            view.appendLog("Không tìm thấy peer nào chia sẻ file: " + fileName);
+            view.showMessage("Không tìm thấy peer nào chia sẻ file: " + fileName, true);
             return;
         }
 
         try {
             view.setCancelButtonEnabled(true);
-            Future<Integer> result = peerModel.downloadFile(fileName, savePath, peer);
+            Future<Integer> result = peerModel.downloadFile(fileInfor, savePath, peers);
             view.appendLog("Đã bắt đầu tải file: " + fileName);
 
             int status = result.get();
