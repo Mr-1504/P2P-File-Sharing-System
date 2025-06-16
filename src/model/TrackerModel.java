@@ -1,5 +1,6 @@
 package model;
 
+import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -14,9 +15,9 @@ import utils.LogTag;
 import utils.RequestInfor;
 
 public class TrackerModel {
-    private final ConcurrentHashMap<String, Set<String>> fileToPeers;
     private final CopyOnWriteArraySet<String> knownPeers;
     private final Set<FileInfor> sharedFiles;
+    private final ConcurrentHashMap<String, Set<String>> fileToPeers;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Selector selector;
     private final ScheduledExecutorService pingExecutor;
@@ -206,18 +207,20 @@ public class TrackerModel {
 
     private String unshareFile(String[] parts) {
         String fileName = parts[1];
+        long fileSize = Long.parseLong(parts[2]);
+        String fileHash = parts[3];
         String peerIp = parts[4];
         String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
-        Set<String> peers = fileToPeers.get(fileName);
+        Set<String> peers = fileToPeers.get(fileHash);
         if (peers == null || !peers.remove(peerInfor)) {
             logInfo("[TRACKER]: Not found " + fileName + " shared by " + peerInfor + " on " + getCurrentTime());
             return LogTag.S_NOT_FOUND;
         }
 
-        fileToPeers.get(fileName).remove(peerInfor);
+        fileToPeers.get(fileHash).remove(peerInfor);
 
-        sharedFiles.removeIf(fileBase -> fileBase.getFileName().equals(fileName) && fileBase.getPeerInfor().toString().equals(peerInfor));
+        sharedFiles.removeIf(file -> file.getFileHash().equals(fileHash));
         if (peers.isEmpty()) {
             fileToPeers.remove(fileName);
             logInfo("[TRACKER]: Removed file " + fileName + " from sharing list on " + getCurrentTime());
@@ -236,14 +239,14 @@ public class TrackerModel {
         }
         String keyword = keywordBuilder.toString();
 
-        Set<FileBase> resultPeers = new HashSet<>();
-        for (FileBase file : sharedFiles) {
+        Set<FileInfor> resultPeers = new HashSet<>();
+        for (FileInfor file : sharedFiles) {
             if (file.getFileName().toLowerCase().contains(keyword.toLowerCase())) {
                 resultPeers.add(file);
             }
         }
 
-        List<FileBase> files = new ArrayList<>(resultPeers);
+        List<FileInfor> files = new ArrayList<>(resultPeers);
         logInfo("[TRACKER]: QUERY for file containing \"" + keyword + "\": return peers " + files + " on " + getCurrentTime());
         String response = RequestInfor.QUERY + "|" + files.size() + "|";
         if (files.isEmpty()) {
@@ -251,8 +254,9 @@ public class TrackerModel {
             return response + "No files found.";
         }
 
-        for (FileBase file : files) {
-            response += file.getFileName() + "'" + file.getFileSize() + "'" + file.getPeerInfor().getIp() + "'" + file.getPeerInfor().getPort() + Infor.LIST_SEPARATOR;
+        for (FileInfor file : files) {
+            response += file.getFileName() + "'" + file.getFileSize() + "'" + file.getFileHash()
+                    + "'" + file.getPeerInfor().getIp() + "'" + file.getPeerInfor().getPort() + Infor.LIST_SEPARATOR;
         }
         if (response.endsWith(Infor.LIST_SEPARATOR)) {
             response = response.substring(0, response.length() - Infor.LIST_SEPARATOR.length());
@@ -364,9 +368,10 @@ public class TrackerModel {
         }
 
         StringBuilder msgBuilder = new StringBuilder();
-        for (FileBase file : sharedFiles) {
+        for (FileInfor file : sharedFiles) {
             msgBuilder.append(file.getFileName())
                     .append("'").append(file.getFileSize())
+                    .append("'").append(file.getFileHash())
                     .append("'").append(file.getPeerInfor().getIp())
                     .append("'").append(file.getPeerInfor().getPort())
                     .append(Infor.LIST_SEPARATOR);

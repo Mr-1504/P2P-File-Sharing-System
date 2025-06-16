@@ -99,17 +99,15 @@ public class P2PController {
     }
 
     private void showSharedFile() {
-        Set<FileBase> sharedFiles = peerModel.getSharedFileNames();
+        Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
 
         for (Map.Entry<String, FileInfor> entry : peerModel.getMySharedFiles().entrySet()) {
             FileInfor fileInfo = entry.getValue();
             if (isInvalidFileInfo(fileInfo))
                 continue;
 
-            FileBase fileBase = new FileBase
-                    (fileInfo.getFileName(), fileInfo.getFileSize(), fileInfo.getPeerInfor());
-            if (!sharedFiles.contains(fileBase)) {
-                sharedFiles.add(fileBase);
+            if (!sharedFiles.contains(fileInfo)) {
+                sharedFiles.add(fileInfo);
             } else {
                 view.appendLog("File đã tồn tại trong danh sách chia sẻ: " + fileInfo.getFileName());
             }
@@ -161,7 +159,7 @@ public class P2PController {
         switch (result) {
             case LogTag.I_SUCCESS -> {
                 view.appendLog("Làm mới danh sách file thành công.");
-                Set<FileBase> sharedFiles = peerModel.getSharedFileNames();
+                Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
                 if (sharedFiles.isEmpty()) {
                     view.appendLog("Không có file nào được chia sẻ.");
                 } else {
@@ -231,7 +229,7 @@ public class P2PController {
 
     private void showAllFiles() {
         view.clearTable();
-        Set<FileBase> sharedFiles = peerModel.getSharedFileNames();
+        Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
 
         if (sharedFiles.isEmpty()) {
             view.appendLog("Không có file nào được chia sẻ.");
@@ -377,16 +375,22 @@ public class P2PController {
         ExecutorService executor = Executors.newFixedThreadPool(10);
         executor.submit(() -> {
             try {
-                List<FileBase> files = peerModel.queryTracker(fileName);
+                List<FileInfor> files = peerModel.queryTracker(fileName);
                 if (files.isEmpty()) {
                     SwingUtilities.invokeLater(() -> view.showMessage("Không tìm thấy file: " + fileName, true));
                     return;
                 }
 
-                for (FileBase fileBase : files) {
+                Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
+                for (FileInfor file : files) {
+                    if (!sharedFiles.contains(file)) {
+                        view.appendLog("File đã tồn tại trong danh sách chia sẻ: " + file.getFileName());
+                        sharedFiles.add(file);
+                    }
                     SwingUtilities.invokeLater(() -> view.getTableModel().addRow(
-                            new Object[]{ fileBase.getFileName(), fileBase.getFileSize() , fileBase.getPeerInfor().toString().replace("|", ":") }));
+                            new Object[]{ file.getFileName(), file.getFileSize() , file.getPeerInfor().toString().replace("|", ":") }));
                 }
+                peerModel.setSharedFileNames(sharedFiles);
                 view.appendLog("Đã tìm thấy " + files.size() + " file với tên: " + fileName);
             } catch (IOException e) {
                 SwingUtilities.invokeLater(() -> view.showMessage("Lỗi khi tìm kiếm file: " + e.getMessage(), true));

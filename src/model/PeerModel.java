@@ -29,7 +29,7 @@ public class PeerModel {
     private final Selector selector;
     private ServerSocketChannel serverSocket;
     private final Map<String, FileInfor> mySharedFiles;
-    private Set<FileBase> sharedFileNames;
+    private Set<FileInfor> sharedFileNames;
     private final ExecutorService executor;
     private final CopyOnWriteArrayList<SocketChannel> openChannels = new CopyOnWriteArrayList<>();
     private final List<Future<Boolean>> futures = new ArrayList<>();
@@ -271,14 +271,15 @@ public class PeerModel {
                         logInfo("Files shared by tracker: " + Arrays.toString(sharedFilesList));
                         for (String fileInfo : sharedFilesList) {
                             String[] fileParts = fileInfo.split("'");
-                            if (fileParts.length != 4) {
+                            if (fileParts.length != 5) {
                                 logInfo("Invalid file info format: " + fileInfo);
                                 continue;
                             }
                             String fileName = fileParts[0];
                             long fileSize = Long.parseLong(fileParts[1]);
-                            PeerInfor peerInfor = new PeerInfor(fileParts[2], Integer.parseInt(fileParts[3]));
-                            sharedFileNames.add(new FileBase(fileName, fileSize, peerInfor));
+                            String fileHash = fileParts[2];
+                            PeerInfor peerInfor = new PeerInfor(fileParts[3], Integer.parseInt(fileParts[4]));
+                            sharedFileNames.add(new FileInfor(fileName, fileSize, fileHash, peerInfor));
                         }
                         logInfo("Total files shared by tracker: " + sharedFileNames.size());
                         return LogTag.I_SUCCESS;
@@ -783,8 +784,8 @@ public class PeerModel {
         });
     }
 
-    public List<FileBase> queryTracker(String keyword) throws IOException {
-        List<FileBase> peers = new ArrayList<>();
+    public List<FileInfor> queryTracker(String keyword) throws IOException {
+        List<FileInfor> peers = new ArrayList<>();
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -808,15 +809,16 @@ public class PeerModel {
 
                 for (String fileInfo : fileList) {
                     String[] parts = fileInfo.split("'");
-                    if (parts.length != 4) {
+                    if (parts.length != 5) {
                         logInfo("Invalid file info format: " + fileInfo);
                         continue;
                     }
                     String fileName = parts[0];
                     long fileSize = Long.parseLong(parts[1]);
-                    String peerIp = parts[2];
-                    int peerPort = Integer.parseInt(parts[3]);
-                    peers.add(new FileBase(fileName, fileSize, new PeerInfor(peerIp, peerPort)));
+                    String fileHash = parts[2];
+                    String peerIp = parts[3];
+                    int peerPort = Integer.parseInt(parts[4]);
+                    peers.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, peerPort)));
                 }
             }
         }
@@ -885,14 +887,15 @@ public class PeerModel {
 
                 for (String fileInfo : fileList) {
                     String[] fileParts = fileInfo.split("'");
-                    if (fileParts.length != 4) {
+                    if (fileParts.length != 5) {
                         logInfo("Invalid file info format: " + fileInfo);
                         continue;
                     }
                     String fileName = fileParts[0];
                     long fileSize = Long.parseLong(fileParts[1]);
-                    PeerInfor peerInfor = new PeerInfor(fileParts[2], Integer.parseInt(fileParts[3]));
-                    sharedFileNames.add(new FileBase(fileName, fileSize, peerInfor));
+                    String fileHash = fileParts[2];
+                    PeerInfor peerInfor = new PeerInfor(fileParts[3], Integer.parseInt(fileParts[4]));
+                    sharedFileNames.add(new FileInfor(fileName, fileSize, fileHash, peerInfor));
                 }
                 logInfo("Đã làm mới danh sách file chia sẻ từ tracker. Tổng số file: " + sharedFileNames.size());
                 return LogTag.I_SUCCESS;
@@ -905,11 +908,11 @@ public class PeerModel {
         }
     }
 
-    public Set<FileBase> getSharedFileNames() {
+    public Set<FileInfor> getSharedFileNames() {
         return sharedFileNames;
     }
 
-    public void setSharedFileNames(Set<FileBase> sharedFileNames) {
+    public void setSharedFileNames(Set<FileInfor> sharedFileNames) {
         ;
         this.sharedFileNames = sharedFileNames;
     }

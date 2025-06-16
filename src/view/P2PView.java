@@ -2,6 +2,7 @@
 package view;
 
 import model.FileBase;
+import model.FileInfor;
 import utils.LogTag;
 
 import javax.swing.*;
@@ -319,7 +320,7 @@ public class P2PView extends JFrame {
         return tableModel;
     }
 
-    public void displayData(Set<FileBase> sharedFileNames) {
+    public void displayData(Set<FileInfor> sharedFileNames) {
         clearTable();
         for (FileBase file : sharedFileNames) {
             displayFileInfo(file.getFileName(), file.getFileSize(), file.getPeerInfor().getIp() + ":" + file.getPeerInfor().getPort());
