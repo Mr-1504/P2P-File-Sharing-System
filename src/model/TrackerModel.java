@@ -16,7 +16,7 @@ import utils.RequestInfor;
 public class TrackerModel {
     private final ConcurrentHashMap<String, Set<String>> fileToPeers;
     private final CopyOnWriteArraySet<String> knownPeers;
-    private final Set<FileBase> sharedFiles;
+    private final Set<FileInfor> sharedFiles;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Selector selector;
     private final ScheduledExecutorService pingExecutor;
@@ -177,7 +177,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Invalid SHARE_LIST request:" + request + " on " + getCurrentTime());
             return "Định dạng yêu cầu SHARE_LIST không hợp lệ. Sử dụng: SHARE_LIST|<count>|<fileNames>|<peerIp>|<peerPort>";
         } else if (request.startsWith(RequestInfor.SHARE)) {
-            if (parts.length == 4) {
+            if (parts.length == 6) {
                 return shareFile(parts);
             }
             logInfo("[TRACKER]: Invalid SHARE request: " + request + " on " + getCurrentTime());
@@ -189,7 +189,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Invalid QUERY request: " + request + " on " + getCurrentTime());
             return "Định dạng yêu cầu QUERY không hợp lệ. Sử dụng: QUERY|<fileName>";
         } else if (request.startsWith(RequestInfor.UNSHARED_FILE)) {
-            if (parts.length == 4) {
+            if (parts.length == 6) {
                 return unshareFile(parts);
             }
         }
@@ -206,8 +206,8 @@ public class TrackerModel {
 
     private String unshareFile(String[] parts) {
         String fileName = parts[1];
-        String peerIp = parts[2];
-        String peerPort = parts[3];
+        String peerIp = parts[4];
+        String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
         Set<String> peers = fileToPeers.get(fileName);
         if (peers == null || !peers.remove(peerInfor)) {
@@ -215,7 +215,6 @@ public class TrackerModel {
             return LogTag.S_NOT_FOUND;
         }
 
-        // Xóa file khỏi danh sách chia sẻ
         fileToPeers.get(fileName).remove(peerInfor);
 
         sharedFiles.removeIf(fileBase -> fileBase.getFileName().equals(fileName) && fileBase.getPeerInfor().toString().equals(peerInfor));
@@ -231,13 +230,35 @@ public class TrackerModel {
     }
 
     private String queryFile(String[] parts) {
-        StringBuilder fileName = new StringBuilder(parts[1]);
+        StringBuilder keywordBuilder = new StringBuilder(parts[1]);
         for (int i = 2; i < parts.length; i++) {
-            fileName.append("|").append(parts[i]);
+            keywordBuilder.append("|").append(parts[i]);
         }
-        List<String> peers = new ArrayList<>(fileToPeers.getOrDefault(fileName.toString(), Collections.emptySet()));
-        logInfo("[TRACKER]: QUERY for file " + fileName + ": return peers " + peers + " on " + getCurrentTime());
-        return String.join(",", peers);
+        String keyword = keywordBuilder.toString();
+
+        Set<FileBase> resultPeers = new HashSet<>();
+        for (FileBase file : sharedFiles) {
+            if (file.getFileName().toLowerCase().contains(keyword.toLowerCase())) {
+                resultPeers.add(file);
+            }
+        }
+
+        List<FileBase> files = new ArrayList<>(resultPeers);
+        logInfo("[TRACKER]: QUERY for file containing \"" + keyword + "\": return peers " + files + " on " + getCurrentTime());
+        String response = RequestInfor.QUERY + "|" + files.size() + "|";
+        if (files.isEmpty()) {
+            logInfo("[TRACKER]: No peers found for file containing \"" + keyword + "\" on " + getCurrentTime());
+            return response + "No files found.";
+        }
+
+        for (FileBase file : files) {
+            response += file.getFileName() + "'" + file.getFileSize() + "'" + file.getPeerInfor().getIp() + "'" + file.getPeerInfor().getPort() + Infor.LIST_SEPARATOR;
+        }
+        if (response.endsWith(Infor.LIST_SEPARATOR)) {
+            response = response.substring(0, response.length() - Infor.LIST_SEPARATOR.length());
+        }
+        response += "\n";
+        return response;
     }
 
     private String receiveFileList(String[] parts, String request) {
@@ -248,7 +269,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Invalid count in SHARE_LIST: " + parts[1] + " on " + getCurrentTime());
             return "Số lượng không hợp lệ.";
         }
-        List<String> files = Arrays.asList(parts[2].split(","));
+        List<String> files = Arrays.asList(parts[2].split(Infor.LIST_SEPARATOR));
         String peerIp = parts[3];
         int peerPort;
         try {
@@ -278,7 +299,7 @@ public class TrackerModel {
                 continue;
             }
             String[] fileInfor = file.split("'");
-            if (fileInfor.length != 2) {
+            if (fileInfor.length != 3) {
                 logInfo("[TRACKER]: Invalid file format in SHARE_LIST: " + file + " on " + getCurrentTime());
                 continue;
             }
@@ -290,8 +311,11 @@ public class TrackerModel {
                 logInfo("[TRACKER]: Invalid file size in SHARE_LIST: " + fileInfor[1] + " on " + getCurrentTime());
                 continue;
             }
+
+            String fileHash = fileInfor[2];
+
             fileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-            sharedFiles.add(new FileBase(fileName, fileSize, new PeerInfor(peerIp, peerPort)));
+            sharedFiles.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, peerPort)));
             logInfo("[TRACKER]: File " + fileName + "shared by " + peerInfor + " on " + getCurrentTime());
         }
         logInfo("[TRACKER]: SHARE_LIST processed for " + peerInfor + " on " + getCurrentTime());
@@ -301,11 +325,13 @@ public class TrackerModel {
 
     private String shareFile(String[] parts) {
         String fileName = parts[1];
-        String peerIp = parts[2];
-        String peerPort = parts[3];
+        long fileSize = Long.parseLong(parts[2]);
+        String fileHash = parts[3];
+        String peerIp = parts[4];
+        String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
         fileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-        sharedFiles.add(new FileBase(fileName, 0, new PeerInfor(peerIp, Integer.parseInt(peerPort))));
+        sharedFiles.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, Integer.parseInt(peerPort))));
         logInfo("[TRACKER]: File " + fileName + " shared by " + peerInfor + " on " + getCurrentTime());
         return "File " + fileName + " được chia sẻ thành công bởi " + peerInfor;
     }
@@ -343,7 +369,7 @@ public class TrackerModel {
                     .append("'").append(file.getFileSize())
                     .append("'").append(file.getPeerInfor().getIp())
                     .append("'").append(file.getPeerInfor().getPort())
-                    .append(",");
+                    .append(Infor.LIST_SEPARATOR);
         }
         if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {
             msgBuilder.deleteCharAt(msgBuilder.length() - 1);
