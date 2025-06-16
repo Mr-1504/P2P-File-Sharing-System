@@ -377,26 +377,17 @@ public class P2PController {
         ExecutorService executor = Executors.newFixedThreadPool(10);
         executor.submit(() -> {
             try {
-                List<String> peers = peerModel.queryTracker(fileName);
-                if (peers.isEmpty()) {
+                List<FileBase> files = peerModel.queryTracker(fileName);
+                if (files.isEmpty()) {
                     SwingUtilities.invokeLater(() -> view.showMessage("Không tìm thấy file: " + fileName, true));
                     return;
                 }
 
-                Map<String, Integer> peerToRowIndex = new HashMap<>();
-                int rowIndex = 0;
-                for (String peer : peers) {
-                    String peerStr = peer.replace("|", ":");
-                    PeerInfor peerInfor = parsePeerInfo(peerStr);
-                    if (peerInfor == null) {
-                        SwingUtilities.invokeLater(() -> view.showMessage("Thông tin peer không hợp lệ: " + peerStr, true));
-                        continue;
-                    }
-                    SwingUtilities.invokeLater(() -> view.getTableModel().addRow(new Object[]{fileName, "Đang tìm kiếm...", peerStr}));
-                    peerToRowIndex.put(peerStr, rowIndex++);
-
-                    executor.submit(() -> queryPeerForFile(fileName, peerInfor, peerToRowIndex.get(peerStr)));
+                for (FileBase fileBase : files) {
+                    SwingUtilities.invokeLater(() -> view.getTableModel().addRow(
+                            new Object[]{ fileBase.getFileName(), fileBase.getFileSize() , fileBase.getPeerInfor().toString().replace("|", ":") }));
                 }
+                view.appendLog("Đã tìm thấy " + files.size() + " file với tên: " + fileName);
             } catch (IOException e) {
                 SwingUtilities.invokeLater(() -> view.showMessage("Lỗi khi tìm kiếm file: " + e.getMessage(), true));
                 e.printStackTrace();

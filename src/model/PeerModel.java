@@ -763,15 +763,41 @@ public class PeerModel {
         });
     }
 
-    public List<String> queryTracker(String fileName) throws IOException {
-        List<String> peers = new ArrayList<>();
+    public List<FileBase> queryTracker(String keyword) throws IOException {
+        List<FileBase> peers = new ArrayList<>();
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out.println(RequestInfor.QUERY + Infor.FIELD_SEPARATOR + new File(fileName).getName());
+            out.println(RequestInfor.QUERY + Infor.FIELD_SEPARATOR + keyword);
             String response = in.readLine();
-            if (response != null && !response.isEmpty()) {
-                peers.addAll(Arrays.asList(response.split(",")));
+            if (response != null && response.startsWith(RequestInfor.QUERY)) {
+                String[] res = response.split(Infor.FIELD_SEPARATOR_REGEX);
+                if (res.length < 2) {
+                    logInfo("Invalid response format from tracker: " + response);
+                    return peers;
+                }
+                logInfo("Tracker response: " + response);
+
+                int fileCount = Integer.parseInt(res[1]);
+                if (fileCount == 0) {
+                    logInfo("No peers found for query: " + keyword);
+                    return peers;
+                }
+                String[] fileList = res[2].split(",");
+                logInfo("Found " + fileCount + " peers for query: " + keyword);
+
+                for (String fileInfo : fileList) {
+                    String[] parts = fileInfo.split("'");
+                    if (parts.length != 4) {
+                        logInfo("Invalid file info format: " + fileInfo);
+                        continue;
+                    }
+                    String fileName = parts[0];
+                    long fileSize = Long.parseLong(parts[1]);
+                    String peerIp = parts[2];
+                    int peerPort = Integer.parseInt(parts[3]);
+                    peers.add(new FileBase(fileName, fileSize, new PeerInfor(peerIp, peerPort)));
+                }
             }
         }
         return peers;
