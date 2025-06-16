@@ -219,11 +219,11 @@ public class PeerModel {
             FileInfor fileInfor = mySharedFiles.get(fileName);
             String response;
             if (fileInfor != null) {
-                response = RequestInfor.FILE_INFO + "|" + fileInfor.getFileName() + "|" + fileInfor.getFileSize()
-                        + "|" + fileInfor.getPeerInfor().getIp() + "|" + fileInfor.getPeerInfor().getPort()
-                        + "|" + String.join(",", fileInfor.getChunkHashes()) + "\n";
+                response = RequestInfor.FILE_INFO + Infor.FIELD_SEPARATOR + fileInfor.getFileName() + Infor.FIELD_SEPARATOR + fileInfor.getFileSize()
+                        + Infor.FIELD_SEPARATOR + fileInfor.getPeerInfor().getIp() + Infor.FIELD_SEPARATOR + fileInfor.getPeerInfor().getPort()
+                        + Infor.FIELD_SEPARATOR + String.join(",", fileInfor.getChunkHashes()) + "\n";
             } else {
-                response = RequestInfor.FILE_NOT_FOUND + "|" + fileName + "\n";
+                response = RequestInfor.FILE_NOT_FOUND + Infor.FIELD_SEPARATOR + fileName + "\n";
             }
             ByteBuffer buffer = ByteBuffer.wrap(response.getBytes());
             int totalBytesWritten = 0;
@@ -250,7 +250,7 @@ public class PeerModel {
     public int registerWithTracker() {
         for (int i = 0; i < Infor.MAX_RETRIES; i++) {
             try (Socket socket = createSocket(TRACKER_HOST)) {
-                String message = RequestInfor.REGISTER + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort() + "\n";
+                String message = RequestInfor.REGISTER + Infor.FIELD_SEPARATOR + SERVER_HOST.getIp() + Infor.FIELD_SEPARATOR + SERVER_HOST.getPort() + "\n";
                 socket.getOutputStream().write(message.getBytes());
                 logInfo("Registered with tracker: " + message);
 
@@ -364,19 +364,20 @@ public class PeerModel {
     }
 
     public void shareFileList() {
-        Set<FileBase> files = convertSharedFilesToFileBase();
+        Set<FileInfor> files = convertSharedFilesToFileBase();
 
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
-            StringBuilder messageBuilder = new StringBuilder(RequestInfor.SHARED_LIST + "|");
-            messageBuilder.append(files.size()).append("|");
-            for (FileBase file : files) {
+            StringBuilder messageBuilder = new StringBuilder(RequestInfor.SHARED_LIST + Infor.FIELD_SEPARATOR);
+            messageBuilder.append(files.size()).append(Infor.FIELD_SEPARATOR);
+            for (FileInfor file : files) {
                 messageBuilder.append(file.getFileName()).append("'")
                         .append(file.getFileSize()).append(",");
             }
             if (messageBuilder.charAt(messageBuilder.length() - 1) == ',') {
                 messageBuilder.deleteCharAt(messageBuilder.length() - 1);
             }
-            messageBuilder.append("|").append(SERVER_HOST.getIp()).append("|").append(SERVER_HOST.getPort());
+            messageBuilder.append(Infor.FIELD_SEPARATOR).append(SERVER_HOST.getIp())
+                    .append(Infor.FIELD_SEPARATOR).append(SERVER_HOST.getPort()).append("\n");
             String message = messageBuilder.toString();
 
             socket.getOutputStream().write(message.getBytes());
@@ -387,12 +388,12 @@ public class PeerModel {
         }
     }
 
-    private Set<FileBase> convertSharedFilesToFileBase() {
-        Set<FileBase> fileList = new HashSet<>();
+    private Set<FileInfor> convertSharedFilesToFileBase() {
+        Set<FileInfor> fileList = new HashSet<>();
 
         for (Map.Entry<String, FileInfor> entry : mySharedFiles.entrySet()) {
             FileInfor fileInfor = entry.getValue();
-            fileList.add(new FileBase(fileInfor.getFileName(), fileInfor.getFileSize(), fileInfor.getPeerInfor()));
+            fileList.add(fileInfor);
         }
 
         return fileList;
@@ -402,7 +403,7 @@ public class PeerModel {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
 
             String message = (isShared ? RequestInfor.SHARE : RequestInfor.UNSHARED_FILE)
-                    + "|" + fileName + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort();
+                    + Infor.FIELD_SEPARATOR + fileName + Infor.FIELD_SEPARATOR + SERVER_HOST.getIp() + Infor.FIELD_SEPARATOR + SERVER_HOST.getPort();
 
             socket.getOutputStream().write(message.getBytes());
             logInfo("Notified tracker about shared file: " + fileName + ", message: " + message);
@@ -524,7 +525,7 @@ public class PeerModel {
                 channel.socket().setSoTimeout(10000); // timeout 10s
                 openChannels.add(channel);
                 // Gửi yêu cầu lấy chunk
-                String request = RequestInfor.GET_CHUNK + "|" + fileName + "|" + chunkIndex + "\n";
+                String request = RequestInfor.GET_CHUNK + Infor.FIELD_SEPARATOR + fileName + Infor.FIELD_SEPARATOR + chunkIndex + "\n";
                 ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
                 while (requestBuffer.hasRemaining()) {
                     channel.write(requestBuffer);
@@ -686,7 +687,7 @@ public class PeerModel {
                 logInfo("Connected to peer: " + channel.getRemoteAddress());
 
                 // Gửi yêu cầu
-                String request = RequestInfor.SEARCH + "|" + new File(fileName).getName() + "\n";
+                String request = RequestInfor.SEARCH + Infor.FIELD_SEPARATOR + new File(fileName).getName() + "\n";
                 ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
                 while (requestBuffer.hasRemaining()) {
                     channel.write(requestBuffer);
@@ -767,7 +768,7 @@ public class PeerModel {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out.println(RequestInfor.QUERY + "|" + new File(fileName).getName());
+            out.println(RequestInfor.QUERY + Infor.FIELD_SEPARATOR + new File(fileName).getName());
             String response = in.readLine();
             if (response != null && !response.isEmpty()) {
                 peers.addAll(Arrays.asList(response.split(",")));
@@ -821,7 +822,7 @@ public class PeerModel {
             socket.connect(new InetSocketAddress(TRACKER_HOST.getIp(), TRACKER_HOST.getPort()));
 
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-            String msg = RequestInfor.REFRESH + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort() + "\n";
+            String msg = RequestInfor.REFRESH + Infor.FIELD_SEPARATOR + SERVER_HOST.getIp() + Infor.FIELD_SEPARATOR + SERVER_HOST.getPort() + "\n";
             out.println(msg);
 
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));

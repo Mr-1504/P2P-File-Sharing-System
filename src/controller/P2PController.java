@@ -14,12 +14,16 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 
@@ -102,8 +106,10 @@ public class P2PController {
             if (isInvalidFileInfo(fileInfo))
                 continue;
 
-            if (!sharedFiles.contains(new FileBase(fileInfo.getFileName(), fileInfo.getFileSize(), fileInfo.getPeerInfor()))) {
-                sharedFiles.add(new FileBase(fileInfo.getFileName(), fileInfo.getFileSize(), fileInfo.getPeerInfor()));
+            FileBase fileBase = new FileBase
+                    (fileInfo.getFileName(), fileInfo.getFileSize(), fileInfo.getPeerInfor());
+            if (!sharedFiles.contains(fileBase)) {
+                sharedFiles.add(fileBase);
             } else {
                 view.appendLog("File đã tồn tại trong danh sách chia sẻ: " + fileInfo.getFileName());
             }
@@ -288,6 +294,39 @@ public class P2PController {
             }
             AtomicReference<JDialog> dialog = new AtomicReference<>(null);
             AtomicBoolean isCancelled = new AtomicBoolean(false);
+            File file = new File(filePath);
+            String fileName = file.getName();
+            Path filePathObj = new File(GetDir.getShareDir(fileName)).toPath();
+            int isReplace = 1;
+            if (Files.exists(filePathObj)) {
+                AtomicInteger fileExists = new AtomicInteger(-1);
+                String finalFileName = fileName;
+                try {
+                    SwingUtilities.invokeAndWait(() -> {
+                        fileExists.set(view.showMessageWithOptions("File đã tồn tại trong thư mục chia sẻ: " + finalFileName, true));
+                        view.appendLog("File đã tồn tại trong thư mục chia sẻ: " + finalFileName);
+                    });
+                } catch (InterruptedException | InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                }
+                isReplace = fileExists.get();
+                switch (isReplace) {
+                    case 0 : {
+                        fileName = GetDir.incrementFileName(fileName);
+                        view.appendLog("Đã đổi tên file thành: " + fileName);
+                        break;
+                    }
+
+                    case 1 :
+                        view.appendLog("Đã ghi đè file: " + fileName);
+                        break;
+
+                    case 2 :
+                        view.appendLog("Hủy file: " + fileName);
+                        return;
+
+                }
+            }
             SwingUtilities.invokeLater(() -> {
                 dialog.set(view.createLoadingDialog(
                         "Đang chuẩn bị file: " + filePath + "...\nFile lớn có thể mất nhiều thời gian", () -> {
@@ -295,8 +334,8 @@ public class P2PController {
                         }));
                 dialog.get().setVisible(true);
             });
-            File file = new File(filePath);
-            boolean res = GetDir.copyFileToShare(file, isCancelled);
+
+            boolean res = GetDir.copyFileToShare(file, fileName, isCancelled);
             if (!res) {
                 SwingUtilities.invokeLater(() -> {
                     view.showMessage("Lỗi khi sao chép file vào thư mục chia sẻ.", true);
@@ -314,8 +353,11 @@ public class P2PController {
             }
             view.setCancelButtonEnabled(true);
             peerModel.shareFileAsync(file);
+            String finalFileName1 = fileName;
+            if (isReplace == 1)
+                return;
             SwingUtilities.invokeLater(() -> {
-                view.displayFileInfo(file.getName(), file.length(), Infor.SERVER_IP + ":" + Infor.SERVER_PORT);
+                view.displayFileInfo(finalFileName1, file.length(), Infor.SERVER_IP + ":" + Infor.SERVER_PORT);
                 view.appendLog("Đã chia sẻ file: " + filePath);
             });
         });

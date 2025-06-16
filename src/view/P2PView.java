@@ -279,6 +279,22 @@ public class P2PView extends JFrame {
                 isError ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
         appendLog(message);
     }
+    public int showMessageWithOptions(String message, boolean isError) {
+        String[] options = {"Tiếp tục", "Thay thế", "Hủy"};
+
+        int result = JOptionPane.showOptionDialog(
+                this,
+                message,
+                isError ? "Lỗi" : "Thông báo",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                isError ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE,
+                null,
+                options,
+                options[0]
+        );
+        appendLog(message + " - Tùy chọn được chọn: " + options[result]);
+        return result;
+    }
 
     public void showMenu(boolean isDownload) {
         String menuText = isDownload ? "Tải xuống" : "Dừng chia sẻ";
@@ -338,6 +354,7 @@ public class P2PView extends JFrame {
             }
             progressBar.setValue(progress);
             if (progress >= 100) {
+                cancelButton.setEnabled(false);
                 progressLabel.setText("Hoàn tất: " + taskName);
                 appendLog("Hoàn tất: " + taskName);
             }

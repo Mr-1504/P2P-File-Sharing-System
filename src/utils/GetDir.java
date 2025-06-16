@@ -2,6 +2,7 @@ package utils;
 
 import java.io.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 import static utils.Log.logInfo;
 
@@ -18,8 +19,8 @@ public class GetDir {
         return GetDir.getDir() + "\\shared_files\\" + fileName;
     }
 
-    public static boolean copyFileToShare(File sourceFile, AtomicBoolean isCancelled) {
-        File destFile = new File(getShareDir(sourceFile.getName()));
+    public static boolean copyFileToShare(File sourceFile, String newfileName, AtomicBoolean isCancelled) {
+        File destFile = new File(getShareDir(newfileName));
         try (
                 InputStream in = new FileInputStream(sourceFile);
                 OutputStream out = new FileOutputStream(destFile)
@@ -42,4 +43,46 @@ public class GetDir {
         }
     }
 
+    public static int getFileCount(String fileName) {
+        String name = fileName;
+        String extension = "";
+
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex != -1) {
+            name = fileName.substring(0, dotIndex);
+            extension = fileName.substring(dotIndex); // gồm cả dấu chấm
+        }
+
+        Pattern pattern = Pattern.compile("^" + Pattern.quote(name) + "( \\(\\d+\\))?" + Pattern.quote(extension) + "$");
+
+        File dir = new File(GetDir.getDir() + File.separator + "shared_files");
+        File[] files = dir.listFiles();
+
+        int count = 0;
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && pattern.matcher(file.getName()).matches()) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+
+    public static String incrementFileName(String fileName) {
+        String name = fileName;
+        String extension = "";
+
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex != -1) {
+            name = fileName.substring(0, dotIndex);
+            extension = fileName.substring(dotIndex); // bao gồm dấu chấm
+        }
+
+        int count = GetDir.getFileCount(fileName);
+        System.out.println("Current file count for '" + fileName + "': " + count);
+        fileName = name + " (" + (count + 1) + ")" + extension;
+        return fileName;
+    }
 }
