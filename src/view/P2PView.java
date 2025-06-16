@@ -227,10 +227,10 @@ public class P2PView extends JFrame {
     }
 
     public JDialog createLoadingDialog(String message, Runnable onCancel) {
-        JDialog dialog = new JDialog((Frame) null, "Đang xử lý", true);
-        dialog.setUndecorated(true); // Ẩn nút X và viền cửa sổ
+        JDialog dialog = new JDialog(this, "Đang xử lý", true);
+        dialog.setUndecorated(true);
 
-        JLabel label = new JLabel(message);
+        JLabel label = new JLabel("<html><body style='width: 250px'>" + message + "</body></html>");
         label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
 
         JProgressBar progressBar = new JProgressBar();
@@ -249,7 +249,12 @@ public class P2PView extends JFrame {
 
         dialog.getContentPane().add(panel);
         dialog.pack();
-        dialog.setLocationRelativeTo(null);
+
+        Dimension size = dialog.getSize();
+        size.width = Math.min(size.width, 350);
+        dialog.setSize(size);
+
+        dialog.setLocationRelativeTo(this);
 
         return dialog;
     }
@@ -278,6 +283,22 @@ public class P2PView extends JFrame {
         JOptionPane.showMessageDialog(this, message, "Lỗi",
                 isError ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
         appendLog(message);
+    }
+    public int showMessageWithOptions(String message, boolean isError) {
+        String[] options = {"Tiếp tục", "Thay thế", "Hủy"};
+
+        int result = JOptionPane.showOptionDialog(
+                this,
+                message,
+                isError ? "Lỗi" : "Thông báo",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                isError ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE,
+                null,
+                options,
+                options[0]
+        );
+        appendLog(message + " - Tùy chọn được chọn: " + options[result]);
+        return result;
     }
 
     public void showMenu(boolean isDownload) {
@@ -338,6 +359,7 @@ public class P2PView extends JFrame {
             }
             progressBar.setValue(progress);
             if (progress >= 100) {
+                cancelButton.setEnabled(false);
                 progressLabel.setText("Hoàn tất: " + taskName);
                 appendLog("Hoàn tất: " + taskName);
             }

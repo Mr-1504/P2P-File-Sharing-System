@@ -13,7 +13,8 @@ public interface Infor {
     int SOCKET_TIMEOUT_MS = EnvConf.getEnvInt("SOCKET_TIMEOUT_MS", 5000);
     int DOWNLOAD_TIMEOUT_MS = 10000;
     int MAX_RETRIES = EnvConf.getEnvInt("MAX_RETRIES", 3);
-    String FIELD_SEPARATOR = "\\|";
+    String FIELD_SEPARATOR = "|";
+    String FIELD_SEPARATOR_REGEX = "\\|";
     String FILE_SEPARATOR = "'";
     String LIST_SEPARATOR = ",";
 }
