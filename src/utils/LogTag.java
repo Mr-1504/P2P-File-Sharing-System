@@ -15,4 +15,5 @@ public interface LogTag {
     int I_NOT_READY = 5;
     int I_FAILURE = 6;
     int I_CANCELLED = 7;
+    int I_HASH_MISMATCH = 8;
 }
