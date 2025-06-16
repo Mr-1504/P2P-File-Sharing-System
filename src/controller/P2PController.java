@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 public class P2PController {
@@ -42,6 +44,8 @@ public class P2PController {
                 initializeServer();
                 registerWithTracker();
                 view.appendLog("Hệ thống P2P đã khởi động hoàn tất.");
+                showSharedFile();
+                peerModel.loadSharedFiles();
                 showSharedFile();
                 peerModel.shareFileList();
             } finally {
@@ -102,12 +106,11 @@ public class P2PController {
                 sharedFiles.add(new FileBase(fileInfo.getFileName(), fileInfo.getFileSize(), fileInfo.getPeerInfor()));
             } else {
                 view.appendLog("File đã tồn tại trong danh sách chia sẻ: " + fileInfo.getFileName());
-                continue;
             }
 
-            peerModel.setSharedFileNames(sharedFiles);
-            view.displayData(peerModel.getSharedFileNames());
         }
+        peerModel.setSharedFileNames(sharedFiles);
+        view.displayData(peerModel.getSharedFileNames());
     }
 
     private boolean isInvalidFileInfo(FileInfor fileInfo) {
@@ -188,7 +191,8 @@ public class P2PController {
         }
 
         if (!peerModel.isMe(peer.getIp(), peer.getPort())) {
-            downloadFile();
+            ExecutorService executorService = Executors.newSingleThreadExecutor();
+            executorService.submit(this::downloadFile);
         } else if (view.showConfirmation(
                 "Bạn có chắc chắn muốn dừng chia sẻ file: " + fileName + " không?"))
             try {
@@ -273,23 +277,48 @@ public class P2PController {
     }
 
     private void shareFile() {
-        String fileName = view.openFileChooserForShare();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.submit(() -> {
+            String filePath = view.openFileChooserForShare();
 
-        if (fileName.isEmpty() || fileName.equals(LogTag.S_CANCELLED) || fileName.equals(LogTag.S_ERROR)) {
-            view.appendLog("Vui lòng chọn file file.");
-            view.showMessage("Vui lòng chọn file để chia sẻ.", true);
-            return;
-        }
-        String filePath = GetDir.getShareDir(fileName);
-        File file = new File(filePath);
-        if (!file.exists()) {
-            view.showMessage("File không tồn tại: " + filePath, true);
-            view.appendLog("File không tồn tại: " + filePath);
-            return;
-        }
-        peerModel.shareFile(filePath);
-        view.displayFileInfo(file.getName(), file.length(), Infor.SERVER_IP + ":" + Infor.SERVER_PORT);
-        view.appendLog("Đã chia sẻ file: " + filePath);
+            if (filePath.isEmpty() || filePath.equals(LogTag.S_CANCELLED) || filePath.equals(LogTag.S_ERROR)) {
+                view.appendLog("Vui lòng chọn file file.");
+                view.showMessage("Vui lòng chọn file để chia sẻ.", true);
+                return;
+            }
+            AtomicReference<JDialog> dialog = new AtomicReference<>(null);
+            AtomicBoolean isCancelled = new AtomicBoolean(false);
+            SwingUtilities.invokeLater(() -> {
+                dialog.set(view.createLoadingDialog(
+                        "Đang chuẩn bị file: " + filePath + "...\nFile lớn có thể mất nhiều thời gian", () -> {
+                            isCancelled.set(true);
+                        }));
+                dialog.get().setVisible(true);
+            });
+            File file = new File(filePath);
+            boolean res = GetDir.copyFileToShare(file, isCancelled);
+            if (!res) {
+                SwingUtilities.invokeLater(() -> {
+                    view.showMessage("Lỗi khi sao chép file vào thư mục chia sẻ.", true);
+                    view.appendLog("Lỗi khi sao chép file vào thư mục chia sẻ.");
+                });
+                return;
+            }
+            SwingUtilities.invokeLater(() -> dialog.get().dispose());
+            if (!file.exists()) {
+                SwingUtilities.invokeLater(() -> {
+                    view.showMessage("File không tồn tại: " + filePath, true);
+                    view.appendLog("File không tồn tại: " + filePath);
+                });
+                return;
+            }
+            view.setCancelButtonEnabled(true);
+            peerModel.shareFileAsync(file);
+            SwingUtilities.invokeLater(() -> {
+                view.displayFileInfo(file.getName(), file.length(), Infor.SERVER_IP + ":" + Infor.SERVER_PORT);
+                view.appendLog("Đã chia sẻ file: " + filePath);
+            });
+        });
     }
 
 
@@ -403,6 +432,7 @@ public class P2PController {
         }
 
         try {
+            view.setCancelButtonEnabled(true);
             Future<Integer> result = peerModel.downloadFile(fileName, savePath, peer);
             view.appendLog("Đã bắt đầu tải file: " + fileName);
 
