@@ -299,7 +299,7 @@ public class P2PController {
             Path filePathObj = new File(GetDir.getShareDir(fileName)).toPath();
             int isReplace = 1;
             if (Files.exists(filePathObj)) {
-                AtomicInteger fileExists = new AtomicInteger(-1);
+                AtomicInteger fileExists = new AtomicInteger(1);
                 String finalFileName = fileName;
                 try {
                     SwingUtilities.invokeAndWait(() -> {
