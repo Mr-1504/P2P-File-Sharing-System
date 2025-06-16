@@ -32,3 +32,4 @@ bin/
 *.cer
 *.jks
 .env
+shared_files/Windows.iso
