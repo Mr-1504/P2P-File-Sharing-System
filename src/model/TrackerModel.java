@@ -9,8 +9,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+
 import utils.Infor;
+
 import static utils.Log.*;
+
 import utils.LogTag;
 import utils.RequestInfor;
 
@@ -193,16 +196,43 @@ public class TrackerModel {
             if (parts.length == 6) {
                 return unshareFile(parts);
             }
-        }
-        else if (request.startsWith(RequestInfor.REFRESH)) {
+        } else if (request.startsWith(RequestInfor.REFRESH)) {
             if (parts.length == 3) {
                 String peerIp = parts[1];
                 int peerPort = Integer.parseInt(parts[2]);
                 return sendShareList(peerIp, peerPort, true);
             }
+        } else if (request.startsWith(RequestInfor.GET_PEERS)) {
+            if (parts.length == 2) {
+                String fileHash = parts[1];
+                return sendPeerList(fileHash);
+            }
         }
         logInfo("[TRACKER]: Unkhown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
+    }
+
+    private String sendPeerList(String fileHash) {
+        List<String> peers = new ArrayList<>();
+        for (FileInfor file : sharedFiles) {
+            if (file.getFileHash().equals(fileHash)) {
+                peers.add(file.getPeerInfor().getIp() + Infor.FILE_SEPARATOR + file.getPeerInfor().getPort());
+            }
+        }
+        if (peers == null || peers.isEmpty()) {
+            logInfo("[TRACKER]: No peers found for file hash: " + fileHash + " on " + getCurrentTime());
+            return RequestInfor.NOT_FOUND + "|No peers found for file hash: " + fileHash;
+        }
+
+        StringBuilder response = new StringBuilder(RequestInfor.GET_PEERS + "|" + peers.size() + "|");
+        for (String peer : peers) {
+            response.append(peer).append(Infor.LIST_SEPARATOR);
+        }
+        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+            response.deleteCharAt(response.length() - 1);
+        }
+        logInfo("[TRACKER]: Sending peer list for file hash: " + fileHash + " on " + getCurrentTime());
+        return response.toString();
     }
 
     private String unshareFile(String[] parts) {
@@ -212,15 +242,11 @@ public class TrackerModel {
         String peerIp = parts[4];
         String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
-        Set<String> peers = fileToPeers.get(fileHash);
-        if (peers == null || !peers.remove(peerInfor)) {
-            logInfo("[TRACKER]: Not found " + fileName + " shared by " + peerInfor + " on " + getCurrentTime());
-            return LogTag.S_NOT_FOUND;
-        }
 
-        fileToPeers.get(fileHash).remove(peerInfor);
+        sharedFiles.removeIf(file -> file.getFileHash().equals(fileHash) && file.getPeerInfor().toString().equals(peerInfor));
+        Set<String> peers = fileToPeers.get(fileName);
+        peers.remove(peerInfor);
 
-        sharedFiles.removeIf(file -> file.getFileHash().equals(fileHash));
         if (peers.isEmpty()) {
             fileToPeers.remove(fileName);
             logInfo("[TRACKER]: Removed file " + fileName + " from sharing list on " + getCurrentTime());
