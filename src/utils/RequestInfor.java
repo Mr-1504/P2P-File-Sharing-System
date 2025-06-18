@@ -16,4 +16,5 @@ public interface RequestInfor {
     String UNSHARED_FILE = "UNSHARED_FILE";
     String REFRESH = "REFRESH";
     String REFRESHED = "REFRESHED";
+    String GET_PEERS = "GET_PEERS";
 }
