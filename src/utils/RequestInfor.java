@@ -17,4 +17,5 @@ public interface RequestInfor {
     String REFRESH = "REFRESH";
     String REFRESHED = "REFRESHED";
     String GET_PEERS = "GET_PEERS";
+    String NOT_FOUND = "NOT_FOUND";
 }
