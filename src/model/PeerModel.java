@@ -402,7 +402,7 @@ public class PeerModel {
         return fileList;
     }
 
-    private void notifyTracker(FileInfor fileInfor, boolean isShared) {
+    private int notifyTracker(FileInfor fileInfor, boolean isShared) {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             String message = (isShared ? RequestInfor.SHARE : RequestInfor.UNSHARED_FILE)
                     + Infor.FIELD_SEPARATOR + fileInfor.getFileName() + Infor.FIELD_SEPARATOR
@@ -412,8 +412,10 @@ public class PeerModel {
 
             socket.getOutputStream().write(message.getBytes());
             logInfo("Notified tracker about shared file: " + fileInfor.getFileName() + ", message: " + message);
+            return LogTag.I_SUCCESS;
         } catch (IOException e) {
-            e.printStackTrace();
+            logError("Error notifying tracker about shared file: " + fileInfor.getFileName(), e);
+            return LogTag.I_ERROR;
         }
     }
 
@@ -844,7 +846,7 @@ public class PeerModel {
         });
     }
 
-    public List<FileInfor> queryTracker(String keyword) throws IOException {
+    public List<FileInfor> queryTracker(String keyword) {
         List<FileInfor> peers = new ArrayList<>();
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
@@ -881,6 +883,9 @@ public class PeerModel {
                     peers.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, peerPort)));
                 }
             }
+        } catch (Exception e) {
+            logError("Error querying tracker for keyword: " + keyword, e);
+            return null;
         }
         return peers;
     }
@@ -985,7 +990,7 @@ public class PeerModel {
         return SERVER_HOST.getIp().equals(ip) && SERVER_HOST.getPort() == port;
     }
 
-    public void stopSharingFile(String fileName) {
+    public int stopSharingFile(String fileName) {
         if (mySharedFiles.containsKey(fileName)) {
             FileInfor fileInfor = mySharedFiles.get(fileName);
             mySharedFiles.remove(fileName);
@@ -999,9 +1004,11 @@ public class PeerModel {
             }
 
             logInfo("Đã dừng chia sẻ file: " + fileName);
-            notifyTracker(fileInfor, false);
+            int result = notifyTracker(fileInfor, false);
+            return result;
         } else {
             logInfo("Không tìm thấy file để dừng chia sẻ: " + fileName);
+            return LogTag.I_NOT_FOUND;
         }
     }
 
