@@ -2,11 +2,41 @@ package model;
 
 import java.util.Objects;
 
+import static utils.Log.logError;
+
 public class PeerInfor {
     private String ip;
     private int port;
+    private int taskForDownloadCount;
+
+    public int getTaskForDownload() {
+        return taskForDownloadCount;
+    }
+
+    public void addTaskForDownload() {
+        if (taskForDownloadCount < 0) {
+            taskForDownloadCount = 0;
+        }
+
+        if (taskForDownloadCount <= 3) {
+            taskForDownloadCount++;
+        } else {
+            logError("Task limit exceeded for peer: " + this, null);
+        }
+    }
+
+    public void removeTaskForDownload() {
+        if (taskForDownloadCount > 0) {
+            taskForDownloadCount--;
+        }
+    }
+
+    public boolean isAvailableForDownload() {
+        return taskForDownloadCount < 3;
+    }
 
     public PeerInfor(String ip, int port) {
+        this.taskForDownloadCount = 1;
         this.ip = ip;
         this.port = port;
     }
