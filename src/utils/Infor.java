@@ -9,7 +9,7 @@ public interface Infor {
     int TRACKER_PORT = EnvConf.getEnvInt("TRACKER_PORT", 5001);
     String SERVER_IP = GetLocalIP.getLocalIpAddress();
     String TRACKER_IP = EnvConf.getEnv("TRACKER_IP", "127.0.0.1");
-    int CHUNK_SIZE = EnvConf.getEnvInt("CHUNK_SIZE", 1024 * 64);
+    int CHUNK_SIZE = EnvConf.getEnvInt("CHUNK_SIZE", 1024 * 1024);
     int SOCKET_TIMEOUT_MS = EnvConf.getEnvInt("SOCKET_TIMEOUT_MS", 5000);
     int DOWNLOAD_TIMEOUT_MS = 10000;
     int MAX_RETRIES = EnvConf.getEnvInt("MAX_RETRIES", 3);
