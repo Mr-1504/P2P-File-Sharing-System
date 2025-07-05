@@ -1,5 +1,6 @@
 package model;
 
+import javafx.application.Platform;
 import utils.*;
 import view.P2PView;
 
@@ -341,7 +342,7 @@ public class PeerModel {
         return LogTag.I_ERROR;
     }
 
-    public Future<Boolean> shareFileAsync(File file) {
+    public Future<Boolean> shareFileAsync(File file, String fileName) {
         return executor.submit(() -> {
             logInfo("File path: " + file.getAbsolutePath());
 
@@ -356,7 +357,7 @@ public class PeerModel {
                 while ((bytesRead = is.read(buffer)) != -1) {
                     if (cancelled) {
                         logInfo("File sharing cancelled by user: " + file.getName());
-                        SwingUtilities.invokeLater(() ->
+                        Platform.runLater(() ->
                                 view.updateProgress("Chia sẻ file " + file.getName() + " đã bị hủy", 0, 0, 0));
 
                         File sharedFile = new File(GetDir.getShareDir(file.getName()));
@@ -375,14 +376,14 @@ public class PeerModel {
 
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
-                    SwingUtilities.invokeLater(() ->
-                            view.updateProgress("Đang chia sẻ file " + file.getName(), progress, finalReadBytes, totalBytes));
+                    Platform.runLater(() ->
+                            view.updateProgress("Đang chia sẻ file " + fileName, progress, finalReadBytes, totalBytes));
                 }
 
                 String fullFileHash = bytesToHex(md.digest());
                 logInfo("File " + file.getName() + " shared successfully with hash: " + fullFileHash);
 
-                FileInfor fileInfor = new FileInfor(file.getName(), file.length(), fullFileHash, SERVER_HOST);
+                FileInfor fileInfor = new FileInfor(fileName, file.length(), fullFileHash, SERVER_HOST);
                 mySharedFiles.put(file.getName(), fileInfor);
 
                 notifyTracker(fileInfor, true);
@@ -637,7 +638,7 @@ public class PeerModel {
 
     private void cancelDownload(String savePath) {
         logInfo("Download process cancelled for file: " + savePath);
-        SwingUtilities.invokeLater(() ->
+        Platform.runLater(() ->
                 view.updateProgress("Quá trình tải file " + savePath + " đã bị hủy", 0, 0, 0));
 
         File sharedFile = new File(savePath);
@@ -731,7 +732,7 @@ public class PeerModel {
                 long downloadedChunks = progressCounter.incrementAndGet();
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
 
-                SwingUtilities.invokeLater(() ->
+                Platform.runLater(() ->
                         view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
