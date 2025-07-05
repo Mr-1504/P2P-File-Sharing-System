@@ -2,24 +2,32 @@ import controller.P2PController;
 import model.PeerModel;
 import model.TrackerModel;
 import view.P2PView;
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.stage.Stage;
 
-import javax.swing.*;
 import java.io.IOException;
 
+import static utils.Log.logInfo;
 
-public class Main {
+public class Main extends Application {
     public static void main(String[] args) {
+        // Đặt mã hóa file
         System.setProperty("file.encoding", "UTF-8");
 
-        // Khởi động Tracker
+//        // Khởi động Tracker trong một luồng riêng
 //        Thread trackerThread = new Thread(() -> {
 //            try {
 //                new TrackerModel().startTracker();
 //            } catch (IOException e) {
+//                Platform.runLater(() -> {
+//                    showErrorAlert("Lỗi khi khởi động tracker: " + e.getMessage());
+//                    e.printStackTrace();
+//                });
 //                throw new RuntimeException(e);
 //            }
 //        });
-//        trackerThread.setDaemon(true); // Đặt tracker thread là daemon để dừng khi đóng GUI
+//        trackerThread.setDaemon(true); // Đặt tracker thread là daemon để dừng khi đóng ứng dụng
 //        trackerThread.start();
 //
 //        // Đợi tracker khởi động
@@ -29,20 +37,45 @@ public class Main {
 //            e.printStackTrace();
 //        }
 
-        // Khởi động Peer với Swing UI
-        SwingUtilities.invokeLater(() -> {
-            try {
-                P2PView view = new P2PView();
-                PeerModel peerModel = new PeerModel(view);
-                P2PController controller = new P2PController(peerModel, view);
-                controller.start();
-            } catch (IOException e) {
-                JOptionPane.showMessageDialog(null, "Lỗi khi khởi động hệ thống: " + e.getMessage());
+        // Khởi động ứng dụng JavaFX
+        launch(args);
+    }
+
+    @Override
+    public void start(Stage primaryStage) {
+        try {
+            // Khởi tạo giao diện và các thành phần
+            P2PView view = new P2PView();
+            PeerModel peerModel = new PeerModel(view);
+            P2PController controller = new P2PController(peerModel, view);
+            controller.start();
+
+            // Hiển thị giao diện
+            view.show();
+            primaryStage.setOnCloseRequest(event -> {
+                logInfo("Close app.");
+                Platform.exit();
+                System.exit(0);
+            });
+
+        } catch (IOException e) {
+            Platform.runLater(() -> {
+                showErrorAlert("Lỗi khi khởi động hệ thống: " + e.getMessage());
                 e.printStackTrace();
-            } catch (Exception e) {
-                JOptionPane.showMessageDialog(null, "Lỗi không xác định: " + e.getMessage());
+            });
+        } catch (Exception e) {
+            Platform.runLater(() -> {
+                showErrorAlert("Lỗi không xác định: " + e.getMessage());
                 e.printStackTrace();
-            }
-        });
+            });
+        }
+    }
+
+    private static void showErrorAlert(String message) {
+        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.ERROR);
+        alert.setTitle("Lỗi");
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
     }
 }
