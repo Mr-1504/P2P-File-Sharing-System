@@ -1,4 +1,4 @@
-package utils;
+package main.java.utils;
 
 public interface LogTag {
     String S_ERROR = "ERROR";

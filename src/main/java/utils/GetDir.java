@@ -1,10 +1,10 @@
-package utils;
+package main.java.utils;
 
 import java.io.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
-import static utils.Log.logInfo;
+import static main.java.utils.Log.logInfo;
 
 public class GetDir {
     public static String getDir() {

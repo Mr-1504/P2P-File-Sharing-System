@@ -1,23 +1,18 @@
-package controller;
+package main.java.controller;
 
 import javafx.application.Platform;
 import javafx.scene.control.TableRow;
 import javafx.scene.input.MouseButton;
 import javafx.stage.Stage;
-import model.FileInfor;
-import model.PeerInfor;
-import model.PeerModel;
-import utils.GetDir;
-import utils.Infor;
-import utils.LogTag;
-import view.P2PView;
+import main.java.model.FileInfor;
+import main.java.model.PeerInfor;
+import main.java.model.PeerModel;
+import main.java.utils.GetDir;
+import main.java.utils.Infor;
+import main.java.utils.LogTag;
+import main.java.view.P2PView;
 
-import javax.swing.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.io.File;
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -28,8 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static utils.Log.logError;
-import static utils.Log.logInfo;
+import static main.java.utils.Log.logError;
+import static main.java.utils.Log.logInfo;
 
 
 public class P2PController {

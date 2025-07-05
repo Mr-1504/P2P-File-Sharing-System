@@ -1,4 +1,4 @@
-package utils;
+package main.java.utils;
 
 /**
  * This interface defines constants for server and tracker configurations.

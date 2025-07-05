@@ -1,6 +1,5 @@
-package model;
+package main.java.model;
 
-import java.util.List;
 import java.util.Objects;
 
 public class FileInfor extends FileBase {

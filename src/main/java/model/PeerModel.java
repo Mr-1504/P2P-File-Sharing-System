@@ -1,10 +1,9 @@
-package model;
+package main.java.model;
 
 import javafx.application.Platform;
-import utils.*;
-import view.P2PView;
+import main.java.utils.*;
+import main.java.view.P2PView;
 
-import javax.swing.*;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
@@ -17,8 +16,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static utils.Infor.SOCKET_TIMEOUT_MS;
-import static utils.Log.*;
+import static main.java.utils.Infor.SOCKET_TIMEOUT_MS;
+import static main.java.utils.Log.*;
 
 public class PeerModel {
     private final int CHUNK_SIZE = Infor.CHUNK_SIZE;

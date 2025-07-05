@@ -1,15 +1,15 @@
-package view;
+package main.java.view;
 
-import model.FileInfor;
-import utils.GetDir;
-import utils.LogTag;
+import main.java.model.FileInfor;
+import main.java.utils.LogTag;
+import javafx.animation.FadeTransition;
+import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.effect.DropShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
@@ -17,7 +17,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
-
+import javafx.util.Duration;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -41,6 +41,7 @@ public class P2PView {
     private final ProgressBar progressBar;
     private final Label progressLabel;
     private final Button cancelButton;
+    private final StackPane root; // Thay BorderPane bằng StackPane để hỗ trợ thông báo
     private Runnable cancelAction;
 
     public P2PView() {
@@ -51,11 +52,19 @@ public class P2PView {
         primaryStage.setTitle("Hệ thống chia sẻ file P2P - " + projectName);
 
         // Tạo bố cục chính
-        BorderPane root = new BorderPane();
+        root = new StackPane();
+        BorderPane mainLayout = new BorderPane(); // Bố cục chính vẫn là BorderPane
         Scene scene = new Scene(root, 900, 600);
-        File cssFile = new File(GetDir.getDir() + "\\resources\\style.css");
-        scene.getStylesheets().add(cssFile.toURI().toString());
+        try {
+            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        } catch (NullPointerException e) {
+            Platform.runLater(() -> {
+                appendLog("Lỗi: Không tìm thấy file style.css trong src/main/resources");
+                showAlert(Alert.AlertType.ERROR, "Lỗi CSS", "Không thể tải style.css. Kiểm tra src/main/resources/style.css.");
+            });
+        }
         primaryStage.setScene(scene);
+        root.getChildren().add(mainLayout); // Thêm BorderPane vào StackPane
 
         // Panel nhập liệu
         VBox inputPanel = new VBox(15);
@@ -68,7 +77,7 @@ public class P2PView {
         filePanel.setAlignment(Pos.CENTER_LEFT);
         Label chooseFileLabel = new Label("Chọn file để chia sẻ:");
         chooseFileLabel.getStyleClass().add("label");
-        chooseFileButton = new Button("Chọn file");
+        chooseFileButton = new Button("Chọn file", createIcon("/icons/upload.png", 20));
         chooseFileButton.getStyleClass().add("primary-button");
         filePanel.getChildren().addAll(chooseFileLabel, chooseFileButton);
         inputPanel.getChildren().add(filePanel);
@@ -90,10 +99,10 @@ public class P2PView {
         // Panel nút
         HBox buttonPanel = new HBox(10);
         buttonPanel.setAlignment(Pos.CENTER_LEFT);
-        searchButton = new Button("Tìm kiếm");
-        myFilesButton = new Button("File của tôi");
-        refreshButton = new Button("Làm mới");
-        allFilesButton = new Button("Tất cả file");
+        searchButton = new Button("Tìm kiếm", createIcon("/icons/search.png", 20));
+        myFilesButton = new Button("File của tôi", createIcon("/icons/folder.png", 20));
+        refreshButton = new Button("Làm mới", createIcon("/icons/refresh.png", 20));
+        allFilesButton = new Button("Tất cả file", createIcon("/icons/files.png", 20));
         searchButton.getStyleClass().add("primary-button");
         myFilesButton.getStyleClass().add("primary-button");
         refreshButton.getStyleClass().add("primary-button");
@@ -101,7 +110,7 @@ public class P2PView {
         buttonPanel.getChildren().addAll(searchButton, myFilesButton, allFilesButton, refreshButton);
         inputPanel.getChildren().add(buttonPanel);
 
-        root.setTop(inputPanel);
+        mainLayout.setTop(inputPanel);
 
         // Bảng hiển thị file
         fileTable = new TableView<>();
@@ -129,7 +138,7 @@ public class P2PView {
 
         fileTable.getColumns().addAll(nameColumn, sizeColumn, peerColumn);
         fileTable.setPlaceholder(new Label("Không có file nào được chia sẻ."));
-        root.setCenter(fileTable);
+        mainLayout.setCenter(fileTable);
 
         // Panel log và tiến trình
         VBox bottomPanel = new VBox(10);
@@ -147,7 +156,7 @@ public class P2PView {
         progressBar = new ProgressBar(0);
         progressBar.setPrefWidth(300);
         progressBar.getStyleClass().add("progress-bar");
-        cancelButton = new Button("Hủy");
+        cancelButton = new Button("Hủy", createIcon("/icons/cancel.png", 20));
         cancelButton.getStyleClass().add("secondary-button");
         cancelButton.setDisable(true);
         cancelButton.setOnAction(e -> {
@@ -169,11 +178,11 @@ public class P2PView {
         progressBarPanel.getChildren().addAll(progressBar, cancelButton);
         progressPanel.getChildren().addAll(progressLabel, progressBarPanel);
         bottomPanel.getChildren().add(progressPanel);
-        root.setBottom(bottomPanel);
+        mainLayout.setBottom(bottomPanel);
 
         // Context menu
         contextMenu = new ContextMenu();
-        menuItem = new MenuItem("Tải xuống");
+        menuItem = new MenuItem("Tải xuống", createIcon("/icons/download.png", 16));
         menuItem.getStyleClass().add("menu-item");
         contextMenu.getItems().add(menuItem);
         fileTable.setContextMenu(contextMenu);
@@ -190,6 +199,29 @@ public class P2PView {
             System.err.println("Không thể tải biểu tượng: " + path);
             return null;
         }
+    }
+
+    public void showNotification(String message) {
+        Platform.runLater(() -> {
+            Label notificationLabel = new Label(message);
+            notificationLabel.getStyleClass().add("notification");
+            notificationLabel.setWrapText(true);
+            notificationLabel.setMaxWidth(300);
+            notificationLabel.setMinHeight(60);
+            StackPane.setAlignment(notificationLabel, Pos.TOP_RIGHT);
+            StackPane.setMargin(notificationLabel, new Insets(20, 20, 0, 0));
+
+            // Thêm thông báo vào root
+            root.getChildren().add(notificationLabel);
+
+            // Tạo hiệu ứng fade-out
+            FadeTransition fadeOut = new FadeTransition(Duration.seconds(0.3), notificationLabel);
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+            fadeOut.setDelay(Duration.seconds(2.0)); // Chờ 2 giây trước khi fade
+            fadeOut.setOnFinished(e -> root.getChildren().remove(notificationLabel));
+            fadeOut.play();
+        });
     }
 
     public void show() {
@@ -217,6 +249,7 @@ public class P2PView {
                     String errorMessage = "Lỗi: primaryStage is null or not showing";
                     appendLog(errorMessage);
                     showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
+                    showNotification("Lỗi: Không thể mở FileChooser");
                 });
                 return LogTag.S_ERROR;
             }
@@ -225,7 +258,15 @@ public class P2PView {
             fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
             Platform.runLater(() -> appendLog("Hiển thị FileChooser..."));
             File selectedFile = fileChooser.showOpenDialog(primaryStage);
-            Platform.runLater(() -> appendLog("FileChooser trả về: " + (selectedFile != null ? selectedFile.getAbsolutePath() : "null")));
+            Platform.runLater(() -> {
+                String result = selectedFile != null ? selectedFile.getAbsolutePath() : "null";
+                appendLog("FileChooser trả về: " + result);
+                if (selectedFile != null) {
+                    showNotification("Đã chọn file: " + selectedFile.getName());
+                } else {
+                    showNotification("Đã hủy chọn file");
+                }
+            });
 
             if (selectedFile != null) {
                 try {
@@ -239,6 +280,7 @@ public class P2PView {
                         String errorMessage = "Lỗi khi sao chép hoặc chia sẻ file: " + e.getMessage();
                         appendLog(errorMessage);
                         showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
+                        showNotification("Lỗi: " + e.getMessage());
                     });
                     return LogTag.S_ERROR;
                 }
@@ -255,14 +297,17 @@ public class P2PView {
         if (saveFile != null) {
             try {
                 appendLog("Bắt đầu tải file: " + fileName + " vào " + saveFile.getAbsolutePath());
+                showNotification("Bắt đầu tải file: " + fileName);
                 return saveFile.getAbsolutePath();
             } catch (Exception e) {
                 String errorMessage = "Lỗi khi tải file: " + e.getMessage();
                 appendLog(errorMessage);
                 showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
+                showNotification("Lỗi: " + e.getMessage());
                 return LogTag.S_ERROR;
             }
         }
+        showNotification("Đã hủy tải file");
         return LogTag.S_CANCELLED;
     }
 
@@ -275,7 +320,10 @@ public class P2PView {
     }
 
     public void setSearchButtonListener(Runnable listener) {
-        searchButton.setOnAction(e -> listener.run());
+        searchButton.setOnAction(e -> {
+            listener.run();
+            showNotification("Đã tìm kiếm: " + fileNameField.getText());
+        });
     }
 
     public void setChooseDownload(Runnable listener) {
@@ -283,15 +331,24 @@ public class P2PView {
     }
 
     public void setMyFilesButtonListener(Runnable listener) {
-        myFilesButton.setOnAction(e -> listener.run());
+        myFilesButton.setOnAction(e -> {
+            listener.run();
+            showNotification("Hiển thị file của tôi");
+        });
     }
 
     public void setAllFilesButtonListener(Runnable listener) {
-        allFilesButton.setOnAction(e -> listener.run());
+        allFilesButton.setOnAction(e -> {
+            listener.run();
+            showNotification("Hiển thị tất cả file");
+        });
     }
 
     public void setRefreshButtonListener(Runnable listener) {
-        refreshButton.setOnAction(e -> listener.run());
+        refreshButton.setOnAction(e -> {
+            listener.run();
+            showNotification("Đã làm mới danh sách file");
+        });
     }
 
     public void setChooseFileButtonListener(Runnable listener) {
@@ -312,17 +369,21 @@ public class P2PView {
         progressBar.setPrefWidth(300);
         progressBar.setProgress(-1);
         progressBar.getStyleClass().add("progress-bar");
-        Button cancelButton = new Button("Hủy");
+        Button cancelButton = new Button("Hủy", createIcon("/icons/cancel.png", 20));
         cancelButton.getStyleClass().add("secondary-button");
         cancelButton.setOnAction(e -> {
             if (onCancel != null) onCancel.run();
             dialog.close();
+            showNotification("Đã hủy tác vụ");
         });
 
         panel.getChildren().addAll(label, progressBar, cancelButton);
         Scene scene = new Scene(panel);
-        File cssFile = new File(GetDir.getDir() + "\\resources\\style.css");
-        scene.getStylesheets().add(cssFile.toURI().toString());
+        try {
+            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        } catch (NullPointerException e) {
+            Platform.runLater(() -> appendLog("Lỗi: Không tìm thấy style.css cho dialog"));
+        }
         scene.setFill(null);
         dialog.setScene(scene);
         dialog.sizeToScene();
@@ -336,9 +397,11 @@ public class P2PView {
             if (sharedFileNames == null || sharedFileNames.isEmpty()) {
                 appendLog("Không có file nào được chia sẻ.");
                 fileTable.setPlaceholder(new Label("Không có file nào được chia sẻ."));
+                showNotification("Không có file nào được chia sẻ");
             } else {
                 fileTable.getItems().addAll(sharedFileNames);
                 appendLog("Đã cập nhật danh sách file chia sẻ.");
+                showNotification("Đã cập nhật danh sách file");
             }
         });
     }
@@ -347,6 +410,7 @@ public class P2PView {
         Platform.runLater(() -> {
             showAlert(isError ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION, isError ? "Lỗi" : "Thông báo", message);
             appendLog(message);
+            showNotification(isError ? "Lỗi: " + message : message);
         });
     }
 
@@ -369,6 +433,7 @@ public class P2PView {
         }).orElse(2);
 
         appendLog(message + " - Tùy chọn được chọn: " + (result == 0 ? "Tiếp tục" : result == 1 ? "Thay thế" : "Hủy"));
+        showNotification(message + " - " + (result == 0 ? "Tiếp tục" : result == 1 ? "Thay thế" : "Hủy"));
         return result;
     }
 
@@ -383,9 +448,11 @@ public class P2PView {
         ButtonType noButton = new ButtonType("Không", ButtonBar.ButtonData.CANCEL_CLOSE);
         alert.getButtonTypes().setAll(yesButton, noButton);
 
-        return alert.showAndWait()
+        boolean confirmed = alert.showAndWait()
                 .map(buttonType -> buttonType == yesButton)
                 .orElse(false);
+        showNotification(confirmed ? "Xác nhận: " + message : "Hủy: " + message);
+        return confirmed;
     }
 
     private void showAlert(Alert.AlertType type, String title, String message) {
@@ -418,6 +485,7 @@ public class P2PView {
                     file.getFileName().equals(fileName) &&
                             (file.getPeerInfor().getIp() + ":" + file.getPeerInfor().getPort()).equals(peerInfor));
             appendLog("Đã xóa file: " + fileName + " khỏi danh sách chia sẻ.");
+            showNotification("Đã xóa file: " + fileName);
         });
     }
 
@@ -437,6 +505,7 @@ public class P2PView {
                 cancelButton.setDisable(true);
                 progressLabel.setText("Hoàn tất: " + taskName);
                 appendLog("Hoàn tất: " + taskName);
+                showNotification("Hoàn tất: " + taskName);
             }
         });
     }
@@ -445,6 +514,7 @@ public class P2PView {
         Platform.runLater(() -> {
             progressBar.setProgress(0);
             progressLabel.setText("Sẵn sàng");
+            showNotification("Đã đặt lại tiến trình");
         });
     }
 
@@ -453,6 +523,7 @@ public class P2PView {
             progressLabel.setText("Lỗi: " + taskName + " - " + errorMessage);
             progressBar.setProgress(0);
             appendLog("Lỗi trong quá trình: " + taskName + " - " + errorMessage);
+            showNotification("Lỗi: " + errorMessage);
         });
     }
 }

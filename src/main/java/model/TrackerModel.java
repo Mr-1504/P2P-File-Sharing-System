@@ -1,6 +1,5 @@
-package model;
+package main.java.model;
 
-import java.io.FileReader;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -10,12 +9,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 
-import utils.Infor;
+import main.java.utils.Infor;
 
-import static utils.Log.*;
+import static main.java.utils.Log.*;
 
-import utils.LogTag;
-import utils.RequestInfor;
+import main.java.utils.LogTag;
+import main.java.utils.RequestInfor;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<String> knownPeers;

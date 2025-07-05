@@ -1,4 +1,4 @@
-package utils;
+package main.java.utils;
 
 public class Log {
     public static void logInfo(String message) {

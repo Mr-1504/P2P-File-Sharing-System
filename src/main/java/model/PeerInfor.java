@@ -1,8 +1,8 @@
-package model;
+package main.java.model;
 
 import java.util.Objects;
 
-import static utils.Log.logError;
+import static main.java.utils.Log.logError;
 
 public class PeerInfor {
     private String ip;

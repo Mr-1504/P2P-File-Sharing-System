@@ -1,14 +1,15 @@
-import controller.P2PController;
-import model.PeerModel;
-import model.TrackerModel;
-import view.P2PView;
+package main.java.main;
+
+import main.java.controller.P2PController;
+import main.java.model.PeerModel;
+import main.java.view.P2PView;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.io.IOException;
 
-import static utils.Log.logInfo;
+import static main.java.utils.Log.logInfo;
 
 public class Main extends Application {
     public static void main(String[] args) {
