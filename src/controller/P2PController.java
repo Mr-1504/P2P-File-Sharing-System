@@ -187,7 +187,7 @@ public class P2PController {
                 int result = peerModel.refreshSharedFileNames();
                 handleRefreshResult(result);
             } catch (Exception e) {
-                logError("Lỗi khi làm mới danh sách: " + e.getMessage(), e);
+                logError("Error refreshing file list: " + e.getMessage(), e);
             }
         });
     }

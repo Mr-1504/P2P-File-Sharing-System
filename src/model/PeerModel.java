@@ -29,7 +29,7 @@ public class PeerModel {
     private final ExecutorService executor;
     private final CopyOnWriteArrayList<SocketChannel> openChannels = new CopyOnWriteArrayList<>();
     private final List<Future<Boolean>> futures = new ArrayList<>();
-    private final boolean isRunning;
+    private boolean isRunning;
     private final P2PView view;
     private volatile boolean cancelled = false;
 
@@ -55,20 +55,22 @@ public class PeerModel {
         sharedFileNames = new HashSet<>();
         executor = Executors.newFixedThreadPool(8);
         selector = Selector.open();
+        initializeServerSocket();
+        isRunning = true;
+        logInfo("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
+    }
+
+    public void initializeServerSocket() throws IOException {
         ServerSocketChannel serverSocket = ServerSocketChannel.open();
         serverSocket.bind(new InetSocketAddress(SERVER_HOST.getIp(), SERVER_HOST.getPort()));
         serverSocket.configureBlocking(false);
         serverSocket.register(selector, SelectionKey.OP_ACCEPT);
-        isRunning = true;
-        logInfor("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
-    }
-
-    private void logInfor(String s) {
+        logInfo("Server socket created on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
     }
 
     public void startServer() {
         executor.submit(() -> {
-            logInfor("Starting TCP server loop...");
+            logInfo("Starting TCP server loop...");
             try {
                 while (isRunning) {
                     selector.select();
@@ -99,23 +101,51 @@ public class PeerModel {
     }
 
     private void shutdown() {
+        logInfo("Shutting down TCP server...");
+        isRunning = false;
+        try {
+            selector.close();
+            logInfo("Selector closed.");
+        } catch (IOException e) {
+            logError("Error closing selector: " + e.getMessage(), e);
+        }
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+                logInfo("Executor service forcefully shut down.");
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+            logError("Executor service interrupted during shutdown: " + e.getMessage(), e);
+        }
+        logInfo("TCP server shutdown complete.");
     }
 
     private void closeChannel(SelectableChannel channel) {
+        if (channel != null && channel.isOpen()) {
+            try {
+                channel.close();
+                logInfo("Closed channel: " + channel);
+            } catch (IOException e) {
+                logError("Error closing channel: " + channel, e);
+            }
+        }
     }
 
     public void startUDPServer() {
         executor.submit(() -> {
             try (DatagramSocket socket = new DatagramSocket(SERVER_HOST.getPort())) {
                 byte[] buffer = new byte[1024];
-                logInfor("UDP server started on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
+                logInfo("UDP server started on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
 
                 while (isRunning) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
 
                     String request = new String(packet.getData(), 0, packet.getLength());
-                    logInfor("Received UDP request: " + request);
+                    logInfo("Received UDP request: " + request);
                     if (request.equals(RequestInfor.PING)) {
                         sendPongResponse(socket, packet);
                     }
@@ -130,7 +160,7 @@ public class PeerModel {
         byte[] pong = RequestInfor.PONG.getBytes();
         DatagramPacket resonsePacket = new DatagramPacket(pong, pong.length, packet.getAddress(), packet.getPort());
         socket.send(resonsePacket);
-        logInfor("Pong response sent to " + packet.getAddress() + ":" + packet.getPort());
+        logInfo("Pong response sent to " + packet.getAddress() + ":" + packet.getPort());
     }
 
     private void handleRead(SelectionKey key) {
@@ -162,7 +192,7 @@ public class PeerModel {
                 buffer.flip();
                 String chunk = new String(buffer.array(), 0, buffer.limit());
                 requestBuilder.append(chunk);
-                logInfo("Current request: [" + requestBuilder.toString() + "]");
+                logInfo("Current request: [" + requestBuilder + "]");
                 if (requestBuilder.toString().contains("\n")) {
                     logInfo("Request complete, breaking loop");
                     break;
@@ -194,15 +224,14 @@ public class PeerModel {
                 logInfo("Unknown request: [" + request + "]");
             }
         } catch (IOException | InterruptedException e) {
-            System.err.println("Error handling read: " + e.getMessage());
-            e.printStackTrace();
+            logError("Error handling read: " + e.getMessage(), e);
         } finally {
             try {
                 client.close();
                 key.cancel();
                 logInfo("Closed client connection: " + client.getLocalAddress() + " -> " + client.getRemoteAddress());
             } catch (IOException e) {
-                System.err.println("Error closing client: " + e.getMessage());
+                logError("Error closing client: " + e.getMessage(), e);
             }
         }
     }
@@ -220,8 +249,7 @@ public class PeerModel {
             }
             logInfo("Sent file information for: " + fileName + ", response: [" + response.trim() + "]");
         } catch (IOException e) {
-            System.err.println("Error sending file info: " + e.getMessage());
-            e.printStackTrace();
+            logError("Error sending file info: " + e.getMessage(), e);
         }
     }
 
@@ -295,17 +323,21 @@ public class PeerModel {
                     return LogTag.I_ERROR;
                 }
             } catch (ConnectException e) {
-                System.err.println("Lỗi kết nối tracker, thử lại... (" + (i + 1) + ")");
+                logError("Tracker connection failed: " + e.getMessage(), e);
                 try {
-                    Thread.sleep(1000); // Đợi 1 giây trước khi thử lại
+                    Thread.sleep(1000);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
             } catch (IOException e) {
-                System.err.println("Lỗi khi đăng ký với tracker: " + e.getMessage());
+                logError("Error connecting to tracker: " + e.getMessage(), e);
+                return LogTag.I_ERROR;
+            } catch (Exception e) {
+                logError("Unexpected error during tracker registration: " + e.getMessage(), e);
+                return LogTag.I_ERROR;
             }
         }
-        System.err.println("Không thể kết nối với tracker sau 3 lần thử.");
+        logError("Cannot connect to tracker after multiple attempts.", null);
         return LogTag.I_ERROR;
     }
 
@@ -324,9 +356,8 @@ public class PeerModel {
                 while ((bytesRead = is.read(buffer)) != -1) {
                     if (cancelled) {
                         logInfo("File sharing cancelled by user: " + file.getName());
-                        SwingUtilities.invokeLater(() -> {
-                            view.updateProgress("Chia sẻ file " + file.getName() + " đã bị hủy", 0, 0, 0);
-                        });
+                        SwingUtilities.invokeLater(() ->
+                                view.updateProgress("Chia sẻ file " + file.getName() + " đã bị hủy", 0, 0, 0));
 
                         File sharedFile = new File(GetDir.getShareDir(file.getName()));
                         if (sharedFile.exists() && sharedFile.delete()) {
@@ -336,7 +367,7 @@ public class PeerModel {
                         }
 
                         cancelled = false;
-                        return false;
+                        return Boolean.FALSE;
                     }
 
                     md.update(buffer, 0, bytesRead);
@@ -344,9 +375,8 @@ public class PeerModel {
 
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
-                    SwingUtilities.invokeLater(() -> {
-                        view.updateProgress("Đang chia sẻ file " + file.getName(), progress, finalReadBytes, totalBytes);
-                    });
+                    SwingUtilities.invokeLater(() ->
+                            view.updateProgress("Đang chia sẻ file " + file.getName(), progress, finalReadBytes, totalBytes));
                 }
 
                 String fullFileHash = bytesToHex(md.digest());
@@ -356,10 +386,10 @@ public class PeerModel {
                 mySharedFiles.put(file.getName(), fileInfor);
 
                 notifyTracker(fileInfor, true);
-                return true;
+                return Boolean.TRUE;
 
             } catch (IOException | NoSuchAlgorithmException e) {
-                return false;
+                return Boolean.FALSE;
             }
         });
     }
@@ -420,12 +450,12 @@ public class PeerModel {
     }
 
     private String bytesToHex(byte[] digest) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : digest) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
-    }
+    StringBuilder sb = new StringBuilder();
+    for (byte b : digest)
+        sb.append(String.format("%02x", b));
+    return sb.toString();
+}
+
 
     public Future<Integer> downloadFile(FileInfor fileInfor, String savePath, List<PeerInfor> peers) {
         return executor.submit(() -> {
@@ -586,17 +616,16 @@ public class PeerModel {
     }
 
     private void cancelDownload(String savePath) {
-        logInfo("Tải xuống bị hủy bởi người dùng.");
-        SwingUtilities.invokeLater(() -> {
-            view.updateProgress("Quá trình tải file " + savePath + " đã bị hủy", 0, 0, 0);
-        });
+        logInfo("Download process cancelled for file: " + savePath);
+        SwingUtilities.invokeLater(() ->
+                view.updateProgress("Quá trình tải file " + savePath + " đã bị hủy", 0, 0, 0));
 
         File sharedFile = new File(savePath);
         Path path = sharedFile.toPath();
         if (Files.exists(path) && sharedFile.delete()) {
-            logInfo("Đã xóa file tải xuống: " + sharedFile.getAbsolutePath());
+            logInfo("Deleted file: " + sharedFile.getAbsolutePath());
         } else {
-            logInfo("Không thể xóa file chia sẻ: " + sharedFile.getAbsolutePath());
+            logInfo("Cannot delete file: " + sharedFile.getAbsolutePath() + ". It may not exist or is not writable.");
         }
     }
 
@@ -682,9 +711,8 @@ public class PeerModel {
                 long downloadedChunks = progressCounter.incrementAndGet();
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
 
-                SwingUtilities.invokeLater(() -> {
-                    view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize());
-                });
+                SwingUtilities.invokeLater(() ->
+                        view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
                 return true;
@@ -895,17 +923,17 @@ public class PeerModel {
         String path = GetDir.getDir() + "\\shared_files\\";
         File sharedDir = new File(path);
         if (!sharedDir.exists() || !sharedDir.isDirectory()) {
-            logInfo("Thư mục chia sẻ không tồn tại hoặc không phải là thư mục: " + sharedDir.getAbsolutePath());
+            logInfo("Shared directory does not exist or is not a directory: " + path);
             return;
         }
 
         File[] files = sharedDir.listFiles();
         if (files == null || files.length == 0) {
-            logInfo("Không có file nào được chia sẻ trong thư mục: " + sharedDir.getAbsolutePath());
+            logInfo("No shared files found in directory: " + sharedDir.getAbsolutePath());
             return;
         }
 
-        logInfo("Danh sách file đang chia sẻ:");
+        logInfo("List of shared files in directory: " + sharedDir.getAbsolutePath());
         for (File file : files) {
             if (file.isFile()) {
                 String fileName = file.getName();
@@ -962,10 +990,10 @@ public class PeerModel {
                     PeerInfor peerInfor = new PeerInfor(fileParts[3], Integer.parseInt(fileParts[4]));
                     sharedFileNames.add(new FileInfor(fileName, fileSize, fileHash, peerInfor));
                 }
-                logInfo("Đã làm mới danh sách file chia sẻ từ tracker. Tổng số file: " + sharedFileNames.size());
+                logInfo("Refreshed shared file names from tracker: " + sharedFileNames.size() + " files found.");
                 return LogTag.I_SUCCESS;
             }
-            logInfo("Tracker không trả về phản hồi hợp lệ: " + response);
+            logInfo("Invalid response from tracker: " + response);
             return LogTag.I_INVALID;
         } catch (Exception e) {
             e.printStackTrace();
@@ -978,7 +1006,6 @@ public class PeerModel {
     }
 
     public void setSharedFileNames(Set<FileInfor> sharedFileNames) {
-        ;
         this.sharedFileNames = sharedFileNames;
     }
 
@@ -998,16 +1025,15 @@ public class PeerModel {
             String filePath = GetDir.getDir() + "\\shared_files\\" + fileName;
             File file = new File(filePath);
             if (file.exists() && file.delete()) {
-                logInfo("Đã xóa file khỏi thư mục chia sẻ: " + filePath);
+                logInfo("Removed shared file: " + filePath);
             } else {
-                logInfo("Không thể xóa file khỏi thư mục chia sẻ: " + filePath);
+                logInfo("Failed to remove shared file: " + filePath);
             }
 
-            logInfo("Đã dừng chia sẻ file: " + fileName);
-            int result = notifyTracker(fileInfor, false);
-            return result;
+            logInfo("Stopped sharing file: " + fileName);
+            return notifyTracker(fileInfor, false);
         } else {
-            logInfo("Không tìm thấy file để dừng chia sẻ: " + fileName);
+            logInfo("File not found in shared files: " + fileName);
             return LogTag.I_NOT_FOUND;
         }
     }
