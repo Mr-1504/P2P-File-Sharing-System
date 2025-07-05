@@ -450,16 +450,17 @@ public class PeerModel {
     }
 
     private String bytesToHex(byte[] digest) {
-    StringBuilder sb = new StringBuilder();
-    for (byte b : digest)
-        sb.append(String.format("%02x", b));
-    return sb.toString();
-}
+        StringBuilder sb = new StringBuilder();
+        for (byte b : digest)
+            sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
 
 
     public Future<Integer> downloadFile(FileInfor fileInfor, String savePath, List<PeerInfor> peers) {
         return executor.submit(() -> {
             try {
+//                PriorityQueue<PeerInfor> peer
                 File saveFile = new File(savePath);
                 if (!saveFile.getParentFile().exists()) {
                     String errorMessage = "Lỗi: Thư mục lưu không tồn tại: " + saveFile.getParent();
@@ -487,8 +488,27 @@ public class PeerModel {
                                 return LogTag.I_CANCELLED;
                             }
                         }
-                        PeerInfor peer = peers.get(i % peers.size());
-                        futures.add(executor.submit(() -> downloadChunk(peer, fileInfor.getFileHash(), chunkIndex, raf, fileInfor, progressCounter)));
+                        int retryCount = 0;
+                        final int MAX_RETRY = 100; // thử 100 lần (tức 5 giây)
+
+                        PeerInfor peer = null;
+                        do {
+                            if (retryCount++ >= MAX_RETRY) {
+                                logInfo("Timeout while waiting for available peer for chunk " + chunkIndex);
+                                return LogTag.I_ERROR;
+                            }
+                            logInfo("Waiting for available peer...");
+                            Thread.sleep(50);
+                            if (cancelled) {
+                                return LogTag.I_CANCELLED;
+                            }
+                            peer = Collections.min(peers, Comparator.comparingInt(PeerInfor::getTaskForDownload));
+                        } while (!peer.isAvailableForDownload());
+
+                        logInfo("Selected peer for download: " + peer.getIp() + ":" + peer.getPort() + ", taskcount: " + peer.getTaskForDownload());
+                        peer.addTaskForDownload();
+                        PeerInfor finalPeer = peer;
+                        futures.add(executor.submit(() -> downloadChunk(finalPeer, fileInfor.getFileHash(), chunkIndex, raf, fileInfor, progressCounter)));
                     }
                     boolean allChunksDownloaded = true;
                     for (Future<Boolean> future : futures) {
@@ -715,6 +735,7 @@ public class PeerModel {
                         view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
+                peer.removeTaskForDownload();
                 return true;
 
             } catch (IOException | InterruptedException e) {
