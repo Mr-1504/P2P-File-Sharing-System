@@ -1,193 +1,265 @@
-
 package view;
 
-import model.FileBase;
 import model.FileInfor;
+import utils.GetDir;
 import utils.LogTag;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.effect.DropShadow;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
-import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
-public class P2PView extends JFrame {
-    private final JTextArea logArea;
-    private final JTextField fileNameField;
-    private final JPopupMenu popupMenu;
-    private final JMenuItem menuItem;
-    private final JTable fileTable;
-    private final DefaultTableModel tableModel;
-    private final JButton chooseFileButton;
-    private final JButton searchButton;
-    private final JButton myFilesButton;
-    private final JButton refreshButton;
-    private final JButton allFilesButton;
-    private final JProgressBar progressBar;
-    private final JLabel progressLabel;
-    private final JButton cancelButton;
+public class P2PView {
+    private final Stage primaryStage;
+    private final TextArea logArea;
+    private final TextField fileNameField;
+    private final ContextMenu contextMenu;
+    private final MenuItem menuItem;
+    private final TableView<FileInfor> fileTable;
+    private final Button chooseFileButton;
+    private final Button searchButton;
+    private final Button myFilesButton;
+    private final Button refreshButton;
+    private final Button allFilesButton;
+    private final ProgressBar progressBar;
+    private final Label progressLabel;
+    private final Button cancelButton;
     private Runnable cancelAction;
 
     public P2PView() {
+        primaryStage = new Stage();
         String path = System.getProperty("user.dir");
         File file = new File(path);
         String projectName = file.getName();
-        setTitle("Hệ thống chia sẻ file P2P - " + projectName);
-        setSize(800, 500);
-        setLocationRelativeTo(null);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
+        primaryStage.setTitle("Hệ thống chia sẻ file P2P - " + projectName);
+
+        // Tạo bố cục chính
+        BorderPane root = new BorderPane();
+        Scene scene = new Scene(root, 900, 600);
+        File cssFile = new File(GetDir.getDir() + "\\resources\\style.css");
+        scene.getStylesheets().add(cssFile.toURI().toString());
+        primaryStage.setScene(scene);
 
         // Panel nhập liệu
-        JPanel inputPanel = new JPanel();
-        inputPanel.setLayout(new BoxLayout(inputPanel, BoxLayout.Y_AXIS));
-        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        VBox inputPanel = new VBox(15);
+        inputPanel.setPadding(new Insets(20));
+        inputPanel.setAlignment(Pos.CENTER_LEFT);
+        inputPanel.getStyleClass().add("input-panel");
 
-        // Panel cho chọn file
-        JPanel filePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        filePanel.add(new JLabel("Chọn file để chia sẻ:"));
-        chooseFileButton = new JButton("Chọn file");
-        filePanel.add(chooseFileButton);
-        inputPanel.add(filePanel);
+        // Panel chọn file
+        HBox filePanel = new HBox(10);
+        filePanel.setAlignment(Pos.CENTER_LEFT);
+        Label chooseFileLabel = new Label("Chọn file để chia sẻ:");
+        chooseFileLabel.getStyleClass().add("label");
+        chooseFileButton = new Button("Chọn file");
+        chooseFileButton.getStyleClass().add("primary-button");
+        filePanel.getChildren().addAll(chooseFileLabel, chooseFileButton);
+        inputPanel.getChildren().add(filePanel);
 
-        // Panel cho tìm kiếm
-        JPanel searchPanel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 1, 5, 5);
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        searchPanel.add(new JLabel("Tên file để tìm kiếm:"), gbc);
-        gbc.gridx = 1;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        fileNameField = new JTextField(30);
-        fileNameField.setToolTipText("Nhập tên file để tìm kiếm trong hệ thống P2P");
-        searchPanel.add(fileNameField, gbc);
-        inputPanel.add(searchPanel);
+        // Panel tìm kiếm
+        GridPane searchPanel = new GridPane();
+        searchPanel.setHgap(10);
+        searchPanel.setVgap(10);
+        Label searchLabel = new Label("Tìm kiếm file:");
+        searchLabel.getStyleClass().add("label");
+        fileNameField = new TextField();
+        fileNameField.setPromptText("Nhập tên file để tìm kiếm...");
+        fileNameField.setPrefWidth(400);
+        fileNameField.getStyleClass().add("text-field");
+        searchPanel.add(searchLabel, 0, 0);
+        searchPanel.add(fileNameField, 1, 0);
+        inputPanel.getChildren().add(searchPanel);
 
-        // Panel cho các nút
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        searchButton = new JButton("Tìm kiếm");
-        myFilesButton = new JButton("File của tôi");
-        refreshButton = new JButton("Làm mới");
-        allFilesButton = new JButton("Tất cả file");
-        buttonPanel.add(searchButton);
-        buttonPanel.add(myFilesButton);
-        buttonPanel.add(allFilesButton);
-        buttonPanel.add(refreshButton);
-        inputPanel.add(buttonPanel);
+        // Panel nút
+        HBox buttonPanel = new HBox(10);
+        buttonPanel.setAlignment(Pos.CENTER_LEFT);
+        searchButton = new Button("Tìm kiếm");
+        myFilesButton = new Button("File của tôi");
+        refreshButton = new Button("Làm mới");
+        allFilesButton = new Button("Tất cả file");
+        searchButton.getStyleClass().add("primary-button");
+        myFilesButton.getStyleClass().add("primary-button");
+        refreshButton.getStyleClass().add("primary-button");
+        allFilesButton.getStyleClass().add("primary-button");
+        buttonPanel.getChildren().addAll(searchButton, myFilesButton, allFilesButton, refreshButton);
+        inputPanel.getChildren().add(buttonPanel);
 
-        add(inputPanel, BorderLayout.NORTH);
+        root.setTop(inputPanel);
 
-        // Bảng hiển thị file và peer
-        tableModel = new DefaultTableModel(new String[]{"Tên file", "Kích thước", "Peers"}, 0);
-        tableModel.addRow(new Object[]{"Đang tải danh sách chia sẻ...", "", ""});
-        fileTable = new JTable(tableModel);
-        fileTable.setRowHeight(30);
-        fileTable.setGridColor(Color.LIGHT_GRAY);
-        fileTable.setShowGrid(true);
-        fileTable.getColumnModel().getColumn(0).setPreferredWidth(200);
-        fileTable.getColumnModel().getColumn(1).setPreferredWidth(100);
-        fileTable.getColumnModel().getColumn(2).setPreferredWidth(150);
-        fileTable.setToolTipText("Danh sách các file chia sẻ trong hệ thống P2P");
-        JScrollPane tableScroll = new JScrollPane(fileTable);
-        add(tableScroll, BorderLayout.CENTER);
+        // Bảng hiển thị file
+        fileTable = new TableView<>();
+        fileTable.getStyleClass().add("file-table");
+        TableColumn<FileInfor, String> nameColumn = new TableColumn<>("Tên file");
+        nameColumn.setCellValueFactory(new PropertyValueFactory<>("fileName"));
+        nameColumn.setPrefWidth(300);
 
-        // Panel cho log và thanh tiến trình
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        logArea = new JTextArea(5, 30);
+        TableColumn<FileInfor, String> sizeColumn = new TableColumn<>("Kích thước");
+        sizeColumn.setCellValueFactory(cellData -> {
+            long size = cellData.getValue().getFileSize();
+            double sizeMB = size / (1024.0 * 1024.0);
+            String formatSize = sizeMB < 1 ?
+                    String.format("%.2f KB", size / 1024.0) :
+                    String.format("%.2f MB", sizeMB);
+            return new javafx.beans.property.SimpleStringProperty(formatSize);
+        });
+        sizeColumn.setPrefWidth(120);
+
+        TableColumn<FileInfor, String> peerColumn = new TableColumn<>("Peers");
+        peerColumn.setCellValueFactory(cellData ->
+                new javafx.beans.property.SimpleStringProperty(
+                        cellData.getValue().getPeerInfor().getIp() + ":" + cellData.getValue().getPeerInfor().getPort()));
+        peerColumn.setPrefWidth(200);
+
+        fileTable.getColumns().addAll(nameColumn, sizeColumn, peerColumn);
+        fileTable.setPlaceholder(new Label("Không có file nào được chia sẻ."));
+        root.setCenter(fileTable);
+
+        // Panel log và tiến trình
+        VBox bottomPanel = new VBox(10);
+        bottomPanel.setPadding(new Insets(15));
+        bottomPanel.getStyleClass().add("bottom-panel");
+        logArea = new TextArea();
         logArea.setEditable(false);
-        JScrollPane logScroll = new JScrollPane(logArea);
-        bottomPanel.add(logScroll, BorderLayout.CENTER);
+        logArea.setPrefRowCount(6);
+        logArea.getStyleClass().add("log-area");
+        bottomPanel.getChildren().add(logArea);
 
-        JPanel progressPanel = new JPanel(new BorderLayout());
-        progressLabel = new JLabel("Sẵn sàng");
-        progressBar = new JProgressBar(0, 100);
-        progressBar.setStringPainted(true);
-        progressBar.setValue(0);
-        cancelButton = new JButton("Hủy");
-        cancelButton.setEnabled(false);
-        cancelButton.addActionListener(e -> {
-            boolean isCancelled = JOptionPane.showConfirmDialog(
-                    this, "Bạn có chắc chắn muốn hủy tác vụ hiện tại?", "Xác nhận hủy",
-                    JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION;
-            if (isCancelled && cancelAction != null) {
+        VBox progressPanel = new VBox(8);
+        progressLabel = new Label("Sẵn sàng");
+        progressLabel.getStyleClass().add("label");
+        progressBar = new ProgressBar(0);
+        progressBar.setPrefWidth(300);
+        progressBar.getStyleClass().add("progress-bar");
+        cancelButton = new Button("Hủy");
+        cancelButton.getStyleClass().add("secondary-button");
+        cancelButton.setDisable(true);
+        cancelButton.setOnAction(e -> {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Xác nhận hủy");
+            alert.setHeaderText("Bạn có chắc chắn muốn hủy tác vụ hiện tại?");
+            alert.getButtonTypes().setAll(
+                    new ButtonType("Có", ButtonBar.ButtonData.OK_DONE),
+                    new ButtonType("Không", ButtonBar.ButtonData.CANCEL_CLOSE));
+            if (alert.showAndWait().filter(b -> b.getButtonData() == ButtonBar.ButtonData.OK_DONE).isPresent() && cancelAction != null) {
                 cancelAction.run();
-                cancelButton.setEnabled(false);
+                cancelButton.setDisable(true);
                 progressError("Tác vụ", "Đã hủy tác vụ");
             }
         });
 
-        cancelButton.setEnabled(false);
+        HBox progressBarPanel = new HBox(10);
+        progressBarPanel.setAlignment(Pos.CENTER_LEFT);
+        progressBarPanel.getChildren().addAll(progressBar, cancelButton);
+        progressPanel.getChildren().addAll(progressLabel, progressBarPanel);
+        bottomPanel.getChildren().add(progressPanel);
+        root.setBottom(bottomPanel);
 
-        JPanel progressBarPanel = new JPanel(new BorderLayout());
-        progressBarPanel.add(progressBar, BorderLayout.CENTER);
-        progressBarPanel.add(cancelButton, BorderLayout.EAST);
-        progressPanel.add(progressLabel, BorderLayout.NORTH);
-        progressPanel.add(progressBarPanel, BorderLayout.CENTER);
-        progressPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
-        bottomPanel.add(progressPanel, BorderLayout.SOUTH);
+        // Context menu
+        contextMenu = new ContextMenu();
+        menuItem = new MenuItem("Tải xuống");
+        menuItem.getStyleClass().add("menu-item");
+        contextMenu.getItems().add(menuItem);
+        fileTable.setContextMenu(contextMenu);
+    }
 
-        add(bottomPanel, BorderLayout.SOUTH);
+    private ImageView createIcon(String path, int size) {
+        try {
+            Image image = new Image(getClass().getResourceAsStream(path));
+            ImageView imageView = new ImageView(image);
+            imageView.setFitWidth(size);
+            imageView.setFitHeight(size);
+            return imageView;
+        } catch (Exception e) {
+            System.err.println("Không thể tải biểu tượng: " + path);
+            return null;
+        }
+    }
 
-        // Menu
-        popupMenu = new JPopupMenu();
-        menuItem = new JMenuItem("Tải xuống");
-        popupMenu.add(menuItem);
+    public void show() {
+        primaryStage.show();
     }
 
     public void setCancelAction(Runnable action) {
         this.cancelAction = action;
-        cancelButton.setEnabled(action != null); // Kích hoạt nút nếu có hành động
+        cancelButton.setDisable(action == null);
     }
 
     public void setCancelButtonEnabled(boolean enabled) {
-        cancelButton.setEnabled(enabled);
+        cancelButton.setDisable(!enabled);
     }
 
-    public String openFileChooserForShare() {
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
-        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        int result = fileChooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            String selectedFile = fileChooser.getSelectedFile().getAbsolutePath();
-            try {
-                Path sharedDir = Paths.get("shared_files");
-                if (!Files.exists(sharedDir)) {
-                    Files.createDirectories(sharedDir);
-                }
-                return selectedFile;
-            } catch (IOException e) {
-                String errorMessage = "Lỗi khi sao chép hoặc chia sẻ file: " + e.getMessage();
-                appendLog(errorMessage);
-                JOptionPane.showMessageDialog(this, errorMessage, "Lỗi", JOptionPane.ERROR_MESSAGE);
+    public void clearTable() {
+        fileTable.getItems().clear();
+    }
+
+    public CompletableFuture<String> openFileChooserForShare() {
+        return CompletableFuture.supplyAsync(() -> {
+            Platform.runLater(() -> appendLog("Bắt đầu mở FileChooser..."));
+            if (primaryStage == null || !primaryStage.isShowing()) {
+                Platform.runLater(() -> {
+                    String errorMessage = "Lỗi: primaryStage is null or not showing";
+                    appendLog(errorMessage);
+                    showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
+                });
                 return LogTag.S_ERROR;
             }
-        }
-        return LogTag.S_CANCELLED;
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
+            Platform.runLater(() -> appendLog("Hiển thị FileChooser..."));
+            File selectedFile = fileChooser.showOpenDialog(primaryStage);
+            Platform.runLater(() -> appendLog("FileChooser trả về: " + (selectedFile != null ? selectedFile.getAbsolutePath() : "null")));
+
+            if (selectedFile != null) {
+                try {
+                    Path sharedDir = Paths.get("shared_files");
+                    if (!Files.exists(sharedDir)) {
+                        Files.createDirectories(sharedDir);
+                    }
+                    return selectedFile.getAbsolutePath();
+                } catch (IOException e) {
+                    Platform.runLater(() -> {
+                        String errorMessage = "Lỗi khi sao chép hoặc chia sẻ file: " + e.getMessage();
+                        appendLog(errorMessage);
+                        showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
+                    });
+                    return LogTag.S_ERROR;
+                }
+            }
+            return LogTag.S_CANCELLED;
+        }, Platform::runLater);
     }
 
     public String openFileChooserForDownload(String fileName) {
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
-        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        fileChooser.setSelectedFile(new File(fileName));
-        int result = fileChooser.showSaveDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            File saveFile = fileChooser.getSelectedFile();
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
+        fileChooser.setInitialFileName(fileName);
+        File saveFile = fileChooser.showSaveDialog(primaryStage);
+        if (saveFile != null) {
             try {
                 appendLog("Bắt đầu tải file: " + fileName + " vào " + saveFile.getAbsolutePath());
                 return saveFile.getAbsolutePath();
             } catch (Exception e) {
                 String errorMessage = "Lỗi khi tải file: " + e.getMessage();
                 appendLog(errorMessage);
-                JOptionPane.showMessageDialog(this, errorMessage, "Lỗi", JOptionPane.ERROR_MESSAGE);
+                showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
                 return LogTag.S_ERROR;
             }
         }
@@ -195,8 +267,7 @@ public class P2PView extends JFrame {
     }
 
     public void appendLog(String message) {
-        logArea.append(message + "\n");
-        logArea.setCaretPosition(logArea.getDocument().getLength());
+        Platform.runLater(() -> logArea.appendText(message + "\n"));
     }
 
     public String getFileName() {
@@ -204,151 +275,154 @@ public class P2PView extends JFrame {
     }
 
     public void setSearchButtonListener(Runnable listener) {
-        searchButton.addActionListener(e -> listener.run());
+        searchButton.setOnAction(e -> listener.run());
     }
 
     public void setChooseDownload(Runnable listener) {
-        menuItem.addActionListener(e -> listener.run());
+        menuItem.setOnAction(e -> listener.run());
     }
 
     public void setMyFilesButtonListener(Runnable listener) {
-        myFilesButton.addActionListener(e -> listener.run());
+        myFilesButton.setOnAction(e -> listener.run());
     }
 
     public void setAllFilesButtonListener(Runnable listener) {
-        allFilesButton.addActionListener(e -> listener.run());
+        allFilesButton.setOnAction(e -> listener.run());
     }
 
     public void setRefreshButtonListener(Runnable listener) {
-        refreshButton.addActionListener(e -> listener.run());
+        refreshButton.setOnAction(e -> listener.run());
     }
 
     public void setChooseFileButtonListener(Runnable listener) {
-        chooseFileButton.addActionListener(e -> listener.run());
+        chooseFileButton.setOnAction(e -> listener.run());
     }
 
-    public JDialog createLoadingDialog(String message, Runnable onCancel) {
-        JDialog dialog = new JDialog(this, "Đang xử lý", true);
-        dialog.setUndecorated(true);
+    public Stage createLoadingDialog(String message, Runnable onCancel) {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.APPLICATION_MODAL);
+        dialog.initStyle(StageStyle.TRANSPARENT);
 
-        JLabel label = new JLabel("<html><body style='width: 250px'>" + message + "</body></html>");
-        label.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
-
-        JProgressBar progressBar = new JProgressBar();
-        progressBar.setIndeterminate(true);
-
-        JButton cancelButton = new JButton("Huỷ");
-        cancelButton.addActionListener(e -> {
+        VBox panel = new VBox(15);
+        panel.setPadding(new Insets(20));
+        panel.getStyleClass().add("dialog-panel");
+        Label label = new Label(message);
+        label.getStyleClass().add("dialog-label");
+        ProgressBar progressBar = new ProgressBar();
+        progressBar.setPrefWidth(300);
+        progressBar.setProgress(-1);
+        progressBar.getStyleClass().add("progress-bar");
+        Button cancelButton = new Button("Hủy");
+        cancelButton.getStyleClass().add("secondary-button");
+        cancelButton.setOnAction(e -> {
             if (onCancel != null) onCancel.run();
-            dialog.dispose();
+            dialog.close();
         });
 
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.add(label, BorderLayout.NORTH);
-        panel.add(progressBar, BorderLayout.CENTER);
-        panel.add(cancelButton, BorderLayout.SOUTH);
-
-        dialog.getContentPane().add(panel);
-        dialog.pack();
-
-        Dimension size = dialog.getSize();
-        size.width = Math.min(size.width, 350);
-        dialog.setSize(size);
-
-        dialog.setLocationRelativeTo(this);
-
+        panel.getChildren().addAll(label, progressBar, cancelButton);
+        Scene scene = new Scene(panel);
+        File cssFile = new File(GetDir.getDir() + "\\resources\\style.css");
+        scene.getStylesheets().add(cssFile.toURI().toString());
+        scene.setFill(null);
+        dialog.setScene(scene);
+        dialog.sizeToScene();
+        dialog.centerOnScreen();
         return dialog;
     }
 
-
-
-    public void displayFileInfo(String fileName, long fileSize, String peer) {
-        double size = fileSize / (1024.0 * 1024.0);
-        String formatSize;
-        if (size < 1) {
-            size = (double) fileSize / 1024;
-            size = Math.round(size * 100.0) / 100.0;
-            formatSize = size + " KB";
-        } else {
-            size = Math.round(size * 100.0) / 100.0;
-            formatSize = size + " MB";
-        }
-        tableModel.addRow(new Object[]{fileName, formatSize, peer});
-    }
-
-    public void clearTable() {
-        tableModel.setRowCount(0);
+    public void displayData(Set<FileInfor> sharedFileNames) {
+        Platform.runLater(() -> {
+            fileTable.getItems().clear();
+            if (sharedFileNames == null || sharedFileNames.isEmpty()) {
+                appendLog("Không có file nào được chia sẻ.");
+                fileTable.setPlaceholder(new Label("Không có file nào được chia sẻ."));
+            } else {
+                fileTable.getItems().addAll(sharedFileNames);
+                appendLog("Đã cập nhật danh sách file chia sẻ.");
+            }
+        });
     }
 
     public void showMessage(String message, boolean isError) {
-        JOptionPane.showMessageDialog(this, message, "Lỗi",
-                isError ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE);
-        appendLog(message);
+        Platform.runLater(() -> {
+            showAlert(isError ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION, isError ? "Lỗi" : "Thông báo", message);
+            appendLog(message);
+        });
     }
-    public int showMessageWithOptions(String message, boolean isError) {
-        String[] options = {"Tiếp tục", "Thay thế", "Hủy"};
 
-        int result = JOptionPane.showOptionDialog(
-                this,
-                message,
-                isError ? "Lỗi" : "Thông báo",
-                JOptionPane.YES_NO_CANCEL_OPTION,
-                isError ? JOptionPane.ERROR_MESSAGE : JOptionPane.INFORMATION_MESSAGE,
-                null,
-                options,
-                options[0]
-        );
-        appendLog(message + " - Tùy chọn được chọn: " + options[result]);
+    public int showMessageWithOptions(String message, boolean isError) {
+        Alert alert = new Alert(isError ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION);
+        alert.setTitle(isError ? "Lỗi" : "Thông báo");
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.getDialogPane().getStyleClass().add("alert-pane");
+
+        ButtonType continueButton = new ButtonType("Tiếp tục");
+        ButtonType replaceButton = new ButtonType("Thay thế");
+        ButtonType cancelButton = new ButtonType("Hủy", ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(continueButton, replaceButton, cancelButton);
+
+        int result = alert.showAndWait().map(button -> {
+            if (button == continueButton) return 0;
+            if (button == replaceButton) return 1;
+            return 2;
+        }).orElse(2);
+
+        appendLog(message + " - Tùy chọn được chọn: " + (result == 0 ? "Tiếp tục" : result == 1 ? "Thay thế" : "Hủy"));
         return result;
+    }
+
+    public boolean showConfirmation(String message) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("Xác nhận");
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.getDialogPane().getStyleClass().add("alert-pane");
+
+        ButtonType yesButton = new ButtonType("Có", ButtonBar.ButtonData.OK_DONE);
+        ButtonType noButton = new ButtonType("Không", ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(yesButton, noButton);
+
+        return alert.showAndWait()
+                .map(buttonType -> buttonType == yesButton)
+                .orElse(false);
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.getDialogPane().getStyleClass().add("alert-pane");
+        alert.showAndWait();
     }
 
     public void showMenu(boolean isDownload) {
         String menuText = isDownload ? "Tải xuống" : "Dừng chia sẻ";
         menuItem.setText(menuText);
-        popupMenu.show(fileTable, fileTable.getMousePosition().x, fileTable.getMousePosition().y);
+        menuItem.setGraphic(createIcon(isDownload ? "/icons/download.png" : "/icons/stop.png", 16));
+        contextMenu.show(fileTable, fileTable.getScene().getWindow().getX() + 10, fileTable.getScene().getWindow().getY() + 50);
     }
 
     public void setRowSelectionInterval(int row, int row1) {
-        fileTable.setRowSelectionInterval(row, row1);
+        Platform.runLater(() -> fileTable.getSelectionModel().selectRange(row, row1 + 1));
     }
 
-    public JTable getFileTable() {
+    public TableView<FileInfor> getFileTable() {
         return fileTable;
     }
 
-    public DefaultTableModel getTableModel() {
-        return tableModel;
-    }
-
-    public void displayData(Set<FileInfor> sharedFileNames) {
-        clearTable();
-        for (FileBase file : sharedFileNames) {
-            displayFileInfo(file.getFileName(), file.getFileSize(), file.getPeerInfor().getIp() + ":" + file.getPeerInfor().getPort());
-        }
-        appendLog("Đã cập nhật danh sách file chia sẻ.");
-    }
-
-    public boolean showConfirmation(String message) {
-        int result = JOptionPane.showConfirmDialog(
-                this, message, "Xác nhận", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-        return result == JOptionPane.YES_OPTION;
-    }
-
     public void removeFileFromView(String fileName, String peerInfor) {
-        for (int i = 0; i < tableModel.getRowCount(); i++) {
-            String currentFileName = (String) tableModel.getValueAt(i, 0);
-            String currentPeerInfor = (String) tableModel.getValueAt(i, 2);
-            if (currentFileName.equals(fileName) && currentPeerInfor.equals(peerInfor)) {
-                tableModel.removeRow(i);
-                appendLog("Đã xóa file: " + fileName + " khỏi danh sách chia sẻ.");
-                return;
-            }
-        }
-        appendLog("Không tìm thấy file: " + fileName + " để xóa.");
+        Platform.runLater(() -> {
+            fileTable.getItems().removeIf(file ->
+                    file.getFileName().equals(fileName) &&
+                            (file.getPeerInfor().getIp() + ":" + file.getPeerInfor().getPort()).equals(peerInfor));
+            appendLog("Đã xóa file: " + fileName + " khỏi danh sách chia sẻ.");
+        });
     }
 
     public void updateProgress(String taskName, int progress, long bytesTransferred, long totalBytes) {
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             if (totalBytes < 1024 * 1024) {
                 double transferredKB = bytesTransferred / 1024.0;
                 double totalKB = totalBytes / 1024.0;
@@ -358,9 +432,9 @@ public class P2PView extends JFrame {
                 double totalMB = totalBytes / (1024.0 * 1024);
                 progressLabel.setText(String.format("%s: %.2f / %.2f MB", taskName, transferredMB, totalMB));
             }
-            progressBar.setValue(progress);
+            progressBar.setProgress(progress / 100.0);
             if (progress >= 100) {
-                cancelButton.setEnabled(false);
+                cancelButton.setDisable(true);
                 progressLabel.setText("Hoàn tất: " + taskName);
                 appendLog("Hoàn tất: " + taskName);
             }
@@ -368,16 +442,16 @@ public class P2PView extends JFrame {
     }
 
     public void resetProgress() {
-        SwingUtilities.invokeLater(() -> {
-            progressBar.setValue(0);
+        Platform.runLater(() -> {
+            progressBar.setProgress(0);
             progressLabel.setText("Sẵn sàng");
         });
     }
 
     public void progressError(String taskName, String errorMessage) {
-        SwingUtilities.invokeLater(() -> {
+        Platform.runLater(() -> {
             progressLabel.setText("Lỗi: " + taskName + " - " + errorMessage);
-            progressBar.setValue(0);
+            progressBar.setProgress(0);
             appendLog("Lỗi trong quá trình: " + taskName + " - " + errorMessage);
         });
     }
