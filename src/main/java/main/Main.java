@@ -46,7 +46,7 @@ public class Main extends Application {
     public void start(Stage primaryStage) {
         try {
             // Khởi tạo giao diện và các thành phần
-            P2PView view = new P2PView();
+            P2PView view = new P2PView(primaryStage);
             PeerModel peerModel = new PeerModel(view);
             P2PController controller = new P2PController(peerModel, view);
             controller.start();

@@ -44,8 +44,8 @@ public class P2PView {
     private final StackPane root; // Thay BorderPane bằng StackPane để hỗ trợ thông báo
     private Runnable cancelAction;
 
-    public P2PView() {
-        primaryStage = new Stage();
+    public P2PView(Stage stage) {
+        primaryStage = stage;
         String path = System.getProperty("user.dir");
         File file = new File(path);
         String projectName = file.getName();
