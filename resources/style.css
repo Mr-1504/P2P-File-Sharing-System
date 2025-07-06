@@ -22,6 +22,21 @@
     -fx-opacity: 0.95;
 }
 
+.notification_err {
+    -fx-background-color: #F44336;
+    -fx-border-color: #CBD5E0;
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 12px 20px;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 10, 0, 0, 2);
+    -fx-text-fill: #2D3748;
+    -fx-font-size: 14px;
+    -fx-font-weight: 500;
+    -fx-alignment: center;
+    -fx-opacity: 0.95;
+}
+
 /* Notification animation */
 .notification:showing {
     -fx-opacity: 1.0;
