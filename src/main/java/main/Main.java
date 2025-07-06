@@ -2,6 +2,7 @@ package main.java.main;
 
 import main.java.controller.P2PController;
 import main.java.model.PeerModel;
+import main.java.utils.EnvConf;
 import main.java.view.P2PView;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -20,7 +21,7 @@ public class Main extends Application {
     public static void main(String[] args) {
         // Đặt mã hóa file
         System.setProperty("file.encoding", "UTF-8");
-        resourceBundle = ResourceBundle.getBundle("lan.messages", new Locale("vi"));
+        resourceBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(EnvConf.strLang));
 
 //        // Khởi động Tracker trong một luồng riêng
 //        Thread trackerThread = new Thread(() -> {
