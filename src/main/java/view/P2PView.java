@@ -290,25 +290,45 @@ public class P2PView {
         }, Platform::runLater);
     }
 
-    public String openFileChooserForDownload(String fileName) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
-        fileChooser.setInitialFileName(fileName);
-        File saveFile = fileChooser.showSaveDialog(primaryStage);
-        if (saveFile != null) {
-            try {
-                showNotification(msgBundle.getString("msg.notification.file.download.start") + ": " + fileName, false);
-                return saveFile.getAbsolutePath();
-            } catch (Exception e) {
-                String errorMessage = msgBundle.getString("msg.err.file.download") + e.getMessage();
-                appendLog(errorMessage);
-                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
-                showNotification(msgBundle.getString("error") + ": " + e.getMessage(), true);
+    public CompletableFuture<String> openFileChooserForDownload(String fileName) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (primaryStage == null || !primaryStage.isShowing()) {
+                Platform.runLater(() -> {
+                    String errorMessage = msgBundle.getString("error") + ": "
+                            + msgBundle.getString("msg.err.cannot.open.filechooser");
+                    appendLog(errorMessage);
+                    showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                    showNotification(errorMessage, true);
+                });
                 return LogTag.S_ERROR;
             }
-        }
-        showNotification(msgBundle.getString("msg.notification.file.download.cancelled"), false);
-        return LogTag.S_CANCELLED;
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
+            fileChooser.setInitialFileName(fileName);
+            File saveFile = fileChooser.showSaveDialog(primaryStage);
+            Platform.runLater(() -> {
+                if (saveFile != null)
+                    showNotification(msgBundle.getString("msg.notification.file.download.start") + ": " + fileName, false);
+                else
+                    showNotification(msgBundle.getString("msg.notification.file.download.cancelled"), false);
+            });
+
+            if (saveFile != null) {
+                try {
+                    return saveFile.getAbsolutePath();
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        String errorMessage = msgBundle.getString("msg.err.file.download") + e.getMessage();
+                        appendLog(errorMessage);
+                        showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                        showNotification(msgBundle.getString("error") + ": " + e.getMessage(), true);
+                    });
+                    return LogTag.S_ERROR;
+                }
+            }
+            return LogTag.S_CANCELLED;
+        }, Platform::runLater);
     }
 
     public void appendLog(String message) {

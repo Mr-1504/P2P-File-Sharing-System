@@ -586,7 +586,7 @@ public class P2PController {
             return LogTag.S_INVALID;
         }
 
-        String savePath = view.openFileChooserForDownload(fileName);
+        String savePath = view.openFileChooserForDownload(fileName).join();
         if (savePath.isEmpty() || savePath.equals(LogTag.S_CANCELLED) || savePath.equals(LogTag.S_ERROR)) {
             view.showMessage(msgBundle.getString("msg.err.invalid_path"), true);
             return LogTag.S_INVALID;
