@@ -7,6 +7,7 @@ import javafx.stage.Stage;
 import main.java.model.FileInfor;
 import main.java.model.PeerInfor;
 import main.java.model.PeerModel;
+import main.java.utils.EnvConf;
 import main.java.utils.GetDir;
 import main.java.utils.Infor;
 import main.java.utils.LogTag;
@@ -15,9 +16,7 @@ import main.java.view.P2PView;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,17 +33,18 @@ public class P2PController {
     private boolean isConnected = false;
     private boolean isLoadSharedFiles = false;
     private boolean isRetrying = false;
+    private ResourceBundle msgBundle;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     public P2PController(PeerModel peerModel, P2PView view) {
         this.peerModel = peerModel;
         this.view = view;
+        this.msgBundle = ResourceBundle.getBundle("lan.messages.messages", new Locale(EnvConf.strLang));
         setupListeners();
     }
 
     public void start() {
         view.show();
-        view.appendLog("Khởi động hệ thống P2P...");
         taskInitialization();
         taskTrackerRegistration();
     }
@@ -53,14 +53,13 @@ public class P2PController {
         executor.submit(() -> {
             try {
                 initializeServer();
-                view.appendLog("Hệ thống P2P đã khởi động hoàn tất.");
                 showSharedFile();
                 peerModel.loadSharedFiles();
                 isLoadSharedFiles = true;
                 showSharedFile();
             } catch (Exception e) {
-                logError("Lỗi khi khởi động hệ thống P2P: " + e.getMessage(), e);
-                Platform.runLater(() -> view.showMessage("Lỗi khi khởi động hệ thống P2P: " + e.getMessage(), true));
+                logError(": " + e.getMessage(), e);
+                Platform.runLater(() -> view.showMessage(msgBundle.getString("msg.err.sys.start") + ": " + e.getMessage(), true));
             }
         });
     }
@@ -70,13 +69,14 @@ public class P2PController {
             try {
                 registerWithTracker();
                 while (!isLoadSharedFiles) {
-                    logInfo("Đang tải danh sách file chia sẻ từ tracker...");
+                    logInfo(msgBundle.getString("msg.log.noti.waiting_load_shared_files"));
                     sleep(1000);
                 }
                 peerModel.shareFileList();
             } catch (Exception e) {
-                logError("Lỗi khi đăng ký với tracker: " + e.getMessage(), e);
-                Platform.runLater(() -> view.showMessage("Lỗi khi đăng ký với tracker: " + e.getMessage(), true));
+                logError(msgBundle.getString("msg.log.err.cannot_register_peer") + ": " + e.getMessage(), e);
+                Platform.runLater(() -> view.showMessage(
+                        msgBundle.getString("msg.log.err.cannot_register_peer") + ": " + e.getMessage(), true));
             }
         });
     }
@@ -86,21 +86,23 @@ public class P2PController {
             int result = peerModel.registerWithTracker();
             switch (result) {
                 case LogTag.I_SUCCESS -> {
-                    view.appendLog("Đăng ký thành công với tracker.");
+                    view.appendLog(msgBundle.getString("msg.log.noti.registered_peer"));
+                    view.showNotification(msgBundle.getString("msg.log.noti.registered_peer"), false);
                     isConnected = true;
                 }
                 case LogTag.I_NOT_FOUND -> {
-                    view.appendLog("Đăng ký thành công với tracker nhưng không có file chia sẻ.");
+                    view.appendLog(msgBundle.getString("msg.log.noti.registered_no_shared_file"));
+                    view.showNotification(msgBundle.getString("msg.log.noti.registered_no_shared_file"), false);
                     isConnected = true;
                 }
                 case LogTag.I_ERROR -> {
-                    view.appendLog("Lỗi khi đăng ký với tracker.");
-                    view.appendLog("Đăng ký với tracker không thành công. Thử lại sau 5 giây...");
+                    view.appendLog(msgBundle.getString("msg.log.err.cannot_register_peer"));
+                    view.showNotification(msgBundle.getString("msg.log.err.cannot_register_peer"), true);
                     sleep(5000);
                 }
                 default -> {
-                    logError("Đăng ký với tracker không thành công.", null);
-                    view.appendLog("Đăng ký với tracker không thành công. Thử lại sau 5 giây...");
+                    view.appendLog(msgBundle.getString("msg.log.noti.retrying"));
+                    view.showNotification(msgBundle.getString("msg.log.noti.retrying"), true);
                     sleep(5000);
                 }
             }
@@ -110,16 +112,14 @@ public class P2PController {
     private void initializeServer() {
         try {
             peerModel.startServer();
-            view.appendLog("Server đã khởi động.");
         } catch (Exception e) {
-            logError("Lỗi khi khởi động server: " + e.getMessage(), e);
+            logError(msgBundle.getString("msg.log.err.cannot_start_server") + " TCP: " + e.getMessage(), e);
         }
 
         try {
             peerModel.startUDPServer();
-            view.appendLog("UDP Server đã khởi động.");
         } catch (Exception e) {
-            logError("Lỗi khi khởi động UDP Server: " + e.getMessage(), e);
+            logError(msgBundle.getString("msg.log.err.cannot_start_server") + " UDP: " + e.getMessage(), e);
         }
     }
 
@@ -131,12 +131,8 @@ public class P2PController {
             if (isInvalidFileInfo(fileInfo))
                 continue;
 
-            if (!sharedFiles.contains(fileInfo)) {
+            if (!sharedFiles.contains(fileInfo))
                 sharedFiles.add(fileInfo);
-            } else {
-                view.appendLog("File đã tồn tại trong danh sách chia sẻ: " + fileInfo.getFileName());
-            }
-
         }
         peerModel.setSharedFileNames(sharedFiles);
         view.displayData(peerModel.getSharedFileNames());
@@ -144,11 +140,9 @@ public class P2PController {
 
     private boolean isInvalidFileInfo(FileInfor fileInfo) {
         if (fileInfo == null || fileInfo.getFileName() == null || fileInfo.getFileName().isEmpty()) {
-            view.appendLog("Tên file không hợp lệ: " + (fileInfo != null ? fileInfo.getFileName() : "null"));
             return true;
         }
         if (fileInfo.getPeerInfor() == null || fileInfo.getPeerInfor().getIp() == null || fileInfo.getPeerInfor().getPort() <= 0) {
-            view.appendLog("Thông tin peer không hợp lệ cho file: " + fileInfo.getFileName());
             return true;
         }
         return false;
@@ -166,18 +160,19 @@ public class P2PController {
 
     private void refreshFileList() {
         if (!isConnected) {
-            view.showMessage("Không thể làm mới danh sách file. Đang chờ kết nối lại với tracker.", true);
+            view.showMessage(msgBundle.getString("msg.log.err.cannot_load_shared_files") + ". "
+                    + msgBundle.getString("msg.log.noti.reconnecting"), true);
             retryConnectToTracker();
             return;
         }
         view.clearTable();
-        view.appendLog("Đang làm mới danh sách file...");
+        view.appendLog(msgBundle.getString("msg.notification.file.refresh"));
         executor.submit(() -> {
             try {
                 int result = peerModel.refreshSharedFileNames();
                 handleRefreshResult(result);
             } catch (Exception e) {
-                logError("Error refreshing file list: " + e.getMessage(), e);
+                logError(msgBundle.getString("msg.log.err.cannot_load_shared_files") + ": " + e.getMessage(), e);
             }
         });
     }
@@ -185,17 +180,17 @@ public class P2PController {
     private void handleRefreshResult(int result) {
         switch (result) {
             case LogTag.I_SUCCESS -> {
-                view.appendLog("Làm mới danh sách file thành công.");
+                view.appendLog(msgBundle.getString("msg.notification.file.refreshed"));
                 Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
                 if (sharedFiles.isEmpty()) {
-                    view.appendLog("Không có file nào được chia sẻ.");
+                    view.appendLog(msgBundle.getString("msg.notification.file.empty"));
                 } else {
                     view.displayData(sharedFiles);
                 }
             }
-            case LogTag.I_INVALID -> view.appendLog("Lỗi truy vấn.");
+            case LogTag.I_INVALID -> view.appendLog(msgBundle.getString("msg.log.err.query_tracker"));
             case LogTag.I_ERROR -> {
-                view.appendLog("Lỗi khi làm mới danh sách file.");
+                view.appendLog(msgBundle.getString("msg.log.err.cannot_load_shared_files"));
                 isConnected = false;
                 taskTrackerRegistration();
             }
@@ -205,7 +200,7 @@ public class P2PController {
     private void handleMenuItemClick() {
         int selected = view.getFileTable().getSelectionModel().getSelectedIndex();
         if (selected == -1) {
-            view.showMessage("Vui lòng chọn một file.", true);
+            view.showMessage(msgBundle.getString("msg.notification.file.please_choose"), true);
             return;
         }
         FileInfor selectedFile = view.getFileTable().getItems().get(selected);
@@ -213,31 +208,28 @@ public class P2PController {
         String peerInfor = selectedFile.getPeerInfor().getIp() + ":" + selectedFile.getPeerInfor().getPort();
 
         if (isInvalidFileOrPeer(fileName, peerInfor)) {
-            view.showMessage("Tên file hoặc thông tin peer không hợp lệ.", true);
-            view.appendLog("Vui lòng chọn một file và peer hợp lệ.");
+            view.showMessage(msgBundle.getString("msg.err.invalid_infor"), true);
             return;
         }
 
         PeerInfor peer = parsePeerInfo(peerInfor);
         if (peer == null) {
-            view.showMessage("Thông tin peer không hợp lệ: " + peerInfor, true);
-            view.appendLog("Thông tin peer không hợp lệ: " + peerInfor);
+            view.showMessage(msgBundle.getString("msg.err.invalid_peer") + peerInfor, true);
             return;
         }
 
         if (!isConnected) {
-            view.showMessage("Không thể xử lý. Đang chờ kết nối lại với tracker.", true);
+            view.showMessage(msgBundle.getString("msg.log.noti.reconnecting"), true);
             retryConnectToTracker();
             return;
         }
 
         if (!peerModel.isMe(peer.getIp(), peer.getPort())) {
             executor.submit(this::downloadFile);
-        } else if (view.showConfirmation(
-                "Bạn có chắc chắn muốn dừng chia sẻ file: " + fileName + " không?"))
+        } else if (view.showConfirmation(msgBundle.getString("msg.notification.file.stop_share.confirm") + "\n" + fileName)) {
             removeFile(fileName, peerInfor);
-        else {
-            view.appendLog("Dừng chia sẻ file đã bị hủy.");
+        } else {
+            view.showNotification(msgBundle.getString("msg.notification.file.stop_share.cancelled"), true);
         }
     }
 
@@ -246,30 +238,29 @@ public class P2PController {
             int result = peerModel.stopSharingFile(fileName);
             handleRemoveFileResult(result, fileName, peerInfor);
         } catch (Exception e) {
-            view.appendLog("Lỗi khi dừng chia sẻ file: " + e.getMessage());
-            e.printStackTrace();
+            view.appendLog(msgBundle.getString("msg.err.file.stop") + ": " + e.getMessage());
         }
     }
 
     private void handleRemoveFileResult(int result, String fileName, String peerInfor) {
         switch (result) {
             case LogTag.I_SUCCESS -> {
-                view.appendLog("Đã dừng chia sẻ file: " + fileName);
+                view.appendLog(msgBundle.getString("msg.notification.file.stop_share.done") + ": " + fileName);
                 view.removeFileFromView(fileName, peerInfor);
             }
             case LogTag.I_NOT_FOUND -> {
-                view.appendLog("Không tìm thấy file để dừng chia sẻ: " + fileName);
-                view.showMessage("Không tìm thấy file để dừng chia sẻ: " + fileName, true);
+                view.appendLog(msgBundle.getString("msg.err.cannot.find") + ": " + fileName);
+                view.showMessage(msgBundle.getString("msg.err.cannot.find") + ": " + fileName, true);
                 view.removeFileFromView(fileName, peerInfor);
             }
             case LogTag.I_ERROR -> {
-                view.appendLog("Lỗi kết nối với Tracker");
-                view.showMessage("Lỗi kết nối với Tracker", true);
+                view.showMessage(msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
+                view.showNotification(msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
                 isConnected = false;
                 retryConnectToTracker();
-                view.appendLog("Đã kết nối lại với Tracker.");
+
             }
-            default -> view.appendLog("Không thể dừng chia sẻ file: " + fileName);
+            default -> view.appendLog(msgBundle.getString("msg.err.file.stop") + ": " + fileName);
         }
     }
 
@@ -293,12 +284,12 @@ public class P2PController {
         Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
 
         if (sharedFiles.isEmpty()) {
-            view.appendLog("Không có file nào được chia sẻ.");
+            view.appendLog(msgBundle.getString("msg.notification.file.empty"));
             return;
         }
 
         view.displayData(sharedFiles);
-        view.appendLog("Đã cập nhật danh sách file chia sẻ.");
+        view.appendLog(msgBundle.getString("msg.notification.file.refreshed"));
     }
 
     private void setupFileTableMouseListener() {
@@ -313,14 +304,11 @@ public class P2PController {
                     String peerInfo = fileInfor.getPeerInfor().getIp() + ":" + fileInfor.getPeerInfor().getPort();
 
                     if (fileName != null && !fileName.isEmpty() && peerInfo != null && !peerInfo.isEmpty()) {
-                        view.appendLog("Đã chọn file: " + fileName + " để tải xuống.");
                         PeerInfor peer = parsePeerInfo(peerInfo);
                         if (peer != null) {
                             boolean isDownload = !peerModel.isMe(peer.getIp(), peer.getPort());
                             view.showMenu(isDownload);
                         }
-                    } else {
-                        view.appendLog("Không có tên file để tải xuống.");
                     }
                 }
             });
@@ -334,13 +322,13 @@ public class P2PController {
         Map<String, FileInfor> sharedFiles = peerModel.getMySharedFiles();
 
         if (sharedFiles.isEmpty()) {
-            view.appendLog("Không có file nào được chia sẻ.");
+            view.appendLog(msgBundle.getString("msg.notification.file.empty"));
             return;
         }
         for (FileInfor fileInfo : sharedFiles.values()) {
             view.getFileTable().getItems().add(fileInfo);
         }
-        view.appendLog("Đã cập nhật danh sách file chia sẻ.");
+        view.appendLog(msgBundle.getString("msg.notification.file.refreshed"));
     }
 
     private void shareFile() {
@@ -360,7 +348,7 @@ public class P2PController {
             }
 
             if (!isConnected) {
-                view.showMessage("Không thể chia sẻ file. Đang chờ kết nối lại với tracker.", true);
+                view.showMessage(msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
                 retryConnectToTracker();
                 return;
             }
@@ -372,18 +360,18 @@ public class P2PController {
             view.setCancelButtonEnabled(true);
             Future<Boolean> res = peerModel.shareFileAsync(file, fileName);
             if (res == null) {
-                view.showMessage("Lỗi khi chia sẻ file: " + fileName, true);
-                view.appendLog("Lỗi khi chia sẻ file: " + fileName);
+                view.showMessage(msgBundle.getString("msg.err.file.share") + ": " + fileName, true);
+                view.appendLog(msgBundle.getString("msg.err.file.share") +  ": " + fileName);
                 return;
             } else {
                 try {
                     if (res.get() == false) {
-                        view.showMessage("Chia sẻ file đã bị hủy.", true);
-                        view.appendLog("Chia sẻ file đã bị hủy.");
+                        view.showNotification(msgBundle.getString("msg.notification.file.share.cancelled") + ": " + fileName, false);
+                        view.appendLog(msgBundle.getString("msg.err.file.share"));
                         return;
                     }
-                } catch (Exception e){
-                    logError("Error while waiting for file sharing result: " + e.getMessage(), e);
+                } catch (Exception e) {
+                    logError(msgBundle.getString("msg.log.err.cannot_wait_for_shared_files") + ": " + e.getMessage(), e);
                 }
             }
             if (isReplace.get() == 1)
@@ -391,7 +379,7 @@ public class P2PController {
             FileInfor fileInfor = peerModel.getMySharedFiles().get(fileName);
             Platform.runLater(() -> {
                 view.getFileTable().getItems().add(fileInfor);
-                view.appendLog("Đã chia sẻ file: " + fileName);
+                view.appendLog(msgBundle.getString("msg.notification.file.share.done") + ": " + fileName);
             });
         });
     }
@@ -401,24 +389,24 @@ public class P2PController {
         String filePath = file.getAbsolutePath();
         if (!file.exists() || !file.isFile()) {
             Platform.runLater(() -> {
-                view.showMessage("File không tồn tại: " + filePath, true);
-                view.appendLog("File không tồn tại: " + filePath);
+                view.showMessage(msgBundle.getString("msg.err.cannot.find") + ": " + filePath, true);
+                view.appendLog(msgBundle.getString("msg.err.cannot.find") + ": " + filePath);
             });
             return LogTag.I_NOT_FOUND;
         }
         Platform.runLater(() -> {
             dialog.set(view.createLoadingDialog(
-                    "Đang chuẩn bị file: " + filePath + "...\nFile lớn có thể mất nhiều thời gian", () -> {
-                        isCancelled.set(true);
-                    }));
+                    msgBundle.getString("msg.notification.progress.prepare") +
+                            ": " + filePath + "...\n" + msgBundle.getString("msg.notification.progress.large_file"),
+                    () -> isCancelled.set(true)));
             dialog.get().show();
         });
 
         boolean res = GetDir.copyFileToShare(file, fileName, isCancelled);
         if (!res) {
             Platform.runLater(() -> {
-                view.showMessage("Lỗi khi sao chép file vào thư mục chia sẻ.", true);
-                view.appendLog("Lỗi khi sao chép file vào thư mục chia sẻ.");
+                view.showMessage(msgBundle.getString("msg.err.file.copy"), true);
+                view.appendLog(msgBundle.getString("msg.err.file.copy"));
             });
             return LogTag.I_ERROR;
         }
@@ -431,14 +419,14 @@ public class P2PController {
             String filePath = view.openFileChooserForShare().join();
 
             if (filePath.equals(LogTag.S_ERROR) || filePath.equals(LogTag.S_CANCELLED)) {
-                view.appendLog("Vui lòng chọn file.");
-                view.showMessage("Vui lòng chọn file để chia sẻ.", true);
+                view.appendLog(msgBundle.getString("msg.notification.file.please_choose"));
+                view.showMessage(msgBundle.getString("msg.notification.file.please_choose"), true);
                 return LogTag.S_CANCELLED;
             }
             return filePath;
         } catch (Exception e) {
-            view.appendLog("Lỗi khi chọn file: " + e.getMessage());
-            view.showMessage("Lỗi khi chọn file: " + e.getMessage(), true);
+            view.appendLog(msgBundle.getString("msg.err.file.choose") + ": " + e.getMessage());
+            view.showMessage(msgBundle.getString("msg.err.file.choose") + ": " + e.getMessage(), true);
             return LogTag.S_ERROR;
         }
     }
@@ -450,15 +438,15 @@ public class P2PController {
             String finalFileName = fileName;
             CountDownLatch latch = new CountDownLatch(1);
             Platform.runLater(() -> {
-                isReplace.set(view.showMessageWithOptions("File đã tồn tại trong thư mục chia sẻ: " + finalFileName, true));
-                view.appendLog("File đã tồn tại trong thư mục chia sẻ: " + finalFileName);
+                isReplace.set(view.showMessageWithOptions(msgBundle.getString("msg.err.file.exist") + ": " + finalFileName, true));
+                view.appendLog(msgBundle.getString("msg.err.file.exist") + ": " + finalFileName);
                 latch.countDown();
             });
 
             try {
                 latch.await();
             } catch (InterruptedException e) {
-                logError("Interrupted while waiting for user input: " + e.getMessage(), e);
+                logError(msgBundle.getString("msg.log.err.interupted_while_waiting_user_input") + ": " + e.getMessage(), e);
             }
             String resultFileName = handleResultGetFileName(isReplace, fileName, dialog);
             return resultFileName;
@@ -470,18 +458,15 @@ public class P2PController {
         switch (isReplace.get()) {
             case 0: {
                 fileName = GetDir.incrementFileName(fileName);
-                view.appendLog("Đã đổi tên file thành: " + fileName);
                 return fileName;
             }
             case 1:
-                view.appendLog("Đã ghi đè file: " + fileName);
                 return fileName;
             case 2:
-                view.appendLog("Hủy file: " + fileName);
                 Platform.runLater(() -> {
                     dialog.get().close();
-                    view.showMessage("Đã hủy chia sẻ file.", true);
-                    view.appendLog("Đã hủy chia sẻ file.");
+                    view.showNotification(msgBundle.getString("msg.notification.file.share.cancelled"), false);
+                    view.appendLog(msgBundle.getString("msg.notification.file.share.cancelled"));
                 });
                 return LogTag.S_CANCELLED;
         }
@@ -492,27 +477,27 @@ public class P2PController {
     private void searchFile() {
         String fileName = view.getFileName();
         if (fileName.isEmpty()) {
-            view.showMessage("Vui lòng nhập tên file để tìm kiếm.", true);
+            view.showNotification(msgBundle.getString("msg.err.file.please_enter_file_name"), true);
             return;
         }
+        view.showNotification(fileName, true);
         if (!isConnected) {
-            view.showMessage("Không thể tìm kiếm file. Đang chờ kết nối lại với tracker.", true);
+            view.showNotification(msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
             retryConnectToTracker();
             return;
         }
 
         view.clearTable();
-        view.appendLog("Đang tìm kiếm file: " + fileName + "...");
 
         executor.submit(() -> {
             List<FileInfor> files = peerModel.queryTracker(fileName);
             if (files == null) {
-                Platform.runLater(() -> view.showMessage("Lỗi tìm file: " + fileName + ". Đang kết nối lại", true));
+                Platform.runLater(() -> view.showNotification(msgBundle.getString("msg.log.err.cannot_connect_tracker"), true));;
                 retryConnectToTracker();
                 return;
             }
             if (files.isEmpty()) {
-                Platform.runLater(() -> view.showMessage("Không tìm thấy file: " + fileName, true));
+                Platform.runLater(() -> view.showNotification(msgBundle.getString("msg.err.cannot.find") + ": " + fileName, false));
                 return;
             }
 
@@ -524,13 +509,11 @@ public class P2PController {
         Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
         for (FileInfor file : files) {
             if (!sharedFiles.contains(file)) {
-                view.appendLog("File đã tồn tại trong danh sách chia sẻ: " + file.getFileName());
                 sharedFiles.add(file);
             }
             Platform.runLater(() -> view.getFileTable().getItems().add(file));
         }
         peerModel.setSharedFileNames(sharedFiles);
-        view.appendLog("Đã tìm thấy " + files.size() + " file với tên: " + fileName);
     }
 
     private String formatFileSize(long fileSize) {
@@ -556,13 +539,13 @@ public class P2PController {
         String fileName = parts[2];
         FileInfor fileInfor = getFileInfor(fileName, peerInfor);
         if (fileInfor == null) {
-            logInfo("File not found in shared files: " + fileName);
+            logInfo(msgBundle.getString("msg.err.cannot.find") + ": " + fileName);
             return;
         }
 
         List<PeerInfor> peers = peerModel.getPeersWithFile(fileInfor.getFileHash());
         if (peers == null || peers.isEmpty()) {
-            view.showMessage("Không tìm thấy peer nào chia sẻ file: " + fileName, true);
+            view.showMessage(msgBundle.getString("msg.err.not_shared") + ": " + fileName, true);
             return;
         }
 
@@ -572,8 +555,8 @@ public class P2PController {
             int status = result.get();
             handleDownloadResult(status, fileName, peerInfor);
         } catch (Exception e) {
-            logError("Lỗi khi tải file: " + e.getMessage(), e);
-            view.showMessage("Lỗi khi tải file: " + e.getMessage(), true);
+            logError(msgBundle.getString("msg.err.file,download") + ": " + e.getMessage(), e);
+            view.showMessage(msgBundle.getString("msg.err.file,download") + ": " + e.getMessage(), true);
         }
     }
 
@@ -599,13 +582,13 @@ public class P2PController {
         }
 
         if (fileName.isEmpty()) {
-            view.showMessage("File không hợp lệ.", true);
+            view.showMessage(msgBundle.getString("msg.err.invalid_file"), true);
             return LogTag.S_INVALID;
         }
 
         String savePath = view.openFileChooserForDownload(fileName);
         if (savePath.isEmpty() || savePath.equals(LogTag.S_CANCELLED) || savePath.equals(LogTag.S_ERROR)) {
-            view.showMessage("Vui lòng chọn đường dẫn lưu hợp lệ.", true);
+            view.showMessage(msgBundle.getString("msg.err.invalid_path"), true);
             return LogTag.S_INVALID;
         }
         return savePath + Infor.FIELD_SEPARATOR + peerInfor + Infor.FIELD_SEPARATOR + fileName;
@@ -615,19 +598,22 @@ public class P2PController {
         String message;
         boolean isError = switch (status) {
             case LogTag.I_SUCCESS -> {
-                message = "Tải file thành công: " + fileName;
+                message = msgBundle.getString("msg.notification.file.download.done") + ": " + fileName;
                 yield false;
             }
             case LogTag.I_NOT_READY -> {
-                message = "File không tìm thấy trên bất kỳ peer nào: " + fileName + ". Vui lòng làm mới và thử lại.";
+                message = msgBundle.getString("msg.err.cannot.find") + ": " + fileName + ". "
+                        + msgBundle.getString("msg.notification.please_refresh");
                 yield true;
             }
             case LogTag.I_NOT_FOUND -> {
-                message = "File " + fileName + " không tìm thấy trên peer " + peerInfor + ". Vui lòng làm mới và thử lại.";
+                message = peerInfor + msgBundle.getString("msg.err.cannot.find") + ": " + fileName + ". "
+                        + msgBundle.getString("msg.notification.please_refresh");
                 yield true;
             }
             default -> {
-                message = "Lỗi khi tải file: " + fileName + ". Vui lòng làm mới và thử lại.";
+                message = msgBundle.getString("msg.err.file.download") + ": " + fileName + ". "
+                        + msgBundle.getString("msg.notification.please_refresh");
                 yield true;
             }
         };
@@ -647,11 +633,9 @@ public class P2PController {
 
     private void retryConnectToTracker() {
         if (isRetrying) {
-            view.appendLog("Đang chờ kết nối lại với tracker...");
             return;
         }
         isRetrying = true;
-        view.appendLog("Đang kết nối lại với tracker...");
         taskTrackerRegistration();
     }
 }

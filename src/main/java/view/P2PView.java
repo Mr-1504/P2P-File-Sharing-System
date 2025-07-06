@@ -1,9 +1,9 @@
 package main.java.view;
 
 import main.java.model.FileInfor;
+import main.java.utils.EnvConf;
 import main.java.utils.LogTag;
 import javafx.animation.FadeTransition;
-import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -18,13 +18,18 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.util.Duration;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+
+import static main.java.utils.Log.logError;
 
 public class P2PView {
     private final Stage primaryStage;
@@ -41,11 +46,15 @@ public class P2PView {
     private final ProgressBar progressBar;
     private final Label progressLabel;
     private final Button cancelButton;
-    private final StackPane root; // Thay BorderPane bằng StackPane để hỗ trợ thông báo
+    private final StackPane root;
     private Runnable cancelAction;
+    private ResourceBundle msgBundle;
+    private ResourceBundle lbBundle;
 
     public P2PView(Stage stage) {
         primaryStage = stage;
+        msgBundle = ResourceBundle.getBundle("lan.messages.messages", new Locale(EnvConf.strLang));
+        lbBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(EnvConf.strLang));
 
         // Tạo bố cục chính
         root = new StackPane();
@@ -55,8 +64,8 @@ public class P2PView {
             scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         } catch (NullPointerException e) {
             Platform.runLater(() -> {
-                appendLog("Lỗi: Không tìm thấy file style.css trong src/main/resources");
-                showAlert(Alert.AlertType.ERROR, "Lỗi CSS", "Không thể tải style.css. Kiểm tra src/main/resources/style.css.");
+                appendLog(msgBundle.getString("msg.err.cannot.find") + ": style.css");
+                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error.css"), msgBundle.getString("msg.err.cannot.load") + "style.css");
             });
         }
         primaryStage.setScene(scene);
@@ -71,9 +80,9 @@ public class P2PView {
         // Panel chọn file
         HBox filePanel = new HBox(10);
         filePanel.setAlignment(Pos.CENTER_LEFT);
-        Label chooseFileLabel = new Label("Chọn file để chia sẻ:");
+        Label chooseFileLabel = new Label(lbBundle.getString("app.label.choose.forshare"));
         chooseFileLabel.getStyleClass().add("label");
-        chooseFileButton = new Button("Chọn file", createIcon("/icons/upload.png", 20));
+        chooseFileButton = new Button(lbBundle.getString("app.label.choose.file"), createIcon("/icons/upload.png", 20));
         chooseFileButton.getStyleClass().add("primary-button");
         filePanel.getChildren().addAll(chooseFileLabel, chooseFileButton);
         inputPanel.getChildren().add(filePanel);
@@ -82,10 +91,10 @@ public class P2PView {
         GridPane searchPanel = new GridPane();
         searchPanel.setHgap(10);
         searchPanel.setVgap(10);
-        Label searchLabel = new Label("Tìm kiếm file:");
+        Label searchLabel = new Label(lbBundle.getString("app.label.search.file"));
         searchLabel.getStyleClass().add("label");
         fileNameField = new TextField();
-        fileNameField.setPromptText("Nhập tên file để tìm kiếm...");
+        fileNameField.setPromptText(lbBundle.getString("app.label.search.placeholder"));
         fileNameField.setPrefWidth(400);
         fileNameField.getStyleClass().add("text-field");
         searchPanel.add(searchLabel, 0, 0);
@@ -95,10 +104,10 @@ public class P2PView {
         // Panel nút
         HBox buttonPanel = new HBox(10);
         buttonPanel.setAlignment(Pos.CENTER_LEFT);
-        searchButton = new Button("Tìm kiếm", createIcon("/icons/search.png", 20));
-        myFilesButton = new Button("File của tôi", createIcon("/icons/folder.png", 20));
-        refreshButton = new Button("Làm mới", createIcon("/icons/refresh.png", 20));
-        allFilesButton = new Button("Tất cả file", createIcon("/icons/files.png", 20));
+        searchButton = new Button(lbBundle.getString("app.label.search"), createIcon("/icons/search.png", 20));
+        myFilesButton = new Button(lbBundle.getString("app.label.file.mine"), createIcon("/icons/folder.png", 20));
+        refreshButton = new Button(lbBundle.getString("app.label.refresh"), createIcon("/icons/refresh.png", 20));
+        allFilesButton = new Button(lbBundle.getString("app.label.file.all"), createIcon("/icons/files.png", 20));
         searchButton.getStyleClass().add("primary-button");
         myFilesButton.getStyleClass().add("primary-button");
         refreshButton.getStyleClass().add("primary-button");
@@ -111,11 +120,11 @@ public class P2PView {
         // Bảng hiển thị file
         fileTable = new TableView<>();
         fileTable.getStyleClass().add("file-table");
-        TableColumn<FileInfor, String> nameColumn = new TableColumn<>("Tên file");
+        TableColumn<FileInfor, String> nameColumn = new TableColumn<>(lbBundle.getString("app.label.file.name"));
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("fileName"));
         nameColumn.setPrefWidth(300);
 
-        TableColumn<FileInfor, String> sizeColumn = new TableColumn<>("Kích thước");
+        TableColumn<FileInfor, String> sizeColumn = new TableColumn<>(lbBundle.getString("app.label.file.size"));
         sizeColumn.setCellValueFactory(cellData -> {
             long size = cellData.getValue().getFileSize();
             double sizeMB = size / (1024.0 * 1024.0);
@@ -126,14 +135,14 @@ public class P2PView {
         });
         sizeColumn.setPrefWidth(120);
 
-        TableColumn<FileInfor, String> peerColumn = new TableColumn<>("Peers");
+        TableColumn<FileInfor, String> peerColumn = new TableColumn<>(lbBundle.getString("app.label.file.peer"));
         peerColumn.setCellValueFactory(cellData ->
                 new javafx.beans.property.SimpleStringProperty(
                         cellData.getValue().getPeerInfor().getIp() + ":" + cellData.getValue().getPeerInfor().getPort()));
         peerColumn.setPrefWidth(200);
 
         fileTable.getColumns().addAll(nameColumn, sizeColumn, peerColumn);
-        fileTable.setPlaceholder(new Label("Không có file nào được chia sẻ."));
+        fileTable.setPlaceholder(new Label(lbBundle.getString("app.label.file.empty")));
         mainLayout.setCenter(fileTable);
 
         // Panel log và tiến trình
@@ -147,25 +156,25 @@ public class P2PView {
         bottomPanel.getChildren().add(logArea);
 
         VBox progressPanel = new VBox(8);
-        progressLabel = new Label("Sẵn sàng");
+        progressLabel = new Label(lbBundle.getString("app.label.progress.ready"));
         progressLabel.getStyleClass().add("label");
         progressBar = new ProgressBar(0);
         progressBar.setPrefWidth(300);
         progressBar.getStyleClass().add("progress-bar");
-        cancelButton = new Button("Hủy", createIcon("/icons/cancel.png", 20));
+        cancelButton = new Button(lbBundle.getString("app.label.cancel"), createIcon("/icons/cancel.png", 20));
         cancelButton.getStyleClass().add("secondary-button");
         cancelButton.setDisable(true);
         cancelButton.setOnAction(e -> {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Xác nhận hủy");
-            alert.setHeaderText("Bạn có chắc chắn muốn hủy tác vụ hiện tại?");
+            alert.setTitle(lbBundle.getString("app.label.cancel.confirm.title"));
+            alert.setHeaderText(lbBundle.getString("app.label.cancel.confirm.message"));
             alert.getButtonTypes().setAll(
-                    new ButtonType("Có", ButtonBar.ButtonData.OK_DONE),
-                    new ButtonType("Không", ButtonBar.ButtonData.CANCEL_CLOSE));
+                    new ButtonType(lbBundle.getString("app.label.yes"), ButtonBar.ButtonData.OK_DONE),
+                    new ButtonType(lbBundle.getString("app.label.no"), ButtonBar.ButtonData.CANCEL_CLOSE));
             if (alert.showAndWait().filter(b -> b.getButtonData() == ButtonBar.ButtonData.OK_DONE).isPresent() && cancelAction != null) {
                 cancelAction.run();
                 cancelButton.setDisable(true);
-                progressError("Tác vụ", "Đã hủy tác vụ");
+                progressError(lbBundle.getString("app.label.progress.task"), lbBundle.getString("app.label.progress.cancelled"));
             }
         });
 
@@ -178,7 +187,7 @@ public class P2PView {
 
         // Context menu
         contextMenu = new ContextMenu();
-        menuItem = new MenuItem("Tải xuống", createIcon("/icons/download.png", 16));
+        menuItem = new MenuItem(lbBundle.getString("app.label.download"), createIcon("/icons/download.png", 16));
         menuItem.getStyleClass().add("menu-item");
         contextMenu.getItems().add(menuItem);
         fileTable.setContextMenu(contextMenu);
@@ -192,29 +201,28 @@ public class P2PView {
             imageView.setFitHeight(size);
             return imageView;
         } catch (Exception e) {
-            System.err.println("Không thể tải biểu tượng: " + path);
+            logError(msgBundle.getString("msg.err.cannot.load") + ": " + path, e);
             return null;
         }
     }
 
-    public void showNotification(String message) {
+    public void showNotification(String message, boolean isError) {
         Platform.runLater(() -> {
             Label notificationLabel = new Label(message);
-            notificationLabel.getStyleClass().add("notification");
+            String styleClass = isError ? "notification_err" : "notification";
+            notificationLabel.getStyleClass().add(styleClass);
             notificationLabel.setWrapText(true);
             notificationLabel.setMaxWidth(300);
             notificationLabel.setMinHeight(60);
             StackPane.setAlignment(notificationLabel, Pos.TOP_RIGHT);
             StackPane.setMargin(notificationLabel, new Insets(20, 20, 0, 0));
 
-            // Thêm thông báo vào root
             root.getChildren().add(notificationLabel);
 
-            // Tạo hiệu ứng fade-out
             FadeTransition fadeOut = new FadeTransition(Duration.seconds(0.3), notificationLabel);
             fadeOut.setFromValue(1.0);
             fadeOut.setToValue(0.0);
-            fadeOut.setDelay(Duration.seconds(2.0)); // Chờ 2 giây trước khi fade
+            fadeOut.setDelay(Duration.seconds(2.0));
             fadeOut.setOnFinished(e -> root.getChildren().remove(notificationLabel));
             fadeOut.play();
         });
@@ -239,29 +247,25 @@ public class P2PView {
 
     public CompletableFuture<String> openFileChooserForShare() {
         return CompletableFuture.supplyAsync(() -> {
-            Platform.runLater(() -> appendLog("Bắt đầu mở FileChooser..."));
             if (primaryStage == null || !primaryStage.isShowing()) {
                 Platform.runLater(() -> {
-                    String errorMessage = "Lỗi: primaryStage is null or not showing";
+                    String errorMessage = msgBundle.getString("error") + ": "
+                            + msgBundle.getString("msg.err.cannot.open.filechooser");
                     appendLog(errorMessage);
-                    showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
-                    showNotification("Lỗi: Không thể mở FileChooser");
+                    showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                    showNotification(errorMessage, true);
                 });
                 return LogTag.S_ERROR;
             }
 
             FileChooser fileChooser = new FileChooser();
             fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
-            Platform.runLater(() -> appendLog("Hiển thị FileChooser..."));
             File selectedFile = fileChooser.showOpenDialog(primaryStage);
             Platform.runLater(() -> {
-                String result = selectedFile != null ? selectedFile.getAbsolutePath() : "null";
-                appendLog("FileChooser trả về: " + result);
-                if (selectedFile != null) {
-                    showNotification("Đã chọn file: " + selectedFile.getName());
-                } else {
-                    showNotification("Đã hủy chọn file");
-                }
+                if (selectedFile != null)
+                    showNotification(msgBundle.getString("msg.notification.file.choose.done") + selectedFile.getName(), false);
+                else
+                    showNotification(msgBundle.getString("msg.notification.file.choose.cancelled"), false);
             });
 
             if (selectedFile != null) {
@@ -273,10 +277,11 @@ public class P2PView {
                     return selectedFile.getAbsolutePath();
                 } catch (IOException e) {
                     Platform.runLater(() -> {
-                        String errorMessage = "Lỗi khi sao chép hoặc chia sẻ file: " + e.getMessage();
+                        String errorMessage = msgBundle.getString("error") + ": "
+                                + msgBundle.getString("msg.err.file.copyorshare") + e.getMessage();
                         appendLog(errorMessage);
-                        showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
-                        showNotification("Lỗi: " + e.getMessage());
+                        showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                        showNotification(errorMessage, true);
                     });
                     return LogTag.S_ERROR;
                 }
@@ -292,18 +297,17 @@ public class P2PView {
         File saveFile = fileChooser.showSaveDialog(primaryStage);
         if (saveFile != null) {
             try {
-                appendLog("Bắt đầu tải file: " + fileName + " vào " + saveFile.getAbsolutePath());
-                showNotification("Bắt đầu tải file: " + fileName);
+                showNotification(msgBundle.getString("msg.notification.file.download.start") + ": " + fileName, false);
                 return saveFile.getAbsolutePath();
             } catch (Exception e) {
-                String errorMessage = "Lỗi khi tải file: " + e.getMessage();
+                String errorMessage = msgBundle.getString("msg.err.file.download") + e.getMessage();
                 appendLog(errorMessage);
-                showAlert(Alert.AlertType.ERROR, "Lỗi", errorMessage);
-                showNotification("Lỗi: " + e.getMessage());
+                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                showNotification(msgBundle.getString("error") + ": " + e.getMessage(), true);
                 return LogTag.S_ERROR;
             }
         }
-        showNotification("Đã hủy tải file");
+        showNotification(msgBundle.getString("msg.notification.file.download.cancelled"), false);
         return LogTag.S_CANCELLED;
     }
 
@@ -318,7 +322,6 @@ public class P2PView {
     public void setSearchButtonListener(Runnable listener) {
         searchButton.setOnAction(e -> {
             listener.run();
-            showNotification("Đã tìm kiếm: " + fileNameField.getText());
         });
     }
 
@@ -329,21 +332,21 @@ public class P2PView {
     public void setMyFilesButtonListener(Runnable listener) {
         myFilesButton.setOnAction(e -> {
             listener.run();
-            showNotification("Hiển thị file của tôi");
+            showNotification(msgBundle.getString("msg.notification.file.mine.show"), false);
         });
     }
 
     public void setAllFilesButtonListener(Runnable listener) {
         allFilesButton.setOnAction(e -> {
             listener.run();
-            showNotification("Hiển thị tất cả file");
+            showNotification(msgBundle.getString("msg.notification.file.all.show"), false);
         });
     }
 
     public void setRefreshButtonListener(Runnable listener) {
         refreshButton.setOnAction(e -> {
             listener.run();
-            showNotification("Đã làm mới danh sách file");
+            showNotification(msgBundle.getString("msg.notification.file.refresh"), false);
         });
     }
 
@@ -365,12 +368,12 @@ public class P2PView {
         progressBar.setPrefWidth(300);
         progressBar.setProgress(-1);
         progressBar.getStyleClass().add("progress-bar");
-        Button cancelButton = new Button("Hủy", createIcon("/icons/cancel.png", 20));
+        Button cancelButton = new Button(lbBundle.getString("app.label.cancel"), createIcon("/icons/cancel.png", 20));
         cancelButton.getStyleClass().add("secondary-button");
         cancelButton.setOnAction(e -> {
             if (onCancel != null) onCancel.run();
             dialog.close();
-            showNotification("Đã hủy tác vụ");
+            showNotification(msgBundle.getString("msg.notification.progress.cancelled"), false);
         });
 
         panel.getChildren().addAll(label, progressBar, cancelButton);
@@ -378,7 +381,7 @@ public class P2PView {
         try {
             scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         } catch (NullPointerException e) {
-            Platform.runLater(() -> appendLog("Lỗi: Không tìm thấy style.css cho dialog"));
+            logError(msgBundle.getString("msg.err.cannot.load") + ": style.css", e);
         }
         scene.setFill(null);
         dialog.setScene(scene);
@@ -391,35 +394,33 @@ public class P2PView {
         Platform.runLater(() -> {
             fileTable.getItems().clear();
             if (sharedFileNames == null || sharedFileNames.isEmpty()) {
-                appendLog("Không có file nào được chia sẻ.");
-                fileTable.setPlaceholder(new Label("Không có file nào được chia sẻ."));
-                showNotification("Không có file nào được chia sẻ");
+                fileTable.setPlaceholder(new Label(lbBundle.getString("app.label.file.empty")));
+                showNotification(msgBundle.getString("msg.notification.file.empty"), false);
             } else {
                 fileTable.getItems().addAll(sharedFileNames);
-                appendLog("Đã cập nhật danh sách file chia sẻ.");
-                showNotification("Đã cập nhật danh sách file");
+                showNotification(msgBundle.getString("msg.notification.file.refreshed"), false);
             }
         });
     }
 
     public void showMessage(String message, boolean isError) {
         Platform.runLater(() -> {
-            showAlert(isError ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION, isError ? "Lỗi" : "Thông báo", message);
+            showAlert(isError ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION, isError ?
+                    msgBundle.getString("error") : msgBundle.getString("notification"), message);
             appendLog(message);
-            showNotification(isError ? "Lỗi: " + message : message);
         });
     }
 
     public int showMessageWithOptions(String message, boolean isError) {
         Alert alert = new Alert(isError ? Alert.AlertType.ERROR : Alert.AlertType.INFORMATION);
-        alert.setTitle(isError ? "Lỗi" : "Thông báo");
+        alert.setTitle(isError ? msgBundle.getString("error") : msgBundle.getString("notification"));
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.getDialogPane().getStyleClass().add("alert-pane");
 
-        ButtonType continueButton = new ButtonType("Tiếp tục");
-        ButtonType replaceButton = new ButtonType("Thay thế");
-        ButtonType cancelButton = new ButtonType("Hủy", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType continueButton = new ButtonType(lbBundle.getString("app.label.continue"));
+        ButtonType replaceButton = new ButtonType(lbBundle.getString("app.label.replace"));
+        ButtonType cancelButton = new ButtonType(lbBundle.getString("app.label.cancel"), ButtonBar.ButtonData.CANCEL_CLOSE);
         alert.getButtonTypes().setAll(continueButton, replaceButton, cancelButton);
 
         int result = alert.showAndWait().map(button -> {
@@ -428,26 +429,27 @@ public class P2PView {
             return 2;
         }).orElse(2);
 
-        appendLog(message + " - Tùy chọn được chọn: " + (result == 0 ? "Tiếp tục" : result == 1 ? "Thay thế" : "Hủy"));
-        showNotification(message + " - " + (result == 0 ? "Tiếp tục" : result == 1 ? "Thay thế" : "Hủy"));
+        showNotification(message + " - " + (result == 0 ? lbBundle.getString("app.label.continue")
+                : result == 1 ? lbBundle.getString("app.label.replace") : lbBundle.getString("app.label.cancel")), false);
         return result;
     }
 
     public boolean showConfirmation(String message) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-        alert.setTitle("Xác nhận");
+        alert.setTitle(msgBundle.getString("notification.title.confirm"));
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.getDialogPane().getStyleClass().add("alert-pane");
 
-        ButtonType yesButton = new ButtonType("Có", ButtonBar.ButtonData.OK_DONE);
-        ButtonType noButton = new ButtonType("Không", ButtonBar.ButtonData.CANCEL_CLOSE);
+        ButtonType yesButton = new ButtonType(lbBundle.getString("app.label.yes"), ButtonBar.ButtonData.OK_DONE);
+        ButtonType noButton = new ButtonType(lbBundle.getString("app.label.no"), ButtonBar.ButtonData.CANCEL_CLOSE);
         alert.getButtonTypes().setAll(yesButton, noButton);
 
         boolean confirmed = alert.showAndWait()
                 .map(buttonType -> buttonType == yesButton)
                 .orElse(false);
-        showNotification(confirmed ? "Xác nhận: " + message : "Hủy: " + message);
+        showNotification(confirmed ? msgBundle.getString("notification.title.confirm") + ": "
+                + message : msgBundle.getString("notification.title.cancel") + ": " + message, false);
         return confirmed;
     }
 
@@ -461,14 +463,10 @@ public class P2PView {
     }
 
     public void showMenu(boolean isDownload) {
-        String menuText = isDownload ? "Tải xuống" : "Dừng chia sẻ";
+        String menuText = isDownload ? lbBundle.getString("app.label.file.download") : lbBundle.getString("app.label.file.stopshare");
         menuItem.setText(menuText);
         menuItem.setGraphic(createIcon(isDownload ? "/icons/download.png" : "/icons/stop.png", 16));
         contextMenu.show(fileTable, fileTable.getScene().getWindow().getX() + 10, fileTable.getScene().getWindow().getY() + 50);
-    }
-
-    public void setRowSelectionInterval(int row, int row1) {
-        Platform.runLater(() -> fileTable.getSelectionModel().selectRange(row, row1 + 1));
     }
 
     public TableView<FileInfor> getFileTable() {
@@ -480,8 +478,7 @@ public class P2PView {
             fileTable.getItems().removeIf(file ->
                     file.getFileName().equals(fileName) &&
                             (file.getPeerInfor().getIp() + ":" + file.getPeerInfor().getPort()).equals(peerInfor));
-            appendLog("Đã xóa file: " + fileName + " khỏi danh sách chia sẻ.");
-            showNotification("Đã xóa file: " + fileName);
+            showNotification(msgBundle.getString("msg.notification.file.removed") + ": " + fileName, false);
         });
     }
 
@@ -499,9 +496,10 @@ public class P2PView {
             progressBar.setProgress(progress / 100.0);
             if (progress >= 100) {
                 cancelButton.setDisable(true);
-                progressLabel.setText("Hoàn tất: " + taskName);
-                appendLog("Hoàn tất: " + taskName);
-                showNotification("Hoàn tất: " + taskName);
+                resetProgress();
+                progressLabel.setText(msgBundle.getString("msg.notification.progress.done") + ": " + taskName);
+                appendLog(msgBundle.getString("msg.notification.progress.done") + ": " + taskName);
+                showNotification(msgBundle.getString("msg.notification.progress.done") + ": " + taskName, false);
             }
         });
     }
@@ -509,17 +507,16 @@ public class P2PView {
     public void resetProgress() {
         Platform.runLater(() -> {
             progressBar.setProgress(0);
-            progressLabel.setText("Sẵn sàng");
-            showNotification("Đã đặt lại tiến trình");
+            progressLabel.setText(lbBundle.getString("app.label.progress.ready"));
         });
     }
 
     public void progressError(String taskName, String errorMessage) {
         Platform.runLater(() -> {
-            progressLabel.setText("Lỗi: " + taskName + " - " + errorMessage);
+            progressLabel.setText(msgBundle.getString("error") + ": " + taskName + " - " + errorMessage);
             progressBar.setProgress(0);
-            appendLog("Lỗi trong quá trình: " + taskName + " - " + errorMessage);
-            showNotification("Lỗi: " + errorMessage);
+            appendLog(msgBundle.getString("msg.err.progress") + ": " + taskName + " - " + errorMessage);
+            showNotification(msgBundle.getString("error") + ": " + errorMessage, true);
         });
     }
 }
