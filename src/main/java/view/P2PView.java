@@ -46,10 +46,6 @@ public class P2PView {
 
     public P2PView(Stage stage) {
         primaryStage = stage;
-        String path = System.getProperty("user.dir");
-        File file = new File(path);
-        String projectName = file.getName();
-        primaryStage.setTitle("Hệ thống chia sẻ file P2P - " + projectName);
 
         // Tạo bố cục chính
         root = new StackPane();

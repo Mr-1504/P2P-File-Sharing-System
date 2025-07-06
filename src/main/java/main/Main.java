@@ -7,14 +7,20 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 
+import java.io.File;
 import java.io.IOException;
+import java.util.Locale;
+import java.util.ResourceBundle;
 
 import static main.java.utils.Log.logInfo;
 
 public class Main extends Application {
+    private static ResourceBundle resourceBundle;
+
     public static void main(String[] args) {
         // Đặt mã hóa file
         System.setProperty("file.encoding", "UTF-8");
+        resourceBundle = ResourceBundle.getBundle("lan.messages", new Locale("vi"));
 
 //        // Khởi động Tracker trong một luồng riêng
 //        Thread trackerThread = new Thread(() -> {
@@ -45,13 +51,15 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
-            // Khởi tạo giao diện và các thành phần
             P2PView view = new P2PView(primaryStage);
+            String path = System.getProperty("user.dir");
+            File file = new File(path);
+            String projectName = file.getName();
+            primaryStage.setTitle(resourceBundle.getString("app.name") + " - " + projectName);
             PeerModel peerModel = new PeerModel(view);
             P2PController controller = new P2PController(peerModel, view);
             controller.start();
 
-            // Hiển thị giao diện
             view.show();
             primaryStage.setOnCloseRequest(event -> {
                 logInfo("Close app.");
