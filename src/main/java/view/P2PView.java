@@ -1,6 +1,7 @@
 package main.java.view;
 
 import main.java.model.FileInfor;
+import main.java.utils.AppPaths;
 import main.java.utils.EnvConf;
 import main.java.utils.LogTag;
 import javafx.animation.FadeTransition;
@@ -24,9 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Locale;
-import java.util.ResourceBundle;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static main.java.utils.Log.logError;
@@ -47,6 +46,8 @@ public class P2PView {
     private final Label progressLabel;
     private final Button cancelButton;
     private final StackPane root;
+    private final ComboBox<String> languageComboBox;
+    private final Map<String, Locale> languageMap;
     private Runnable cancelAction;
     private ResourceBundle msgBundle;
     private ResourceBundle lbBundle;
@@ -55,6 +56,10 @@ public class P2PView {
         primaryStage = stage;
         msgBundle = ResourceBundle.getBundle("lan.messages.messages", new Locale(EnvConf.strLang));
         lbBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(EnvConf.strLang));
+
+        languageMap = new HashMap<>();
+        languageMap.put("English", new Locale("en"));
+        languageMap.put("Tiếng Việt", new Locale("vi"));
 
         // Tạo bố cục chính
         root = new StackPane();
@@ -86,6 +91,18 @@ public class P2PView {
         chooseFileButton.getStyleClass().add("primary-button");
         filePanel.getChildren().addAll(chooseFileLabel, chooseFileButton);
         inputPanel.getChildren().add(filePanel);
+
+        HBox languagePanel = new HBox(10);
+        languagePanel.setAlignment(Pos.CENTER_LEFT);
+        Label languageLabel = new Label(lbBundle.getString("app.label.language"));
+        languageLabel.getStyleClass().add("label");
+        languageComboBox = new ComboBox<>();
+        languageComboBox.getItems().addAll(languageMap.keySet());
+//        languageComboBox.setValue(getLanguageDisplayName(new Locale(EnvConf.strLang)));
+        languageComboBox.getStyleClass().add("combo-box");
+//        languageComboBox.setOnAction(e -> changeLanguage(languageComboBox.getValue()));
+        languagePanel.getChildren().addAll(languageLabel, languageComboBox);
+        inputPanel.getChildren().add(languagePanel);
 
         // Panel tìm kiếm
         GridPane searchPanel = new GridPane();
@@ -120,6 +137,7 @@ public class P2PView {
         // Bảng hiển thị file
         fileTable = new TableView<>();
         fileTable.getStyleClass().add("file-table");
+        fileTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY); // Loại bỏ cột thừa
         TableColumn<FileInfor, String> nameColumn = new TableColumn<>(lbBundle.getString("app.label.file.name"));
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("fileName"));
         nameColumn.setPrefWidth(300);
@@ -270,7 +288,7 @@ public class P2PView {
 
             if (selectedFile != null) {
                 try {
-                    Path sharedDir = Paths.get("shared_files");
+                    Path sharedDir = Paths.get(AppPaths.getAppDataDirectory() + "//shared_files" );
                     if (!Files.exists(sharedDir)) {
                         Files.createDirectories(sharedDir);
                     }
