@@ -2,7 +2,7 @@ package main.java.main;
 
 import main.java.controller.P2PController;
 import main.java.model.PeerModel;
-import main.java.utils.EnvConf;
+import main.java.utils.LanguageLoader;
 import main.java.view.P2PView;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -21,7 +21,7 @@ public class Main extends Application {
     public static void main(String[] args) {
         // Đặt mã hóa file
         System.setProperty("file.encoding", "UTF-8");
-        resourceBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(EnvConf.strLang));
+        resourceBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(LanguageLoader.getCurrentLangCode()));
 
 //        // Khởi động Tracker trong một luồng riêng
 //        Thread trackerThread = new Thread(() -> {
@@ -52,11 +52,14 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
+            LanguageLoader.intialize();
             P2PView view = new P2PView(primaryStage);
             String path = System.getProperty("user.dir");
             File file = new File(path);
             String projectName = file.getName();
             primaryStage.setTitle(resourceBundle.getString("app.name") + " - " + projectName);
+            primaryStage.setMinWidth(600);
+            primaryStage.setMinHeight(600);
             PeerModel peerModel = new PeerModel(view);
             P2PController controller = new P2PController(peerModel, view);
             controller.start();

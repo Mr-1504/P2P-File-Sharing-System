@@ -1,7 +1,10 @@
 package main.java.view;
 
+import javafx.beans.property.SimpleStringProperty;
 import main.java.model.FileInfor;
+import main.java.utils.AppPaths;
 import main.java.utils.EnvConf;
+import main.java.utils.LanguageLoader;
 import main.java.utils.LogTag;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
@@ -24,84 +27,155 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Locale;
-import java.util.ResourceBundle;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+import static main.java.utils.LanguageLoader.msgBundle;
 import static main.java.utils.Log.logError;
 
 public class P2PView {
     private final Stage primaryStage;
-    private final TextArea logArea;
-    private final TextField fileNameField;
-    private final ContextMenu contextMenu;
-    private final MenuItem menuItem;
-    private final TableView<FileInfor> fileTable;
-    private final Button chooseFileButton;
-    private final Button searchButton;
-    private final Button myFilesButton;
-    private final Button refreshButton;
-    private final Button allFilesButton;
-    private final ProgressBar progressBar;
-    private final Label progressLabel;
-    private final Button cancelButton;
-    private final StackPane root;
+    private TextArea logArea;
+    private TextField fileNameField;
+    private ContextMenu contextMenu;
+    private MenuItem menuItem;
+    private TableView<FileInfor> fileTable;
+    private Button chooseFileButton;
+    private Button searchButton;
+    private Button myFilesButton;
+    private Button refreshButton;
+    private Button allFilesButton;
+    private ProgressBar progressBar;
+    private Label progressLabel;
+    private Button cancelButton;
+    private StackPane root;
+    private ComboBox<String> languageComboBox;
     private Runnable cancelAction;
-    private ResourceBundle msgBundle;
     private ResourceBundle lbBundle;
+    private VBox inputPanel;
+    private BorderPane mainLayout;
+    private VBox bottomPanel;
 
     public P2PView(Stage stage) {
         primaryStage = stage;
-        msgBundle = ResourceBundle.getBundle("lan.messages.messages", new Locale(EnvConf.strLang));
-        lbBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(EnvConf.strLang));
+        intinitializePriUI();
+        intinitializeInputUI();
+        intinitializeFileTable();
+        intinitializeLogPanel();
+        intinitializeProgressPanel();
+        intinitializeContextMenu();
+    }
 
-        // Tạo bố cục chính
-        root = new StackPane();
-        BorderPane mainLayout = new BorderPane(); // Bố cục chính vẫn là BorderPane
-        Scene scene = new Scene(root, 900, 600);
-        try {
-            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
-        } catch (NullPointerException e) {
-            Platform.runLater(() -> {
-                appendLog(msgBundle.getString("msg.err.cannot.find") + ": style.css");
-                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error.css"), msgBundle.getString("msg.err.cannot.load") + "style.css");
-            });
+    private void intinitializeContextMenu() {
+        contextMenu = new ContextMenu();
+        menuItem = new MenuItem(lbBundle.getString("app.label.download"), createIcon("/icons/download.png", 16));
+        menuItem.getStyleClass().add("menu-item");
+        contextMenu.getItems().add(menuItem);
+        fileTable.setContextMenu(contextMenu);
+    }
+
+    private void intinitializeProgressPanel() {
+        VBox progressPanel = new VBox(8);
+        progressPanel.setAlignment(Pos.CENTER_LEFT);
+        progressLabel = new Label(lbBundle.getString("app.label.progress.ready"));
+        progressLabel.getStyleClass().add("label");
+        progressBar = new ProgressBar(0);
+        progressBar.getStyleClass().add("progress-bar");
+        HBox.setHgrow(progressBar, Priority.ALWAYS);
+        progressBar.setMaxWidth(Double.MAX_VALUE);
+        cancelButton = new Button(lbBundle.getString("app.label.cancel"), createIcon("/icons/cancel.png", 20));
+        cancelButton.getStyleClass().add("secondary-button");
+        cancelButton.setDisable(true);
+        cancelButton.setOnAction(e -> setCancelButtonAction());
+
+        HBox progressBarPanel = new HBox(10);
+        progressBarPanel.setAlignment(Pos.CENTER_LEFT);
+        progressBarPanel.getChildren().addAll(progressBar, cancelButton);
+        progressPanel.getChildren().addAll(progressLabel, progressBarPanel);
+        bottomPanel.getChildren().add(progressPanel);
+        VBox.setVgrow(logArea, Priority.ALWAYS);
+        mainLayout.setBottom(bottomPanel);
+    }
+
+    private void setCancelButtonAction() {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle(lbBundle.getString("app.label.cancel.confirm.title"));
+        alert.setHeaderText(lbBundle.getString("app.label.cancel.confirm.message"));
+        alert.getButtonTypes().setAll(
+                new ButtonType(lbBundle.getString("app.label.yes"), ButtonBar.ButtonData.OK_DONE),
+                new ButtonType(lbBundle.getString("app.label.no"), ButtonBar.ButtonData.CANCEL_CLOSE));
+        if (alert.showAndWait().filter(b -> b.getButtonData() == ButtonBar.ButtonData.OK_DONE).isPresent() && cancelAction != null) {
+            cancelAction.run();
+            cancelButton.setDisable(true);
+            progressError(lbBundle.getString("app.label.progress.task"), lbBundle.getString("app.label.progress.cancelled"));
         }
-        primaryStage.setScene(scene);
-        root.getChildren().add(mainLayout); // Thêm BorderPane vào StackPane
+    }
 
-        // Panel nhập liệu
-        VBox inputPanel = new VBox(15);
+    private void intinitializeLogPanel() {
+        bottomPanel = new VBox(10);
+        bottomPanel.setPadding(new Insets(15));
+        bottomPanel.getStyleClass().add("bottom-panel");
+        logArea = new TextArea();
+        logArea.setEditable(false);
+        logArea.setPrefRowCount(6);
+        logArea.getStyleClass().add("log-area");
+        bottomPanel.getChildren().add(logArea);
+    }
+
+    private void intinitializeFileTable() {
+        fileTable = new TableView<>();
+        fileTable.getStyleClass().add("file-table");
+        fileTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        setupFileTableColumns();
+
+        fileTable.setPlaceholder(new Label(lbBundle.getString("app.label.file.empty")));
+        mainLayout.setCenter(fileTable);
+    }
+
+    private void setupFileTableColumns() {
+        TableColumn<FileInfor, String> nameColumn = new TableColumn<>(lbBundle.getString("app.label.file.name"));
+        nameColumn.setCellValueFactory(new PropertyValueFactory<>("fileName"));
+        nameColumn.setPrefWidth(300);
+
+        TableColumn<FileInfor, String> sizeColumn = new TableColumn<>(lbBundle.getString("app.label.file.size"));
+        sizeColumn.setCellValueFactory(cellData -> {
+            long size = cellData.getValue().getFileSize();
+            String formatted = formatFileSize(size);
+            return new SimpleStringProperty(formatted);
+        });
+        sizeColumn.setPrefWidth(120);
+
+        TableColumn<FileInfor, String> peerColumn = new TableColumn<>(lbBundle.getString("app.label.file.peer"));
+        peerColumn.setCellValueFactory(cellData ->
+                new javafx.beans.property.SimpleStringProperty(
+                        cellData.getValue().getPeerInfor().getIp() + ":" + cellData.getValue().getPeerInfor().getPort()));
+        peerColumn.setPrefWidth(200);
+        fileTable.getColumns().addAll(nameColumn, sizeColumn, peerColumn);
+    }
+
+    public static String formatFileSize(long sizeInBytes) {
+        double sizeMB = sizeInBytes / (1024.0 * 1024.0);
+        if (sizeMB < 1) {
+            return String.format("%.2f KB", sizeInBytes / 1024.0);
+        } else {
+            return String.format("%.2f MB", sizeMB);
+        }
+    }
+
+
+    private void intinitializeInputUI() {
+        inputPanel = new VBox(15);
         inputPanel.setPadding(new Insets(20));
         inputPanel.setAlignment(Pos.CENTER_LEFT);
         inputPanel.getStyleClass().add("input-panel");
 
-        // Panel chọn file
-        HBox filePanel = new HBox(10);
-        filePanel.setAlignment(Pos.CENTER_LEFT);
-        Label chooseFileLabel = new Label(lbBundle.getString("app.label.choose.forshare"));
-        chooseFileLabel.getStyleClass().add("label");
-        chooseFileButton = new Button(lbBundle.getString("app.label.choose.file"), createIcon("/icons/upload.png", 20));
-        chooseFileButton.getStyleClass().add("primary-button");
-        filePanel.getChildren().addAll(chooseFileLabel, chooseFileButton);
-        inputPanel.getChildren().add(filePanel);
+        intinitializeChooseFileAndLang();
+        intinitializeSearchFile();
+        intinitializeButtonPanel();
+        mainLayout.setTop(inputPanel);
+    }
 
-        // Panel tìm kiếm
-        GridPane searchPanel = new GridPane();
-        searchPanel.setHgap(10);
-        searchPanel.setVgap(10);
-        Label searchLabel = new Label(lbBundle.getString("app.label.search.file"));
-        searchLabel.getStyleClass().add("label");
-        fileNameField = new TextField();
-        fileNameField.setPromptText(lbBundle.getString("app.label.search.placeholder"));
-        fileNameField.setPrefWidth(400);
-        fileNameField.getStyleClass().add("text-field");
-        searchPanel.add(searchLabel, 0, 0);
-        searchPanel.add(fileNameField, 1, 0);
-        inputPanel.getChildren().add(searchPanel);
-
-        // Panel nút
+    private void intinitializeButtonPanel() {
         HBox buttonPanel = new HBox(10);
         buttonPanel.setAlignment(Pos.CENTER_LEFT);
         searchButton = new Button(lbBundle.getString("app.label.search"), createIcon("/icons/search.png", 20));
@@ -114,88 +188,140 @@ public class P2PView {
         allFilesButton.getStyleClass().add("primary-button");
         buttonPanel.getChildren().addAll(searchButton, myFilesButton, allFilesButton, refreshButton);
         inputPanel.getChildren().add(buttonPanel);
+    }
 
-        mainLayout.setTop(inputPanel);
+    private void intinitializeSearchFile() {
+        GridPane searchPanel = new GridPane();
+        searchPanel.setHgap(10);
+        searchPanel.setVgap(10);
+        Label searchLabel = new Label(lbBundle.getString("app.label.search.file"));
+        searchLabel.getStyleClass().add("label");
+        fileNameField = new TextField();
+        fileNameField.setPromptText(lbBundle.getString("app.label.search.placeholder"));
+        fileNameField.setPrefWidth(400);
+        fileNameField.getStyleClass().add("text-field");
+        searchPanel.add(searchLabel, 0, 0);
+        searchPanel.add(fileNameField, 1, 0);
+        inputPanel.getChildren().add(searchPanel);
+    }
 
-        // Bảng hiển thị file
-        fileTable = new TableView<>();
-        fileTable.getStyleClass().add("file-table");
-        TableColumn<FileInfor, String> nameColumn = new TableColumn<>(lbBundle.getString("app.label.file.name"));
-        nameColumn.setCellValueFactory(new PropertyValueFactory<>("fileName"));
-        nameColumn.setPrefWidth(300);
+    private void intinitializeChooseFileAndLang() {
+        HBox topPanel = new HBox(15);
+        topPanel.setAlignment(Pos.CENTER_LEFT);
+        intinitializeChooseFile(topPanel);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        topPanel.getChildren().add(spacer);
+        intinitializeLanguagePanel(topPanel);
+        inputPanel.getChildren().add(topPanel);
+    }
 
-        TableColumn<FileInfor, String> sizeColumn = new TableColumn<>(lbBundle.getString("app.label.file.size"));
-        sizeColumn.setCellValueFactory(cellData -> {
-            long size = cellData.getValue().getFileSize();
-            double sizeMB = size / (1024.0 * 1024.0);
-            String formatSize = sizeMB < 1 ?
-                    String.format("%.2f KB", size / 1024.0) :
-                    String.format("%.2f MB", sizeMB);
-            return new javafx.beans.property.SimpleStringProperty(formatSize);
-        });
-        sizeColumn.setPrefWidth(120);
+    private void intinitializeLanguagePanel(HBox topPanel) {
+        HBox languagePanel = new HBox(10);
+        languagePanel.setAlignment(Pos.CENTER_RIGHT);
+        Label languageLabel = new Label(lbBundle.getString("app.label.language"));
+        languageLabel.getStyleClass().add("label");
+        languageComboBox = new ComboBox<>();
+        languageComboBox.getItems().addAll(LanguageLoader.getAllLanguages().values());
+        languageComboBox.setValue(LanguageLoader.getCurrentLangDisplay());
+        languageComboBox.getStyleClass().add("combo-box");
+        languageComboBox.setOnAction(e -> changeLanguage(languageComboBox.getValue()));
+        languagePanel.getChildren().addAll(languageLabel, languageComboBox);
+        topPanel.getChildren().add(languagePanel);
+    }
 
-        TableColumn<FileInfor, String> peerColumn = new TableColumn<>(lbBundle.getString("app.label.file.peer"));
-        peerColumn.setCellValueFactory(cellData ->
-                new javafx.beans.property.SimpleStringProperty(
-                        cellData.getValue().getPeerInfor().getIp() + ":" + cellData.getValue().getPeerInfor().getPort()));
-        peerColumn.setPrefWidth(200);
+    private void intinitializeChooseFile(HBox topPanel) {
+        HBox filePanel = new HBox(10);
+        filePanel.setAlignment(Pos.CENTER_LEFT);
+        Label chooseFileLabel = new Label(lbBundle.getString("app.label.choose.forshare"));
+        chooseFileLabel.getStyleClass().add("label");
+        chooseFileButton = new Button(lbBundle.getString("app.label.choose.file"), createIcon("/icons/upload.png", 20));
+        chooseFileButton.getStyleClass().add("primary-button");
+        filePanel.getChildren().addAll(chooseFileLabel, chooseFileButton);
+        topPanel.getChildren().add(filePanel);
+    }
 
-        fileTable.getColumns().addAll(nameColumn, sizeColumn, peerColumn);
-        fileTable.setPlaceholder(new Label(lbBundle.getString("app.label.file.empty")));
-        mainLayout.setCenter(fileTable);
+    private void intinitializePriUI() {
+        lbBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(EnvConf.strLang));
 
-        // Panel log và tiến trình
-        VBox bottomPanel = new VBox(10);
-        bottomPanel.setPadding(new Insets(15));
-        bottomPanel.getStyleClass().add("bottom-panel");
-        logArea = new TextArea();
-        logArea.setEditable(false);
-        logArea.setPrefRowCount(6);
-        logArea.getStyleClass().add("log-area");
-        bottomPanel.getChildren().add(logArea);
+        root = new StackPane();
+        mainLayout = new BorderPane();
+        Scene scene = new Scene(root, 900, 600);
+        try {
+            scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/style.css")).toExternalForm());
+        } catch (NullPointerException e) {
+            Platform.runLater(() -> {
+                appendLog(msgBundle.getString("msg.err.cannot.find") + ": style.css");
+                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error.css"), msgBundle.getString("msg.err.cannot.load") + "style.css");
+            });
+        }
+        primaryStage.setScene(scene);
+        root.getChildren().add(mainLayout);
+    }
 
-        VBox progressPanel = new VBox(8);
-        progressLabel = new Label(lbBundle.getString("app.label.progress.ready"));
-        progressLabel.getStyleClass().add("label");
-        progressBar = new ProgressBar(0);
-        progressBar.setPrefWidth(300);
-        progressBar.getStyleClass().add("progress-bar");
-        cancelButton = new Button(lbBundle.getString("app.label.cancel"), createIcon("/icons/cancel.png", 20));
-        cancelButton.getStyleClass().add("secondary-button");
-        cancelButton.setDisable(true);
-        cancelButton.setOnAction(e -> {
-            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle(lbBundle.getString("app.label.cancel.confirm.title"));
-            alert.setHeaderText(lbBundle.getString("app.label.cancel.confirm.message"));
-            alert.getButtonTypes().setAll(
-                    new ButtonType(lbBundle.getString("app.label.yes"), ButtonBar.ButtonData.OK_DONE),
-                    new ButtonType(lbBundle.getString("app.label.no"), ButtonBar.ButtonData.CANCEL_CLOSE));
-            if (alert.showAndWait().filter(b -> b.getButtonData() == ButtonBar.ButtonData.OK_DONE).isPresent() && cancelAction != null) {
-                cancelAction.run();
-                cancelButton.setDisable(true);
-                progressError(lbBundle.getString("app.label.progress.task"), lbBundle.getString("app.label.progress.cancelled"));
+    private void changeLanguage(String languageDisplayName) {
+        Platform.runLater(() -> {
+            try {
+                Optional<Map.Entry<String, String>> selectedLanguage = LanguageLoader.getAllLanguages().entrySet().stream()
+                        .filter(entry -> entry.getValue().equals(languageDisplayName))
+                        .findFirst();
+
+                if (selectedLanguage.isEmpty()) {
+                    showNotification(msgBundle.getString("msg.err.language.missing"), true);
+                    appendLog(msgBundle.getString("msg.err.language.missing") + ": " + languageDisplayName);
+                    return;
+                }
+
+                String languageCode = selectedLanguage.get().getKey();
+                if (languageCode.equals(EnvConf.strLang))
+                    return;
+                Locale newLocale = new Locale(languageCode);
+
+                LanguageLoader.setCurrentLang(languageCode);
+                EnvConf.strLang = languageCode;
+
+                msgBundle = ResourceBundle.getBundle("lan.messages.messages", newLocale);
+                lbBundle = ResourceBundle.getBundle("lan.labels.labels", newLocale);
+
+                updateUILanguage();
+
+                showNotification(msgBundle.getString("msg.notification.language.changed") + " " + languageDisplayName, false);
+                appendLog(msgBundle.getString("msg.notification.language.changed") + " " + languageDisplayName);
+            } catch (MissingResourceException e) {
+                String errorMessage = msgBundle.getString("msg.err.language.load") + ": " + languageDisplayName;
+                showNotification(errorMessage, true);
+                appendLog(errorMessage);
+                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
             }
         });
+    }
 
-        HBox progressBarPanel = new HBox(10);
-        progressBarPanel.setAlignment(Pos.CENTER_LEFT);
-        progressBarPanel.getChildren().addAll(progressBar, cancelButton);
-        progressPanel.getChildren().addAll(progressLabel, progressBarPanel);
-        bottomPanel.getChildren().add(progressPanel);
-        mainLayout.setBottom(bottomPanel);
+    private void updateUILanguage() {
+        fileTable.getColumns().get(0).setText(lbBundle.getString("app.label.file.name"));
+        fileTable.getColumns().get(1).setText(lbBundle.getString("app.label.file.size"));
+        fileTable.getColumns().get(2).setText(lbBundle.getString("app.label.file.peer"));
+        fileTable.setPlaceholder(new Label(lbBundle.getString("app.label.file.empty")));
 
-        // Context menu
-        contextMenu = new ContextMenu();
-        menuItem = new MenuItem(lbBundle.getString("app.label.download"), createIcon("/icons/download.png", 16));
-        menuItem.getStyleClass().add("menu-item");
-        contextMenu.getItems().add(menuItem);
-        fileTable.setContextMenu(contextMenu);
+        chooseFileButton.setText(lbBundle.getString("app.label.choose.file"));
+        ((Label) ((HBox) ((HBox) inputPanel.getChildren().get(0)).getChildren().get(0)).getChildren().get(0))
+                .setText(lbBundle.getString("app.label.choose.forshare"));
+        searchButton.setText(lbBundle.getString("app.label.search"));
+        ((Label) ((GridPane) inputPanel.getChildren().get(1)).getChildren().get(0))
+                .setText(lbBundle.getString("app.label.search.file"));
+        fileNameField.setPromptText(lbBundle.getString("app.label.search.placeholder"));
+        myFilesButton.setText(lbBundle.getString("app.label.file.mine"));
+        refreshButton.setText(lbBundle.getString("app.label.refresh"));
+        allFilesButton.setText(lbBundle.getString("app.label.file.all"));
+        cancelButton.setText(lbBundle.getString("app.label.cancel"));
+        progressLabel.setText(lbBundle.getString("app.label.progress.ready"));
+        menuItem.setText(lbBundle.getString("app.label.download"));
+        ((Label) ((HBox) ((HBox) inputPanel.getChildren().get(0)).getChildren().get(2)).getChildren().get(0))
+                .setText(lbBundle.getString("app.label.language"));
     }
 
     private ImageView createIcon(String path, int size) {
         try {
-            Image image = new Image(getClass().getResourceAsStream(path));
+            Image image = new Image(Objects.requireNonNull(getClass().getResourceAsStream(path)));
             ImageView imageView = new ImageView(image);
             imageView.setFitWidth(size);
             imageView.setFitHeight(size);
@@ -270,7 +396,7 @@ public class P2PView {
 
             if (selectedFile != null) {
                 try {
-                    Path sharedDir = Paths.get("shared_files");
+                    Path sharedDir = Paths.get(AppPaths.getAppDataDirectory() + "//shared_files");
                     if (!Files.exists(sharedDir)) {
                         Files.createDirectories(sharedDir);
                     }
@@ -290,25 +416,45 @@ public class P2PView {
         }, Platform::runLater);
     }
 
-    public String openFileChooserForDownload(String fileName) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
-        fileChooser.setInitialFileName(fileName);
-        File saveFile = fileChooser.showSaveDialog(primaryStage);
-        if (saveFile != null) {
-            try {
-                showNotification(msgBundle.getString("msg.notification.file.download.start") + ": " + fileName, false);
-                return saveFile.getAbsolutePath();
-            } catch (Exception e) {
-                String errorMessage = msgBundle.getString("msg.err.file.download") + e.getMessage();
-                appendLog(errorMessage);
-                showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
-                showNotification(msgBundle.getString("error") + ": " + e.getMessage(), true);
+    public CompletableFuture<String> openFileChooserForDownload(String fileName) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (primaryStage == null || !primaryStage.isShowing()) {
+                Platform.runLater(() -> {
+                    String errorMessage = msgBundle.getString("error") + ": "
+                            + msgBundle.getString("msg.err.cannot.open.filechooser");
+                    appendLog(errorMessage);
+                    showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                    showNotification(errorMessage, true);
+                });
                 return LogTag.S_ERROR;
             }
-        }
-        showNotification(msgBundle.getString("msg.notification.file.download.cancelled"), false);
-        return LogTag.S_CANCELLED;
+
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setInitialDirectory(new File(System.getProperty("user.home")));
+            fileChooser.setInitialFileName(fileName);
+            File saveFile = fileChooser.showSaveDialog(primaryStage);
+            Platform.runLater(() -> {
+                if (saveFile != null)
+                    showNotification(msgBundle.getString("msg.notification.file.download.start") + ": " + fileName, false);
+                else
+                    showNotification(msgBundle.getString("msg.notification.file.download.cancelled"), false);
+            });
+
+            if (saveFile != null) {
+                try {
+                    return saveFile.getAbsolutePath();
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        String errorMessage = msgBundle.getString("msg.err.file.download") + e.getMessage();
+                        appendLog(errorMessage);
+                        showAlert(Alert.AlertType.ERROR, msgBundle.getString("error"), errorMessage);
+                        showNotification(msgBundle.getString("error") + ": " + e.getMessage(), true);
+                    });
+                    return LogTag.S_ERROR;
+                }
+            }
+            return LogTag.S_CANCELLED;
+        }, Platform::runLater);
     }
 
     public void appendLog(String message) {
@@ -320,9 +466,7 @@ public class P2PView {
     }
 
     public void setSearchButtonListener(Runnable listener) {
-        searchButton.setOnAction(e -> {
-            listener.run();
-        });
+        searchButton.setOnAction(e -> listener.run());
     }
 
     public void setChooseDownload(Runnable listener) {
@@ -379,7 +523,7 @@ public class P2PView {
         panel.getChildren().addAll(label, progressBar, cancelButton);
         Scene scene = new Scene(panel);
         try {
-            scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+            scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("/style.css")).toExternalForm());
         } catch (NullPointerException e) {
             logError(msgBundle.getString("msg.err.cannot.load") + ": style.css", e);
         }

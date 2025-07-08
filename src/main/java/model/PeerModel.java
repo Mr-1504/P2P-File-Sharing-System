@@ -357,9 +357,10 @@ public class PeerModel {
                     if (cancelled) {
                         logInfo("File sharing cancelled by user: " + file.getName());
                         Platform.runLater(() ->
-                                view.updateProgress("Chia sẻ file " + file.getName() + " đã bị hủy", 0, 0, 0));
+                                view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.share.cancelled"),
+                                        0, 0, 0));
 
-                        File sharedFile = new File(GetDir.getShareDir(file.getName()));
+                        File sharedFile = new File(AppPaths.getSharedFile(file.getName()));
                         if (sharedFile.exists() && sharedFile.delete()) {
                             logInfo("Removed shared file: " + sharedFile.getAbsolutePath());
                         } else {
@@ -376,7 +377,8 @@ public class PeerModel {
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
                     Platform.runLater(() ->
-                            view.updateProgress("Đang chia sẻ file " + fileName, progress, finalReadBytes, totalBytes));
+                            view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.share.processing")
+                                    + " " + fileName, progress, finalReadBytes, totalBytes));
                 }
 
                 String fullFileHash = bytesToHex(md.digest());
@@ -491,7 +493,7 @@ public class PeerModel {
                         int retryCount = 0;
                         final int MAX_RETRY = 100; // thử 100 lần (tức 5 giây)
 
-                        PeerInfor peer = null;
+                        PeerInfor peer;
                         do {
                             if (retryCount++ >= MAX_RETRY) {
                                 logInfo("Timeout while waiting for available peer for chunk " + chunkIndex);
@@ -508,7 +510,7 @@ public class PeerModel {
                         logInfo("Selected peer for download: " + peer.getIp() + ":" + peer.getPort() + ", taskcount: " + peer.getTaskForDownload());
                         peer.addTaskForDownload();
                         PeerInfor finalPeer = peer;
-                        futures.add(executor.submit(() -> downloadChunk(finalPeer, fileInfor.getFileHash(), chunkIndex, raf, fileInfor, progressCounter)));
+                        futures.add(executor.submit(() -> downloadChunk(finalPeer, chunkIndex, raf, fileInfor, progressCounter)));
                     }
                     boolean allChunksDownloaded = true;
                     for (Future<Boolean> future : futures) {
@@ -638,7 +640,7 @@ public class PeerModel {
     private void cancelDownload(String savePath) {
         logInfo("Download process cancelled for file: " + savePath);
         Platform.runLater(() ->
-                view.updateProgress("Quá trình tải file " + savePath + " đã bị hủy", 0, 0, 0));
+                view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.download.cancelled"), 0, 0, 0));
 
         File sharedFile = new File(savePath);
         Path path = sharedFile.toPath();
@@ -649,7 +651,7 @@ public class PeerModel {
         }
     }
 
-    private boolean downloadChunk(PeerInfor peer, String fileName, int chunkIndex, RandomAccessFile raf, FileInfor fileInfor, AtomicInteger progressCounter) {
+    private boolean downloadChunk(PeerInfor peer, int chunkIndex, RandomAccessFile raf, FileInfor fileInfor, AtomicInteger progressCounter) {
         int maxRetries = 3;
         if (cancelled) {
             return false;
@@ -664,7 +666,7 @@ public class PeerModel {
                 channel = SocketChannel.open(new InetSocketAddress(peer.getIp(), peer.getPort()));
                 channel.socket().setSoTimeout(SOCKET_TIMEOUT_MS);
                 openChannels.add(channel);
-                String request = RequestInfor.GET_CHUNK + Infor.FIELD_SEPARATOR + fileName + Infor.FIELD_SEPARATOR + chunkIndex + "\n";
+                String request = RequestInfor.GET_CHUNK + Infor.FIELD_SEPARATOR + fileInfor.getFileHash() + Infor.FIELD_SEPARATOR + chunkIndex + "\n";
                 ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
                 while (requestBuffer.hasRemaining()) {
                     channel.write(requestBuffer);
@@ -732,7 +734,8 @@ public class PeerModel {
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
 
                 Platform.runLater(() ->
-                        view.updateProgress("Đang tải file " + fileName, percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
+                        view.updateProgress( LanguageLoader.msgBundle.getString("msg.notification.file.download.processing") + " "
+                                + fileInfor.getFileName(), percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
                 peer.removeTaskForDownload();
@@ -775,7 +778,7 @@ public class PeerModel {
             logInfo("File not found in shared files: " + fileHash);
             return;
         }
-        String filePath = GetDir.getDir() + "\\shared_files\\" + orderedFile.getFileName();
+        String filePath = AppPaths.getAppDataDirectory() + "\\shared_files\\" + orderedFile.getFileName();
         File file = new File(filePath);
         if (!file.exists() || !file.canRead()) {
             logInfo("File does not exist or cannot be read: " + filePath);
@@ -888,8 +891,7 @@ public class PeerModel {
                     return null;
                 }
             } catch (IOException | InterruptedException e) {
-                System.err.println("Error connecting to peer " + peer + ": " + e.getMessage());
-                e.printStackTrace();
+                logError("Error connecting to peer " + peer + ": " + e.getMessage(), e);
                 return null;
             }
         });
@@ -940,8 +942,7 @@ public class PeerModel {
     }
 
     public void loadSharedFiles() {
-        // lấy danh sách file đang chia sẻ trong folder shared_files
-        String path = GetDir.getDir() + "\\shared_files\\";
+        String path = AppPaths.getAppDataDirectory() + "\\shared_files\\";
         File sharedDir = new File(path);
         if (!sharedDir.exists() || !sharedDir.isDirectory()) {
             logInfo("Shared directory does not exist or is not a directory: " + path);
@@ -1017,7 +1018,7 @@ public class PeerModel {
             logInfo("Invalid response from tracker: " + response);
             return LogTag.I_INVALID;
         } catch (Exception e) {
-            e.printStackTrace();
+            logError("Error refreshing shared file names from tracker: " + e.getMessage(), e);
             return LogTag.I_ERROR;
         }
     }
@@ -1043,7 +1044,7 @@ public class PeerModel {
             FileInfor fileInfor = mySharedFiles.get(fileName);
             mySharedFiles.remove(fileName);
             sharedFileNames.removeIf(file -> file.getFileName().equals(fileName));
-            String filePath = GetDir.getDir() + "\\shared_files\\" + fileName;
+            String filePath = AppPaths.getAppDataDirectory() + "\\shared_files\\" + fileName;
             File file = new File(filePath);
             if (file.exists() && file.delete()) {
                 logInfo("Removed shared file: " + filePath);
