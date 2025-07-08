@@ -3,7 +3,7 @@ package main.java.utils;
 import io.github.cdimascio.dotenv.Dotenv;
 
 public class EnvConf {
-    public static String strLang = "en";
+    public static String strLang;
     private static final Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 
     public static String getEnv(String key, String defaultValue) {
