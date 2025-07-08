@@ -6,21 +6,35 @@ import java.util.regex.Pattern;
 
 import static main.java.utils.Log.logInfo;
 
-public class GetDir {
-    public static String getDir() {
-        String dir = System.getProperty("user.dir");
-        if (dir.endsWith("src")) {
-            dir = dir.substring(0, dir.length() - 4);
+public class AppPaths {
+    public static String APP_NAME = "P2PFileSharing";
+    public static String getAppDataDirectory() {
+        String os = System.getProperty("os.name").toLowerCase();
+        String userHome = System.getProperty("user.home");
+        File appDir;
+
+        if (os.contains("win")) {
+            String appData = System.getenv("APPDATA");
+            appDir = new File(appData, APP_NAME);
+        } else if (os.contains("mac")) {
+            appDir = new File(userHome + "/Library/Application Support", APP_NAME);
+        } else {
+            appDir = new File(userHome + "/.config", APP_NAME);
         }
-        return dir;
+
+        if (!appDir.exists()) {
+            appDir.mkdirs();
+        }
+
+        return appDir.getAbsolutePath();
     }
 
-    public static String getShareDir(String fileName) {
-        return GetDir.getDir() + "\\shared_files\\" + fileName;
+    public static String getSharedFile(String fileName) {
+        return AppPaths.getAppDataDirectory() + "\\shared_files\\" + fileName;
     }
 
     public static boolean copyFileToShare(File sourceFile, String newfileName, AtomicBoolean isCancelled) {
-        File destFile = new File(getShareDir(newfileName));
+        File destFile = new File(getSharedFile(newfileName));
         try (
                 InputStream in = new FileInputStream(sourceFile);
                 OutputStream out = new FileOutputStream(destFile)
@@ -55,7 +69,7 @@ public class GetDir {
 
         Pattern pattern = Pattern.compile("^" + Pattern.quote(name) + "( \\(\\d+\\))?" + Pattern.quote(extension) + "$");
 
-        File dir = new File(GetDir.getDir() + File.separator + "shared_files");
+        File dir = new File(AppPaths.getAppDataDirectory() + File.separator + "shared_files");
         File[] files = dir.listFiles();
 
         int count = 0;
@@ -77,10 +91,10 @@ public class GetDir {
         int dotIndex = fileName.lastIndexOf('.');
         if (dotIndex != -1) {
             name = fileName.substring(0, dotIndex);
-            extension = fileName.substring(dotIndex); // bao gồm dấu chấm
+            extension = fileName.substring(dotIndex);
         }
 
-        int count = GetDir.getFileCount(fileName);
+        int count = AppPaths.getFileCount(fileName);
         System.out.println("Current file count for '" + fileName + "': " + count);
         fileName = name + " (" + (count + 1) + ")" + extension;
         return fileName;
