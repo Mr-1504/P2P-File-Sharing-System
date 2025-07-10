@@ -6,23 +6,23 @@ import java.util.*;
 
 import static main.java.utils.Log.logError;
 
-public class LanguageLoader {
+public class ConfigLoader {
     private static final Properties internalProps = new Properties();
     private static final Properties userProps = new Properties();
     private static final String USER_LANG_FILE = AppPaths.getAppDataDirectory() + "/lang.properties";
     public static ResourceBundle msgBundle;
 
     public static void intialize() {
-        try (InputStream in = LanguageLoader.class.getClassLoader()
-                .getResourceAsStream("lan/lang.properties")) {
+        try (InputStream in = ConfigLoader.class.getClassLoader()
+                .getResourceAsStream("config.properties")) {
             if (in != null) {
                 Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8);
                 internalProps.load(reader);
             } else {
-                logError("Not found: lan/lang.properties", null);
+                logError("Not found: config.properties", null);
             }
         } catch (Exception e) {
-            logError("Lỗi khi load lan/lang.properties", e);
+            logError("Lỗi khi load config.properties", e);
         }
 
         try {
@@ -40,8 +40,8 @@ public class LanguageLoader {
                     userProps.load(reader);
                 }
             }
-            EnvConf.strLang = LanguageLoader.getCurrentLangCode();
-            LanguageLoader.msgBundle = ResourceBundle.getBundle("lan.messages.messages", new Locale(EnvConf.strLang));
+            EnvConf.strLang = ConfigLoader.getCurrentLangCode();
+            ConfigLoader.msgBundle = ResourceBundle.getBundle("lan.messages.messages", new Locale(EnvConf.strLang));
         } catch (Exception e) {
             logError("Error loading user language file", e);
         }
@@ -75,5 +75,15 @@ public class LanguageLoader {
         } catch (IOException e) {
             logError("Cannot update language.", e);
         }
+    }
+
+    public static String getAppName() {
+        return internalProps.getProperty("app.name", "P2P File Sharing Application");
+    }
+    public static String getAppVersion() {
+        return internalProps.getProperty("app.version", "1.0.0");
+    }
+    public static String getAppLogo() {
+        return internalProps.getProperty("app.logo", "default_logo.png");
     }
 }

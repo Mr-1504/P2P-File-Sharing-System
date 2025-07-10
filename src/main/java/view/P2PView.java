@@ -4,7 +4,7 @@ import javafx.beans.property.SimpleStringProperty;
 import main.java.model.FileInfor;
 import main.java.utils.AppPaths;
 import main.java.utils.EnvConf;
-import main.java.utils.LanguageLoader;
+import main.java.utils.ConfigLoader;
 import main.java.utils.LogTag;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
@@ -30,7 +30,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-import static main.java.utils.LanguageLoader.msgBundle;
+import static main.java.utils.ConfigLoader.msgBundle;
 import static main.java.utils.Log.logError;
 
 public class P2PView {
@@ -222,8 +222,8 @@ public class P2PView {
         Label languageLabel = new Label(lbBundle.getString("app.label.language"));
         languageLabel.getStyleClass().add("label");
         languageComboBox = new ComboBox<>();
-        languageComboBox.getItems().addAll(LanguageLoader.getAllLanguages().values());
-        languageComboBox.setValue(LanguageLoader.getCurrentLangDisplay());
+        languageComboBox.getItems().addAll(ConfigLoader.getAllLanguages().values());
+        languageComboBox.setValue(ConfigLoader.getCurrentLangDisplay());
         languageComboBox.getStyleClass().add("combo-box");
         languageComboBox.setOnAction(e -> changeLanguage(languageComboBox.getValue()));
         languagePanel.getChildren().addAll(languageLabel, languageComboBox);
@@ -262,7 +262,7 @@ public class P2PView {
     private void changeLanguage(String languageDisplayName) {
         Platform.runLater(() -> {
             try {
-                Optional<Map.Entry<String, String>> selectedLanguage = LanguageLoader.getAllLanguages().entrySet().stream()
+                Optional<Map.Entry<String, String>> selectedLanguage = ConfigLoader.getAllLanguages().entrySet().stream()
                         .filter(entry -> entry.getValue().equals(languageDisplayName))
                         .findFirst();
 
@@ -277,7 +277,7 @@ public class P2PView {
                     return;
                 Locale newLocale = new Locale(languageCode);
 
-                LanguageLoader.setCurrentLang(languageCode);
+                ConfigLoader.setCurrentLang(languageCode);
                 EnvConf.strLang = languageCode;
 
                 msgBundle = ResourceBundle.getBundle("lan.messages.messages", newLocale);

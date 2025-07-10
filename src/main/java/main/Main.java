@@ -1,8 +1,9 @@
 package main.java.main;
 
+import javafx.scene.image.Image;
 import main.java.controller.P2PController;
 import main.java.model.PeerModel;
-import main.java.utils.LanguageLoader;
+import main.java.utils.ConfigLoader;
 import main.java.view.P2PView;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -11,6 +12,7 @@ import javafx.stage.Stage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.ResourceBundle;
 
 import static main.java.utils.Log.logInfo;
@@ -21,7 +23,7 @@ public class Main extends Application {
     public static void main(String[] args) {
         // Đặt mã hóa file
         System.setProperty("file.encoding", "UTF-8");
-        resourceBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(LanguageLoader.getCurrentLangCode()));
+        resourceBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(ConfigLoader.getCurrentLangCode()));
 
 //        // Khởi động Tracker trong một luồng riêng
 //        Thread trackerThread = new Thread(() -> {
@@ -52,12 +54,14 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
-            LanguageLoader.intialize();
+            ConfigLoader.intialize();
             P2PView view = new P2PView(primaryStage);
             String path = System.getProperty("user.dir");
             File file = new File(path);
             String projectName = file.getName();
-            primaryStage.setTitle(resourceBundle.getString("app.name") + " - " + projectName);
+            primaryStage.setTitle(ConfigLoader.getAppName());
+            Image icon = new Image(Objects.requireNonNull(getClass().getResourceAsStream("/icons/" + ConfigLoader.getAppLogo())));
+            primaryStage.getIcons().add(icon);
             primaryStage.setMinWidth(600);
             primaryStage.setMinHeight(600);
             PeerModel peerModel = new PeerModel(view);

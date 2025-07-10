@@ -9,7 +9,7 @@ import main.java.model.PeerInfor;
 import main.java.model.PeerModel;
 import main.java.utils.AppPaths;
 import main.java.utils.Infor;
-import main.java.utils.LanguageLoader;
+import main.java.utils.ConfigLoader;
 import main.java.utils.LogTag;
 import main.java.view.P2PView;
 
@@ -56,7 +56,7 @@ public class P2PController {
                 showSharedFile();
             } catch (Exception e) {
                 logError(": " + e.getMessage(), e);
-                Platform.runLater(() -> view.showMessage(LanguageLoader.msgBundle.getString("msg.err.sys.start") + ": " + e.getMessage(), true));
+                Platform.runLater(() -> view.showMessage(ConfigLoader.msgBundle.getString("msg.err.sys.start") + ": " + e.getMessage(), true));
             }
         });
     }
@@ -66,14 +66,14 @@ public class P2PController {
             try {
                 registerWithTracker();
                 while (!isLoadSharedFiles) {
-                    logInfo(LanguageLoader.msgBundle.getString("msg.log.noti.waiting_load_shared_files"));
+                    logInfo(ConfigLoader.msgBundle.getString("msg.log.noti.waiting_load_shared_files"));
                     sleep(1000);
                 }
                 peerModel.shareFileList();
             } catch (Exception e) {
-                logError(LanguageLoader.msgBundle.getString("msg.log.err.cannot_register_peer") + ": " + e.getMessage(), e);
+                logError(ConfigLoader.msgBundle.getString("msg.log.err.cannot_register_peer") + ": " + e.getMessage(), e);
                 Platform.runLater(() -> view.showMessage(
-                        LanguageLoader.msgBundle.getString("msg.log.err.cannot_register_peer") + ": " + e.getMessage(), true));
+                        ConfigLoader.msgBundle.getString("msg.log.err.cannot_register_peer") + ": " + e.getMessage(), true));
             }
         });
     }
@@ -83,23 +83,23 @@ public class P2PController {
             int result = peerModel.registerWithTracker();
             switch (result) {
                 case LogTag.I_SUCCESS -> {
-                    view.appendLog(LanguageLoader.msgBundle.getString("msg.log.noti.registered_peer"));
-                    view.showNotification(LanguageLoader.msgBundle.getString("msg.log.noti.registered_peer"), false);
+                    view.appendLog(ConfigLoader.msgBundle.getString("msg.log.noti.registered_peer"));
+                    view.showNotification(ConfigLoader.msgBundle.getString("msg.log.noti.registered_peer"), false);
                     isConnected = true;
                 }
                 case LogTag.I_NOT_FOUND -> {
-                    view.appendLog(LanguageLoader.msgBundle.getString("msg.log.noti.registered_no_shared_file"));
-                    view.showNotification(LanguageLoader.msgBundle.getString("msg.log.noti.registered_no_shared_file"), false);
+                    view.appendLog(ConfigLoader.msgBundle.getString("msg.log.noti.registered_no_shared_file"));
+                    view.showNotification(ConfigLoader.msgBundle.getString("msg.log.noti.registered_no_shared_file"), false);
                     isConnected = true;
                 }
                 case LogTag.I_ERROR -> {
-                    view.appendLog(LanguageLoader.msgBundle.getString("msg.log.err.cannot_register_peer"));
-                    view.showNotification(LanguageLoader.msgBundle.getString("msg.log.err.cannot_register_peer"), true);
+                    view.appendLog(ConfigLoader.msgBundle.getString("msg.log.err.cannot_register_peer"));
+                    view.showNotification(ConfigLoader.msgBundle.getString("msg.log.err.cannot_register_peer"), true);
                     sleep(5000);
                 }
                 default -> {
-                    view.appendLog(LanguageLoader.msgBundle.getString("msg.log.noti.retrying"));
-                    view.showNotification(LanguageLoader.msgBundle.getString("msg.log.noti.retrying"), true);
+                    view.appendLog(ConfigLoader.msgBundle.getString("msg.log.noti.retrying"));
+                    view.showNotification(ConfigLoader.msgBundle.getString("msg.log.noti.retrying"), true);
                     sleep(5000);
                 }
             }
@@ -110,13 +110,13 @@ public class P2PController {
         try {
             peerModel.startServer();
         } catch (Exception e) {
-            logError(LanguageLoader.msgBundle.getString("msg.log.err.cannot_start_server") + " TCP: " + e.getMessage(), e);
+            logError(ConfigLoader.msgBundle.getString("msg.log.err.cannot_start_server") + " TCP: " + e.getMessage(), e);
         }
 
         try {
             peerModel.startUDPServer();
         } catch (Exception e) {
-            logError(LanguageLoader.msgBundle.getString("msg.log.err.cannot_start_server") + " UDP: " + e.getMessage(), e);
+            logError(ConfigLoader.msgBundle.getString("msg.log.err.cannot_start_server") + " UDP: " + e.getMessage(), e);
         }
     }
 
@@ -154,19 +154,19 @@ public class P2PController {
 
     private void refreshFileList() {
         if (!isConnected) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.log.err.cannot_load_shared_files") + ". "
-                    + LanguageLoader.msgBundle.getString("msg.log.noti.reconnecting"), true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.log.err.cannot_load_shared_files") + ". "
+                    + ConfigLoader.msgBundle.getString("msg.log.noti.reconnecting"), true);
             retryConnectToTracker();
             return;
         }
         view.clearTable();
-        view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.refresh"));
+        view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.refresh"));
         executor.submit(() -> {
             try {
                 int result = peerModel.refreshSharedFileNames();
                 handleRefreshResult(result);
             } catch (Exception e) {
-                logError(LanguageLoader.msgBundle.getString("msg.log.err.cannot_load_shared_files") + ": " + e.getMessage(), e);
+                logError(ConfigLoader.msgBundle.getString("msg.log.err.cannot_load_shared_files") + ": " + e.getMessage(), e);
             }
         });
     }
@@ -174,17 +174,17 @@ public class P2PController {
     private void handleRefreshResult(int result) {
         switch (result) {
             case LogTag.I_SUCCESS -> {
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.refreshed"));
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.refreshed"));
                 Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
                 if (sharedFiles.isEmpty()) {
-                    view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.empty"));
+                    view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.empty"));
                 } else {
                     view.displayData(sharedFiles);
                 }
             }
-            case LogTag.I_INVALID -> view.appendLog(LanguageLoader.msgBundle.getString("msg.log.err.query_tracker"));
+            case LogTag.I_INVALID -> view.appendLog(ConfigLoader.msgBundle.getString("msg.log.err.query_tracker"));
             case LogTag.I_ERROR -> {
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.log.err.cannot_load_shared_files"));
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.log.err.cannot_load_shared_files"));
                 isConnected = false;
                 taskTrackerRegistration();
             }
@@ -194,7 +194,7 @@ public class P2PController {
     private void handleMenuItemClick() {
         int selected = view.getFileTable().getSelectionModel().getSelectedIndex();
         if (selected == -1) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.notification.file.please_choose"), true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.notification.file.please_choose"), true);
             return;
         }
         FileInfor selectedFile = view.getFileTable().getItems().get(selected);
@@ -202,28 +202,28 @@ public class P2PController {
         String peerInfor = selectedFile.getPeerInfor().getIp() + ":" + selectedFile.getPeerInfor().getPort();
 
         if (isInvalidFileOrPeer(fileName, peerInfor)) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.invalid_infor"), true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.invalid_infor"), true);
             return;
         }
 
         PeerInfor peer = parsePeerInfo(peerInfor);
         if (peer == null) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.invalid_peer") + peerInfor, true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.invalid_peer") + peerInfor, true);
             return;
         }
 
         if (!isConnected) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.log.noti.reconnecting"), true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.log.noti.reconnecting"), true);
             retryConnectToTracker();
             return;
         }
 
         if (!peerModel.isMe(peer.getIp(), peer.getPort())) {
             executor.submit(this::downloadFile);
-        } else if (view.showConfirmation(LanguageLoader.msgBundle.getString("msg.notification.file.stop_share.confirm") + "\n" + fileName)) {
+        } else if (view.showConfirmation(ConfigLoader.msgBundle.getString("msg.notification.file.stop_share.confirm") + "\n" + fileName)) {
             removeFile(fileName, peerInfor);
         } else {
-            view.showNotification(LanguageLoader.msgBundle.getString("msg.notification.file.stop_share.cancelled"), true);
+            view.showNotification(ConfigLoader.msgBundle.getString("msg.notification.file.stop_share.cancelled"), true);
         }
     }
 
@@ -232,29 +232,29 @@ public class P2PController {
             int result = peerModel.stopSharingFile(fileName);
             handleRemoveFileResult(result, fileName, peerInfor);
         } catch (Exception e) {
-            view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.stop") + ": " + e.getMessage());
+            view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.stop") + ": " + e.getMessage());
         }
     }
 
     private void handleRemoveFileResult(int result, String fileName, String peerInfor) {
         switch (result) {
             case LogTag.I_SUCCESS -> {
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.stop_share.done") + ": " + fileName);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.stop_share.done") + ": " + fileName);
                 view.removeFileFromView(fileName, peerInfor);
             }
             case LogTag.I_NOT_FOUND -> {
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName);
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName, true);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName);
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName, true);
                 view.removeFileFromView(fileName, peerInfor);
             }
             case LogTag.I_ERROR -> {
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
-                view.showNotification(LanguageLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
+                view.showNotification(ConfigLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
                 isConnected = false;
                 retryConnectToTracker();
 
             }
-            default -> view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.stop") + ": " + fileName);
+            default -> view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.stop") + ": " + fileName);
         }
     }
 
@@ -278,12 +278,12 @@ public class P2PController {
         Set<FileInfor> sharedFiles = peerModel.getSharedFileNames();
 
         if (sharedFiles.isEmpty()) {
-            view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.empty"));
+            view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.empty"));
             return;
         }
 
         view.displayData(sharedFiles);
-        view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.refreshed"));
+        view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.refreshed"));
     }
 
     private void setupFileTableMouseListener() {
@@ -316,13 +316,13 @@ public class P2PController {
         Map<String, FileInfor> sharedFiles = peerModel.getMySharedFiles();
 
         if (sharedFiles.isEmpty()) {
-            view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.empty"));
+            view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.empty"));
             return;
         }
         for (FileInfor fileInfo : sharedFiles.values()) {
             view.getFileTable().getItems().add(fileInfo);
         }
-        view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.refreshed"));
+        view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.refreshed"));
     }
 
     private void shareFile() {
@@ -342,7 +342,7 @@ public class P2PController {
             }
 
             if (!isConnected) {
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
                 retryConnectToTracker();
                 return;
             }
@@ -354,18 +354,18 @@ public class P2PController {
             view.setCancelButtonEnabled(true);
             Future<Boolean> res = peerModel.shareFileAsync(file, fileName);
             if (res == null) {
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.err.file.share") + ": " + fileName, true);
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.share") +  ": " + fileName);
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.err.file.share") + ": " + fileName, true);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.share") +  ": " + fileName);
                 return;
             } else {
                 try {
                     if (res.get() == false) {
-                        view.showNotification(LanguageLoader.msgBundle.getString("msg.notification.file.share.cancelled") + ": " + fileName, false);
-                        view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.share"));
+                        view.showNotification(ConfigLoader.msgBundle.getString("msg.notification.file.share.cancelled") + ": " + fileName, false);
+                        view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.share"));
                         return;
                     }
                 } catch (Exception e) {
-                    logError(LanguageLoader.msgBundle.getString("msg.log.err.cannot_wait_for_shared_files") + ": " + e.getMessage(), e);
+                    logError(ConfigLoader.msgBundle.getString("msg.log.err.cannot_wait_for_shared_files") + ": " + e.getMessage(), e);
                 }
             }
             if (isReplace.get() == 1)
@@ -373,7 +373,7 @@ public class P2PController {
             FileInfor fileInfor = peerModel.getMySharedFiles().get(fileName);
             Platform.runLater(() -> {
                 view.getFileTable().getItems().add(fileInfor);
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.share.done") + ": " + fileName);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.share.done") + ": " + fileName);
             });
         });
     }
@@ -383,15 +383,15 @@ public class P2PController {
         String filePath = file.getAbsolutePath();
         if (!file.exists() || !file.isFile()) {
             Platform.runLater(() -> {
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + filePath, true);
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + filePath);
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + filePath, true);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + filePath);
             });
             return LogTag.I_NOT_FOUND;
         }
         Platform.runLater(() -> {
             dialog.set(view.createLoadingDialog(
-                    LanguageLoader.msgBundle.getString("msg.notification.progress.prepare") +
-                            ": " + filePath + "...\n" + LanguageLoader.msgBundle.getString("msg.notification.progress.large_file"),
+                    ConfigLoader.msgBundle.getString("msg.notification.progress.prepare") +
+                            ": " + filePath + "...\n" + ConfigLoader.msgBundle.getString("msg.notification.progress.large_file"),
                     () -> isCancelled.set(true)));
             dialog.get().show();
         });
@@ -399,8 +399,8 @@ public class P2PController {
         boolean res = AppPaths.copyFileToShare(file, fileName, isCancelled);
         if (!res) {
             Platform.runLater(() -> {
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.err.file.copy"), true);
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.copy"));
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.err.file.copy"), true);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.copy"));
             });
             return LogTag.I_ERROR;
         }
@@ -413,14 +413,14 @@ public class P2PController {
             String filePath = view.openFileChooserForShare().join();
 
             if (filePath.equals(LogTag.S_ERROR) || filePath.equals(LogTag.S_CANCELLED)) {
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.please_choose"));
-                view.showMessage(LanguageLoader.msgBundle.getString("msg.notification.file.please_choose"), true);
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.please_choose"));
+                view.showMessage(ConfigLoader.msgBundle.getString("msg.notification.file.please_choose"), true);
                 return LogTag.S_CANCELLED;
             }
             return filePath;
         } catch (Exception e) {
-            view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.choose") + ": " + e.getMessage());
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.file.choose") + ": " + e.getMessage(), true);
+            view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.choose") + ": " + e.getMessage());
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.file.choose") + ": " + e.getMessage(), true);
             return LogTag.S_ERROR;
         }
     }
@@ -431,15 +431,15 @@ public class P2PController {
         if (Files.exists(filePathObj)) {
             CountDownLatch latch = new CountDownLatch(1);
             Platform.runLater(() -> {
-                isReplace.set(view.showMessageWithOptions(LanguageLoader.msgBundle.getString("msg.err.file.exist") + ": " + fileName, true));
-                view.appendLog(LanguageLoader.msgBundle.getString("msg.err.file.exist") + ": " + fileName);
+                isReplace.set(view.showMessageWithOptions(ConfigLoader.msgBundle.getString("msg.err.file.exist") + ": " + fileName, true));
+                view.appendLog(ConfigLoader.msgBundle.getString("msg.err.file.exist") + ": " + fileName);
                 latch.countDown();
             });
 
             try {
                 latch.await();
             } catch (InterruptedException e) {
-                logError(LanguageLoader.msgBundle.getString("msg.log.err.interupted_while_waiting_user_input") + ": " + e.getMessage(), e);
+                logError(ConfigLoader.msgBundle.getString("msg.log.err.interupted_while_waiting_user_input") + ": " + e.getMessage(), e);
             }
             return handleResultGetFileName(isReplace, fileName, dialog);
         }
@@ -456,8 +456,8 @@ public class P2PController {
             case 2 -> {
                 Platform.runLater(() -> {
                     dialog.get().close();
-                    view.showNotification(LanguageLoader.msgBundle.getString("msg.notification.file.share.cancelled"), false);
-                    view.appendLog(LanguageLoader.msgBundle.getString("msg.notification.file.share.cancelled"));
+                    view.showNotification(ConfigLoader.msgBundle.getString("msg.notification.file.share.cancelled"), false);
+                    view.appendLog(ConfigLoader.msgBundle.getString("msg.notification.file.share.cancelled"));
                 });
                 yield LogTag.S_CANCELLED;
             }
@@ -469,12 +469,12 @@ public class P2PController {
     private void searchFile() {
         String fileName = view.getFileName();
         if (fileName.isEmpty()) {
-            view.showNotification(LanguageLoader.msgBundle.getString("msg.err.file.please_enter_file_name"), true);
+            view.showNotification(ConfigLoader.msgBundle.getString("msg.err.file.please_enter_file_name"), true);
             return;
         }
         view.showNotification(fileName, true);
         if (!isConnected) {
-            view.showNotification(LanguageLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
+            view.showNotification(ConfigLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true);
             retryConnectToTracker();
             return;
         }
@@ -484,12 +484,12 @@ public class P2PController {
         executor.submit(() -> {
             List<FileInfor> files = peerModel.queryTracker(fileName);
             if (files == null) {
-                Platform.runLater(() -> view.showNotification(LanguageLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true));
+                Platform.runLater(() -> view.showNotification(ConfigLoader.msgBundle.getString("msg.log.err.cannot_connect_tracker"), true));
                 retryConnectToTracker();
                 return;
             }
             if (files.isEmpty()) {
-                Platform.runLater(() -> view.showNotification(LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName, false));
+                Platform.runLater(() -> view.showNotification(ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName, false));
                 return;
             }
 
@@ -519,13 +519,13 @@ public class P2PController {
         String fileName = parts[2];
         FileInfor fileInfor = getFileInfor(fileName, peerInfor);
         if (fileInfor == null) {
-            logInfo(LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName);
+            logInfo(ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName);
             return;
         }
 
         List<PeerInfor> peers = peerModel.getPeersWithFile(fileInfor.getFileHash());
         if (peers == null || peers.isEmpty()) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.not_shared") + ": " + fileName, true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.not_shared") + ": " + fileName, true);
             return;
         }
 
@@ -535,8 +535,8 @@ public class P2PController {
             int status = result.get();
             handleDownloadResult(status, fileName, peerInfor);
         } catch (Exception e) {
-            logError(LanguageLoader.msgBundle.getString("msg.err.file,download") + ": " + e.getMessage(), e);
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.file,download") + ": " + e.getMessage(), true);
+            logError(ConfigLoader.msgBundle.getString("msg.err.file,download") + ": " + e.getMessage(), e);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.file,download") + ": " + e.getMessage(), true);
         }
     }
 
@@ -562,13 +562,13 @@ public class P2PController {
         }
 
         if (fileName.isEmpty()) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.invalid_file"), true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.invalid_file"), true);
             return LogTag.S_INVALID;
         }
 
         String savePath = view.openFileChooserForDownload(fileName).join();
         if (savePath.isEmpty() || savePath.equals(LogTag.S_CANCELLED) || savePath.equals(LogTag.S_ERROR)) {
-            view.showMessage(LanguageLoader.msgBundle.getString("msg.err.invalid_path"), true);
+            view.showMessage(ConfigLoader.msgBundle.getString("msg.err.invalid_path"), true);
             return LogTag.S_INVALID;
         }
         return savePath + Infor.FIELD_SEPARATOR + peerInfor + Infor.FIELD_SEPARATOR + fileName;
@@ -578,17 +578,17 @@ public class P2PController {
         String message;
         boolean isError = switch (status) {
             case LogTag.I_SUCCESS -> {
-                message = LanguageLoader.msgBundle.getString("msg.notification.file.download.done") + ": " + fileName;
+                message = ConfigLoader.msgBundle.getString("msg.notification.file.download.done") + ": " + fileName;
                 yield false;
             }
             case LogTag.I_NOT_READY -> {
-                message = LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName + ". "
-                        + LanguageLoader.msgBundle.getString("msg.notification.please_refresh");
+                message = ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName + ". "
+                        + ConfigLoader.msgBundle.getString("msg.notification.please_refresh");
                 yield true;
             }
             case LogTag.I_NOT_FOUND -> {
-                message = peerInfor + LanguageLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName + ". "
-                        + LanguageLoader.msgBundle.getString("msg.notification.please_refresh");
+                message = peerInfor + ConfigLoader.msgBundle.getString("msg.err.cannot.find") + ": " + fileName + ". "
+                        + ConfigLoader.msgBundle.getString("msg.notification.please_refresh");
                 yield true;
             }
             default -> throw new IllegalStateException("Unexpected value: " + status);

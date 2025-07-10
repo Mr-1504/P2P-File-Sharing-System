@@ -357,7 +357,7 @@ public class PeerModel {
                     if (cancelled) {
                         logInfo("File sharing cancelled by user: " + file.getName());
                         Platform.runLater(() ->
-                                view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.share.cancelled"),
+                                view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.share.cancelled"),
                                         0, 0, 0));
 
                         File sharedFile = new File(AppPaths.getSharedFile(file.getName()));
@@ -377,7 +377,7 @@ public class PeerModel {
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
                     Platform.runLater(() ->
-                            view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.share.processing")
+                            view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.share.processing")
                                     + " " + fileName, progress, finalReadBytes, totalBytes));
                 }
 
@@ -640,7 +640,7 @@ public class PeerModel {
     private void cancelDownload(String savePath) {
         logInfo("Download process cancelled for file: " + savePath);
         Platform.runLater(() ->
-                view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.download.cancelled"), 0, 0, 0));
+                view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.download.cancelled"), 0, 0, 0));
 
         File sharedFile = new File(savePath);
         Path path = sharedFile.toPath();
@@ -734,7 +734,7 @@ public class PeerModel {
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
 
                 Platform.runLater(() ->
-                        view.updateProgress( LanguageLoader.msgBundle.getString("msg.notification.file.download.processing") + " "
+                        view.updateProgress( ConfigLoader.msgBundle.getString("msg.notification.file.download.processing") + " "
                                 + fileInfor.getFileName(), percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
