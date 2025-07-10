@@ -181,7 +181,7 @@ public class P2PView {
         searchButton = new Button(lbBundle.getString("app.label.search"), createIcon("/icons/search.png", 20));
         myFilesButton = new Button(lbBundle.getString("app.label.file.mine"), createIcon("/icons/folder.png", 20));
         refreshButton = new Button(lbBundle.getString("app.label.refresh"), createIcon("/icons/refresh.png", 20));
-        allFilesButton = new Button(lbBundle.getString("app.label.file.all"), createIcon("/icons/files.png", 20));
+        allFilesButton = new Button(lbBundle.getString("app.label.file.all"), createIcon("/icons/folder.png", 20));
         searchButton.getStyleClass().add("primary-button");
         myFilesButton.getStyleClass().add("primary-button");
         refreshButton.getStyleClass().add("primary-button");
@@ -476,14 +476,12 @@ public class P2PView {
     public void setMyFilesButtonListener(Runnable listener) {
         myFilesButton.setOnAction(e -> {
             listener.run();
-            showNotification(msgBundle.getString("msg.notification.file.mine.show"), false);
         });
     }
 
     public void setAllFilesButtonListener(Runnable listener) {
         allFilesButton.setOnAction(e -> {
             listener.run();
-            showNotification(msgBundle.getString("msg.notification.file.all.show"), false);
         });
     }
 
@@ -607,9 +605,9 @@ public class P2PView {
     }
 
     public void showMenu(boolean isDownload) {
-        String menuText = isDownload ? lbBundle.getString("app.label.file.download") : lbBundle.getString("app.label.file.stopshare");
+        String menuText = isDownload ? lbBundle.getString("app.label.download") : lbBundle.getString("app.label.file.stopshare");
         menuItem.setText(menuText);
-        menuItem.setGraphic(createIcon(isDownload ? "/icons/download.png" : "/icons/stop.png", 16));
+        menuItem.setGraphic(createIcon(isDownload ? "/icons/download.png" : "/icons/cancel.png", 16));
         contextMenu.show(fileTable, fileTable.getScene().getWindow().getX() + 10, fileTable.getScene().getWindow().getY() + 50);
     }
 
