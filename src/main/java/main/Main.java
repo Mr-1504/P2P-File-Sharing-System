@@ -18,12 +18,8 @@ import java.util.ResourceBundle;
 import static main.java.utils.Log.logInfo;
 
 public class Main extends Application {
-    private static ResourceBundle resourceBundle;
-
     public static void main(String[] args) {
-        // Đặt mã hóa file
         System.setProperty("file.encoding", "UTF-8");
-        resourceBundle = ResourceBundle.getBundle("lan.labels.labels", new Locale(ConfigLoader.getCurrentLangCode()));
 
 //        // Khởi động Tracker trong một luồng riêng
 //        Thread trackerThread = new Thread(() -> {
@@ -56,9 +52,6 @@ public class Main extends Application {
         try {
             ConfigLoader.intialize();
             P2PView view = new P2PView(primaryStage);
-            String path = System.getProperty("user.dir");
-            File file = new File(path);
-            String projectName = file.getName();
             primaryStage.setTitle(ConfigLoader.getAppName());
             Image icon = new Image(Objects.requireNonNull(getClass().getResourceAsStream("/icons/" + ConfigLoader.getAppLogo())));
             primaryStage.getIcons().add(icon);

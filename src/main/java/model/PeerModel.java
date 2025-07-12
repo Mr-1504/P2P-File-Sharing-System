@@ -15,6 +15,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static main.java.utils.Infor.SOCKET_TIMEOUT_MS;
 import static main.java.utils.Log.*;
@@ -29,14 +30,14 @@ public class PeerModel {
     private final ExecutorService executor;
     private final CopyOnWriteArrayList<SocketChannel> openChannels = new CopyOnWriteArrayList<>();
     private final List<Future<Boolean>> futures = new ArrayList<>();
-    private ConcurrentHashMap<Integer, Future<Boolean>> checkFutures = new ConcurrentHashMap<>();
     private boolean isRunning;
     private final P2PView view;
     private volatile boolean cancelled = false;
+    private final ReentrantLock fileLock = new ReentrantLock();
 
     public PeerModel(P2PView view) throws IOException {
         this.view = view;
-        this.view.setCancelAction(() -> cancelAction());
+        this.view.setCancelAction(this::cancelAction);
         this.view.setCancelButtonEnabled(false);
         mySharedFiles = new HashMap<>();
         sharedFileNames = new HashSet<>();
@@ -492,8 +493,6 @@ public class PeerModel {
         } catch (Exception e) {
             return LogTag.I_ERROR;
         } finally {
-            cancelDownload(savePath);
-            cancelAction();
             if (raf != null) {
                 try {
                     raf.close();
@@ -501,6 +500,8 @@ public class PeerModel {
                     logError("Error close raf: " + e.getMessage(), e);
                 }
             }
+            cancelDownload(savePath);
+            cancelAction();
         }
     }
 
@@ -559,7 +560,14 @@ public class PeerModel {
                 logInfo("Retrying to download chunk " + chunkIndex + " from peer " + peer.getIp() + ":" + peer.getPort() + " (attempt " + (retryCount + 1) + ")");
                 peer.addTaskForDownload();
                 chunkPeers.computeIfAbsent(chunkIndex, k -> new ArrayList<>()).add(peer);
-                Future<Boolean> future = executor.submit(() -> downloadChunk(peer, chunkIndex, raf, fileInfor, progressCounter));
+                Future<Boolean> future = executor.submit(() -> {
+                    fileLock.lock();
+                    try {
+                        return downloadChunk(peer, chunkIndex, raf, fileInfor, progressCounter);
+                    } finally {
+                        fileLock.unlock();
+                    }
+                });
                 futures.add(future);
                 if (future.get()) {
                     logInfo("Chunk " + chunkIndex + " downloaded successfully from peer " + peer.getIp() + ":" + peer.getPort());
@@ -713,7 +721,7 @@ public class PeerModel {
                 ByteBuffer indexBuffer = ByteBuffer.allocate(4);
                 int totalIndexBytes = 0;
                 long startTime = System.currentTimeMillis();
-                while (totalIndexBytes < 4 && (System.currentTimeMillis() - startTime) < 10000) {
+                while (totalIndexBytes < 4 && (System.currentTimeMillis() - startTime) < 5000) {
                     if (cancelled) {
                         logInfo("Process cancelled by user while reading index chunk from peer " + peer);
                         return false;
@@ -739,7 +747,7 @@ public class PeerModel {
                 ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
                 startTime = System.currentTimeMillis();
 
-                while ((System.currentTimeMillis() - startTime) < 10000) {
+                while ((System.currentTimeMillis() - startTime) < 5000) {
                     if (cancelled) {
                         logInfo("Process cancelled by user while reading chunk data from peer " + peer);
                         return false;
@@ -747,7 +755,7 @@ public class PeerModel {
                     int bytesRead = channel.read(chunkBuffer);
                     if (bytesRead == -1) break;
                     if (bytesRead == 0) {
-                        Thread.sleep(100); // chờ tiếp
+                        Thread.sleep(100);
                         continue;
                     }
 
