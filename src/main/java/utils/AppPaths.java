@@ -1,6 +1,7 @@
 package main.java.utils;
 
 import java.io.*;
+import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
@@ -30,7 +31,7 @@ public class AppPaths {
     }
 
     public static String getSharedFile(String fileName) {
-        return AppPaths.getAppDataDirectory() + "\\shared_files\\" + fileName;
+        return Paths.get(getAppDataDirectory(), "shared_files", fileName).toString();
     }
 
     public static boolean copyFileToShare(File sourceFile, String newfileName, AtomicBoolean isCancelled) {

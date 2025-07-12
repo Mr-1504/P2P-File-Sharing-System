@@ -27,7 +27,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.ResourceBundle;
+import java.util.Objects;
+import java.util.MissingResourceException;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import static main.java.utils.ConfigLoader.msgBundle;
@@ -396,7 +402,7 @@ public class P2PView {
 
             if (selectedFile != null) {
                 try {
-                    Path sharedDir = Paths.get(AppPaths.getAppDataDirectory() + "//shared_files");
+                    Path sharedDir = Paths.get(AppPaths.getAppDataDirectory(), "shared_files");
                     if (!Files.exists(sharedDir)) {
                         Files.createDirectories(sharedDir);
                     }
