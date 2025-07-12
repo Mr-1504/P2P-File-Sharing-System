@@ -4,7 +4,7 @@ import javafx.beans.property.SimpleStringProperty;
 import main.java.model.FileInfor;
 import main.java.utils.AppPaths;
 import main.java.utils.EnvConf;
-import main.java.utils.LanguageLoader;
+import main.java.utils.ConfigLoader;
 import main.java.utils.LogTag;
 import javafx.animation.FadeTransition;
 import javafx.application.Platform;
@@ -27,10 +27,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.ResourceBundle;
+import java.util.Objects;
+import java.util.MissingResourceException;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
-import static main.java.utils.LanguageLoader.msgBundle;
+import static main.java.utils.ConfigLoader.msgBundle;
 import static main.java.utils.Log.logError;
 
 public class P2PView {
@@ -181,7 +187,7 @@ public class P2PView {
         searchButton = new Button(lbBundle.getString("app.label.search"), createIcon("/icons/search.png", 20));
         myFilesButton = new Button(lbBundle.getString("app.label.file.mine"), createIcon("/icons/folder.png", 20));
         refreshButton = new Button(lbBundle.getString("app.label.refresh"), createIcon("/icons/refresh.png", 20));
-        allFilesButton = new Button(lbBundle.getString("app.label.file.all"), createIcon("/icons/files.png", 20));
+        allFilesButton = new Button(lbBundle.getString("app.label.file.all"), createIcon("/icons/folder.png", 20));
         searchButton.getStyleClass().add("primary-button");
         myFilesButton.getStyleClass().add("primary-button");
         refreshButton.getStyleClass().add("primary-button");
@@ -222,8 +228,8 @@ public class P2PView {
         Label languageLabel = new Label(lbBundle.getString("app.label.language"));
         languageLabel.getStyleClass().add("label");
         languageComboBox = new ComboBox<>();
-        languageComboBox.getItems().addAll(LanguageLoader.getAllLanguages().values());
-        languageComboBox.setValue(LanguageLoader.getCurrentLangDisplay());
+        languageComboBox.getItems().addAll(ConfigLoader.getAllLanguages().values());
+        languageComboBox.setValue(ConfigLoader.getCurrentLangDisplay());
         languageComboBox.getStyleClass().add("combo-box");
         languageComboBox.setOnAction(e -> changeLanguage(languageComboBox.getValue()));
         languagePanel.getChildren().addAll(languageLabel, languageComboBox);
@@ -262,7 +268,7 @@ public class P2PView {
     private void changeLanguage(String languageDisplayName) {
         Platform.runLater(() -> {
             try {
-                Optional<Map.Entry<String, String>> selectedLanguage = LanguageLoader.getAllLanguages().entrySet().stream()
+                Optional<Map.Entry<String, String>> selectedLanguage = ConfigLoader.getAllLanguages().entrySet().stream()
                         .filter(entry -> entry.getValue().equals(languageDisplayName))
                         .findFirst();
 
@@ -277,7 +283,7 @@ public class P2PView {
                     return;
                 Locale newLocale = new Locale(languageCode);
 
-                LanguageLoader.setCurrentLang(languageCode);
+                ConfigLoader.setCurrentLang(languageCode);
                 EnvConf.strLang = languageCode;
 
                 msgBundle = ResourceBundle.getBundle("lan.messages.messages", newLocale);
@@ -396,7 +402,7 @@ public class P2PView {
 
             if (selectedFile != null) {
                 try {
-                    Path sharedDir = Paths.get(AppPaths.getAppDataDirectory() + "//shared_files");
+                    Path sharedDir = Paths.get(AppPaths.getAppDataDirectory(), "shared_files");
                     if (!Files.exists(sharedDir)) {
                         Files.createDirectories(sharedDir);
                     }
@@ -476,14 +482,12 @@ public class P2PView {
     public void setMyFilesButtonListener(Runnable listener) {
         myFilesButton.setOnAction(e -> {
             listener.run();
-            showNotification(msgBundle.getString("msg.notification.file.mine.show"), false);
         });
     }
 
     public void setAllFilesButtonListener(Runnable listener) {
         allFilesButton.setOnAction(e -> {
             listener.run();
-            showNotification(msgBundle.getString("msg.notification.file.all.show"), false);
         });
     }
 
@@ -607,9 +611,9 @@ public class P2PView {
     }
 
     public void showMenu(boolean isDownload) {
-        String menuText = isDownload ? lbBundle.getString("app.label.file.download") : lbBundle.getString("app.label.file.stopshare");
+        String menuText = isDownload ? lbBundle.getString("app.label.download") : lbBundle.getString("app.label.file.stopshare");
         menuItem.setText(menuText);
-        menuItem.setGraphic(createIcon(isDownload ? "/icons/download.png" : "/icons/stop.png", 16));
+        menuItem.setGraphic(createIcon(isDownload ? "/icons/download.png" : "/icons/cancel.png", 16));
         contextMenu.show(fileTable, fileTable.getScene().getWindow().getX() + 10, fileTable.getScene().getWindow().getY() + 50);
     }
 

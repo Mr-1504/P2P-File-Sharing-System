@@ -15,6 +15,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static main.java.utils.Infor.SOCKET_TIMEOUT_MS;
 import static main.java.utils.Log.*;
@@ -32,24 +33,11 @@ public class PeerModel {
     private boolean isRunning;
     private final P2PView view;
     private volatile boolean cancelled = false;
+    private final ReentrantLock fileLock = new ReentrantLock();
 
     public PeerModel(P2PView view) throws IOException {
         this.view = view;
-        this.view.setCancelAction(() -> {
-            cancelled = true;
-            for (Future<Boolean> future : futures) {
-                future.cancel(true);
-            }
-            for (SocketChannel channel : openChannels) {
-                try {
-                    channel.close();
-                } catch (IOException e) {
-                    logError("Error closing channel: " + channel, e);
-                }
-            }
-            openChannels.clear();
-            futures.clear();
-        });
+        this.view.setCancelAction(this::cancelAction);
         this.view.setCancelButtonEnabled(false);
         mySharedFiles = new HashMap<>();
         sharedFileNames = new HashSet<>();
@@ -58,6 +46,22 @@ public class PeerModel {
         initializeServerSocket();
         isRunning = true;
         logInfo("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
+    }
+
+    private void cancelAction() {
+        cancelled = true;
+        for (Future<Boolean> future : futures) {
+            future.cancel(true);
+        }
+        for (SocketChannel channel : openChannels) {
+            try {
+                channel.close();
+            } catch (IOException e) {
+                logError("Error closing channel: " + channel, e);
+            }
+        }
+        openChannels.clear();
+        futures.clear();
     }
 
     public void initializeServerSocket() throws IOException {
@@ -343,29 +347,20 @@ public class PeerModel {
 
     public Future<Boolean> shareFileAsync(File file, String fileName) {
         return executor.submit(() -> {
-            logInfo("File path: " + file.getAbsolutePath());
-
             try (InputStream is = new FileInputStream(file)) {
                 MessageDigest md = MessageDigest.getInstance("SHA-256");
                 byte[] buffer = new byte[CHUNK_SIZE];
                 int bytesRead;
                 long totalBytes = file.length();
                 long readBytes = 0;
-                logInfo("Sharing file: " + file.getName() + ", size: " + totalBytes + " bytes");
-
                 while ((bytesRead = is.read(buffer)) != -1) {
                     if (cancelled) {
-                        logInfo("File sharing cancelled by user: " + file.getName());
                         Platform.runLater(() ->
-                                view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.share.cancelled"),
+                                view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.share.cancelled"),
                                         0, 0, 0));
 
                         File sharedFile = new File(AppPaths.getSharedFile(file.getName()));
-                        if (sharedFile.exists() && sharedFile.delete()) {
-                            logInfo("Removed shared file: " + sharedFile.getAbsolutePath());
-                        } else {
-                            logInfo("Failed to remove shared file: " + sharedFile.getAbsolutePath());
-                        }
+                        if (sharedFile.exists()) sharedFile.delete();
 
                         cancelled = false;
                         return Boolean.FALSE;
@@ -377,12 +372,11 @@ public class PeerModel {
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
                     Platform.runLater(() ->
-                            view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.share.processing")
+                            view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.share.processing")
                                     + " " + fileName, progress, finalReadBytes, totalBytes));
                 }
 
                 String fullFileHash = bytesToHex(md.digest());
-                logInfo("File " + file.getName() + " shared successfully with hash: " + fullFileHash);
 
                 FileInfor fileInfor = new FileInfor(fileName, file.length(), fullFileHash, SERVER_HOST);
                 mySharedFiles.put(file.getName(), fileInfor);
@@ -461,111 +455,163 @@ public class PeerModel {
 
     public Future<Integer> downloadFile(FileInfor fileInfor, String savePath, List<PeerInfor> peers) {
         return executor.submit(() -> {
-            try {
-//                PriorityQueue<PeerInfor> peer
-                File saveFile = new File(savePath);
-                if (!saveFile.getParentFile().exists()) {
-                    String errorMessage = "Lỗi: Thư mục lưu không tồn tại: " + saveFile.getParent();
-                    logInfo(errorMessage);
-                    return LogTag.I_NOT_EXIST;
-                }
-                if (!saveFile.getParentFile().canWrite()) {
-                    String errorMessage = "Lỗi: Không có quyền ghi vào thư mục: " + saveFile.getParent();
-                    logInfo(errorMessage);
-                    return LogTag.I_NOT_PERMISSION;
-                }
-
-                try (RandomAccessFile raf = new RandomAccessFile(saveFile, "rw")) {
-                    raf.setLength(fileInfor.getFileSize());
-                    AtomicInteger progressCounter = new AtomicInteger(0);
-                    int totalChunks = (int) (fileInfor.getFileSize() / CHUNK_SIZE) + (fileInfor.getFileSize() % CHUNK_SIZE == 0 ? 0 : 1);
-                    for (int i = 0; i < totalChunks; i++) {
-                        final int chunkIndex = i;
-                        if (cancelled) {
-                            return LogTag.I_CANCELLED;
-                        }
-                        while (((ThreadPoolExecutor) executor).getActiveCount() >= 6) {
-                            Thread.sleep(100);
-                            if (cancelled) {
-                                return LogTag.I_CANCELLED;
-                            }
-                        }
-                        int retryCount = 0;
-                        final int MAX_RETRY = 100; // thử 100 lần (tức 5 giây)
-
-                        PeerInfor peer;
-                        do {
-                            if (retryCount++ >= MAX_RETRY) {
-                                logInfo("Timeout while waiting for available peer for chunk " + chunkIndex);
-                                return LogTag.I_ERROR;
-                            }
-                            logInfo("Waiting for available peer...");
-                            Thread.sleep(50);
-                            if (cancelled) {
-                                return LogTag.I_CANCELLED;
-                            }
-                            peer = Collections.min(peers, Comparator.comparingInt(PeerInfor::getTaskForDownload));
-                        } while (!peer.isAvailableForDownload());
-
-                        logInfo("Selected peer for download: " + peer.getIp() + ":" + peer.getPort() + ", taskcount: " + peer.getTaskForDownload());
-                        peer.addTaskForDownload();
-                        PeerInfor finalPeer = peer;
-                        futures.add(executor.submit(() -> downloadChunk(finalPeer, chunkIndex, raf, fileInfor, progressCounter)));
-                    }
-                    boolean allChunksDownloaded = true;
-                    for (Future<Boolean> future : futures) {
-                        try {
-                            if (!future.get()) {
-                                allChunksDownloaded = false;
-                            }
-                        } catch (Exception e) {
-                            String errorMessage = "Lỗi khi tải chunk: " + e.getMessage();
-                            logInfo(errorMessage);
-                            allChunksDownloaded = false;
-                        }
-                        if (cancelled) {
-                            return LogTag.I_CANCELLED;
-                        }
-                    }
-                    if (allChunksDownloaded) {
-                        String downloadedFileHash = computeFileHash(saveFile);
-                        if (downloadedFileHash.equals(LogTag.S_ERROR)) {
-                            logInfo("Error computing hash for downloaded file: " + saveFile.getAbsolutePath());
-                            return LogTag.I_ERROR;
-                        }
-                        String originalHash = fileInfor.getFileHash();
-
-                        if (!downloadedFileHash.equalsIgnoreCase(originalHash)) {
-                            logInfo("Hash mismatch: downloaded file hash " + downloadedFileHash + " does not match original hash " + originalHash);
-                            return LogTag.I_HASH_MISMATCH;
-                        }
-
-                        logInfo("Successfully downloaded file: " + saveFile.getAbsolutePath() + " with hash: " + downloadedFileHash);
-                        return LogTag.I_SUCCESS;
-                    } else {
-                        logInfo("Failed to download all chunks for file: " + fileInfor.getFileName());
-                        return LogTag.I_FAILURE;
-                    }
-                }
-            } catch (IOException e) {
-                logError("Error downloading file: " + fileInfor.getFileName() + " to " + savePath, e);
-                return LogTag.I_ERROR;
-            } finally {
-                cancelDownload(savePath);
-                cancelled = false;
-                for (Future<Boolean> future : futures) {
-                    future.cancel(true);
-                }
-                for (SocketChannel channel : openChannels) {
-                    try {
-                        channel.close();
-                    } catch (IOException e) {
-                        logError("Error closing channel: " + channel, e);
-                    }
-                }
-                openChannels.clear();
+            File saveFile = new File(savePath);
+            if (!saveFile.getParentFile().exists()) {
+                logInfo("Lỗi: Thư mục lưu không tồn tại: " + saveFile.getParent());
+                return LogTag.I_NOT_EXIST;
             }
+            if (!saveFile.getParentFile().canWrite()) {
+                logInfo("Lỗi: Không có quyền ghi vào thư mục: " + saveFile.getParent());
+                return LogTag.I_NOT_PERMISSION;
+            }
+            return processDownload(fileInfor, saveFile, peers, savePath);
         });
+    }
+
+    private Integer processDownload(FileInfor fileInfor, File saveFile, List<PeerInfor> peers, String savePath) {
+        RandomAccessFile raf = null;
+        try {
+            raf = new RandomAccessFile(saveFile, "rw");
+            raf.setLength(fileInfor.getFileSize());
+            AtomicInteger progressCounter = new AtomicInteger(0);
+            ConcurrentHashMap<Integer, List<PeerInfor>> chunkPeers = new ConcurrentHashMap<>();
+            int totalChunks = (int) Math.ceil((double) fileInfor.getFileSize() / CHUNK_SIZE);
+            initializeHashMap(chunkPeers, totalChunks);
+
+            int res = downloadAllChunks(fileInfor, peers, progressCounter, raf, chunkPeers);
+            if (res == LogTag.I_CANCELLED) return LogTag.I_CANCELLED;
+
+            String downloadedFileHash = computeFileHash(saveFile);
+            if (downloadedFileHash.equals(LogTag.S_ERROR)) return LogTag.I_ERROR;
+
+            String originalHash = fileInfor.getFileHash();
+            if (!downloadedFileHash.equalsIgnoreCase(originalHash)) return LogTag.I_HASH_MISMATCH;
+
+
+            return LogTag.I_SUCCESS;
+
+        } catch (Exception e) {
+            return LogTag.I_ERROR;
+        } finally {
+            if (raf != null) {
+                try {
+                    raf.close();
+                } catch (IOException e) {
+                    logError("Error close raf: " + e.getMessage(), e);
+                }
+            }
+            cancelDownload(savePath);
+            cancelAction();
+        }
+    }
+
+    private Integer downloadAllChunks(FileInfor fileInfor, List<PeerInfor> peers, AtomicInteger progressCounter,
+                                      RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfor>> chunkPeers) throws InterruptedException {
+        int totalChunks = (int) Math.ceil((double) fileInfor.getFileSize() / CHUNK_SIZE);
+        List<Integer> failedChunks = new ArrayList<>();
+
+        for (int chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            if (cancelled || Thread.currentThread().isInterrupted()) return LogTag.I_CANCELLED;
+
+            while (((ThreadPoolExecutor) executor).getActiveCount() >= 6) {
+                Thread.sleep(50);
+                if (cancelled) return LogTag.I_CANCELLED;
+            }
+
+            if (!downloadChunkWithRetry(chunkIndex, peers, raf, fileInfor, progressCounter, futures, chunkPeers)) {
+                logInfo("Chunk " + chunkIndex + "Failed to download, adding to retry list");
+                failedChunks.add(chunkIndex);
+            }
+        }
+
+        int maxRetryRounds = 2;
+        for (int round = 1; round <= maxRetryRounds && !failedChunks.isEmpty(); round++) {
+            logInfo("Retrying failed chunks, round " + round + " with " + failedChunks.size() + " chunks");
+            List<Integer> stillFailed = new ArrayList<>();
+            for (int chunkIndex : failedChunks) {
+                if (cancelled) return LogTag.I_CANCELLED;
+
+                if (!downloadChunkWithRetry(chunkIndex, peers, raf, fileInfor, progressCounter, futures, chunkPeers))
+                    stillFailed.add(chunkIndex);
+            }
+            failedChunks = stillFailed;
+        }
+
+        if (!failedChunks.isEmpty()) return LogTag.I_FAILURE;
+
+        return LogTag.I_SUCCESS;
+    }
+
+    private boolean downloadChunkWithRetry(int chunkIndex, List<PeerInfor> peers, RandomAccessFile raf,
+                                           FileInfor fileInfor, AtomicInteger progressCounter, List<Future<Boolean>> futures,
+                                           ConcurrentHashMap<Integer, List<PeerInfor>> chunkPeers) throws InterruptedException {
+        int maxRetries = 3;
+        int retryCount = 0;
+        final int BASE_RETRY_DELAY_MS = 50;
+
+        while (retryCount < maxRetries) {
+            PeerInfor peer = selectAvailablePeer(peers, chunkIndex, chunkPeers.getOrDefault(chunkIndex, new ArrayList<>()));
+            if (peer == null) {
+                logInfo("No available peers for chunk " + chunkIndex);
+                return false;
+            }
+
+            try {
+                logInfo("Retrying to download chunk " + chunkIndex + " from peer " + peer.getIp() + ":" + peer.getPort() + " (attempt " + (retryCount + 1) + ")");
+                peer.addTaskForDownload();
+                chunkPeers.computeIfAbsent(chunkIndex, k -> new ArrayList<>()).add(peer);
+                Future<Boolean> future = executor.submit(() -> {
+                    fileLock.lock();
+                    try {
+                        return downloadChunk(peer, chunkIndex, raf, fileInfor, progressCounter);
+                    } finally {
+                        fileLock.unlock();
+                    }
+                });
+                futures.add(future);
+                if (future.get()) {
+                    logInfo("Chunk " + chunkIndex + " downloaded successfully from peer " + peer.getIp() + ":" + peer.getPort());
+                    return true;
+                }
+                logInfo("Chunk " + chunkIndex + " download failed from peer " + peer.getIp() + ":" + peer.getPort() + " (attempt " + (retryCount + 1) + ")");
+                Thread.sleep(BASE_RETRY_DELAY_MS * (retryCount + 1));
+            } catch (Exception e) {
+                logError("Error downloading chunk " + chunkIndex + " from peer " + peer.getIp() + ":" + peer.getPort() + ": " + e.getMessage(), e);
+                Thread.sleep(BASE_RETRY_DELAY_MS * (retryCount + 1));
+            } finally {
+                peer.removeTaskForDownload();
+            }
+            retryCount++;
+        }
+
+        logInfo("Failed to download chunk " + chunkIndex + " after " + maxRetries + " attempts");
+        return false;
+    }
+
+    private PeerInfor selectAvailablePeer(List<PeerInfor> peers, int chunkIndex, List<PeerInfor> usedPeers) throws InterruptedException {
+        int retryCount = 0;
+        final int MAX_RETRY = 20;
+        while (retryCount++ < MAX_RETRY) {
+            if (cancelled) {
+                return null;
+            }
+            PeerInfor peer = peers.stream()
+                    .filter(p -> !usedPeers.contains(p) && p.isAvailableForDownload())
+                    .min(Comparator.comparingInt(PeerInfor::getTaskForDownload))
+                    .orElse(null);
+            if (peer != null) {
+                return peer;
+            }
+            logInfo("Waiting for available peer for chunk " + chunkIndex + " (retry " + retryCount + ")");
+            Thread.sleep(50);
+        }
+        return null;
+    }
+
+    private void initializeHashMap(ConcurrentHashMap<Integer, List<PeerInfor>> chunkPeers, int totalChunks) {
+        for (int i = 0; i < totalChunks; i++) {
+            chunkPeers.putIfAbsent(i, new ArrayList<>());
+        }
     }
 
     public List<PeerInfor> getPeersWithFile(String fileHash) {
@@ -640,7 +686,7 @@ public class PeerModel {
     private void cancelDownload(String savePath) {
         logInfo("Download process cancelled for file: " + savePath);
         Platform.runLater(() ->
-                view.updateProgress(LanguageLoader.msgBundle.getString("msg.notification.file.download.cancelled"), 0, 0, 0));
+                view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.download.cancelled"), 0, 0, 0));
 
         File sharedFile = new File(savePath);
         Path path = sharedFile.toPath();
@@ -675,7 +721,7 @@ public class PeerModel {
                 ByteBuffer indexBuffer = ByteBuffer.allocate(4);
                 int totalIndexBytes = 0;
                 long startTime = System.currentTimeMillis();
-                while (totalIndexBytes < 4 && (System.currentTimeMillis() - startTime) < 10000) {
+                while (totalIndexBytes < 4 && (System.currentTimeMillis() - startTime) < 5000) {
                     if (cancelled) {
                         logInfo("Process cancelled by user while reading index chunk from peer " + peer);
                         return false;
@@ -701,7 +747,7 @@ public class PeerModel {
                 ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
                 startTime = System.currentTimeMillis();
 
-                while ((System.currentTimeMillis() - startTime) < 10000) {
+                while ((System.currentTimeMillis() - startTime) < 5000) {
                     if (cancelled) {
                         logInfo("Process cancelled by user while reading chunk data from peer " + peer);
                         return false;
@@ -709,7 +755,7 @@ public class PeerModel {
                     int bytesRead = channel.read(chunkBuffer);
                     if (bytesRead == -1) break;
                     if (bytesRead == 0) {
-                        Thread.sleep(100); // chờ tiếp
+                        Thread.sleep(100);
                         continue;
                     }
 
@@ -734,11 +780,10 @@ public class PeerModel {
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
 
                 Platform.runLater(() ->
-                        view.updateProgress( LanguageLoader.msgBundle.getString("msg.notification.file.download.processing") + " "
+                        view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.download.processing") + " "
                                 + fileInfor.getFileName(), percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
-                peer.removeTaskForDownload();
                 return true;
 
             } catch (IOException | InterruptedException e) {
@@ -812,89 +857,6 @@ public class PeerModel {
         } catch (IOException e) {
             logError("Error sending chunk " + chunkIndex + " of file " + orderedFile.getFileName() + ": " + e.getMessage(), e);
         }
-    }
-
-    public Future<FileInfor> getFileInforFromPeers(PeerInfor peer, String fileName) {
-        return executor.submit(() -> {
-            logInfo("Searching for file " + fileName + " on peer: " + peer.getIp() + ":" + peer.getPort());
-            try (SocketChannel channel = SocketChannel.open(
-                    new InetSocketAddress(peer.getIp(), peer.getPort()))) {
-                channel.socket().setSoTimeout(5000);
-                logInfo("Connected to peer: " + channel.getRemoteAddress());
-
-                String request = RequestInfor.SEARCH + Infor.FIELD_SEPARATOR + new File(fileName).getName() + "\n";
-                ByteBuffer requestBuffer = ByteBuffer.wrap(request.getBytes());
-                while (requestBuffer.hasRemaining()) {
-                    channel.write(requestBuffer);
-                }
-                logInfo("Sent SEARCH request: " + request.trim());
-
-
-                StringBuilder responseBuilder = new StringBuilder();
-                int initialBufferSize = 8192;
-                ByteBuffer buffer = ByteBuffer.allocate(initialBufferSize);
-                long startTime = System.currentTimeMillis();
-                long timeoutMillis = 5000;
-                int totalBytesRead = 0;
-
-                while (System.currentTimeMillis() - startTime < timeoutMillis) {
-                    buffer.clear();
-                    int bytesRead = channel.read(buffer);
-                    logInfo("Read " + bytesRead + " bytes");
-                    if (bytesRead == -1) {
-                        logInfo("Peer closed connection");
-                        break;
-                    }
-                    if (bytesRead == 0) {
-                        if (totalBytesRead > 0 && responseBuilder.toString().contains("\n")) {
-                            logInfo("Received complete response");
-                            break;
-                        }
-                        Thread.sleep(100);
-                        continue;
-                    }
-                    totalBytesRead += bytesRead;
-                    buffer.flip();
-                    String chunk = new String(buffer.array(), 0, buffer.limit());
-                    responseBuilder.append(chunk);
-                    logInfo("Current response: [" + responseBuilder + "]");
-                    if (responseBuilder.toString().contains("\n")) {
-                        logInfo("Response complete, breaking loop");
-                        break;
-                    }
-                    if (bytesRead == buffer.capacity()) {
-                        initialBufferSize *= 2;
-                        logInfo("Increasing buffer size to " + initialBufferSize + " bytes");
-                        buffer = ByteBuffer.allocate(initialBufferSize);
-                    }
-                }
-
-                String response = responseBuilder.toString().trim();
-                logInfo("Final response: [" + response + "]");
-                if (response.isEmpty()) {
-                    logInfo("No response received from peer: " + peer);
-                    return null;
-                }
-                if (response.startsWith(RequestInfor.FILE_INFO)) {
-                    String[] parts = response.split("\\|", -1);
-                    if (parts.length < 6) {
-                        logInfo("Invalid FILE_INFO response: [" + response + "]");
-                        return null;
-                    }
-                    String name = parts[1];
-                    long size = Long.parseLong(parts[2]);
-                    PeerInfor peerInfo = new PeerInfor(parts[3], Integer.parseInt(parts[4]));
-                    String fileHash = parts[5];
-                    return new FileInfor(name, size, fileHash, peerInfo);
-                } else {
-                    logInfo("File not found on peer: " + peer);
-                    return null;
-                }
-            } catch (IOException | InterruptedException e) {
-                logError("Error connecting to peer " + peer + ": " + e.getMessage(), e);
-                return null;
-            }
-        });
     }
 
     public List<FileInfor> queryTracker(String keyword) {
