@@ -8,11 +8,11 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="google.code.gson" level="project" />
-    <orderEntry type="library" name="io.github.cdimascio.dotenv.java" level="project" />
     <orderEntry type="library" name="openjfx.javafx.base" level="project" />
     <orderEntry type="library" name="openjfx.javafx.fxml" level="project" />
     <orderEntry type="library" name="openjfx.javafx.controls" level="project" />
     <orderEntry type="library" name="openjfx.javafx.graphics" level="project" />
+    <orderEntry type="library" name="error_prone_annotations-2.38.0" level="project" />
+    <orderEntry type="library" name="dotenv-java-3.2.0" level="project" />
   </component>
 </module>
