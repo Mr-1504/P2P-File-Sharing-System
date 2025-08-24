@@ -33,3 +33,4 @@ bin/
 *.jks
 .env
 /shared_files
+lib/linux/lib/libjfxwebkit.so
