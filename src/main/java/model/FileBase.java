@@ -6,11 +6,19 @@ public class FileBase {
     private String fileName;
     private long fileSize;
     private PeerInfor peerInfor;
+    private boolean isSharedByMe;
 
     public FileBase(String fileName, long fileSize, PeerInfor peerInfor) {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.peerInfor = peerInfor;
+    }
+
+    public FileBase(String fileName, long fileSize, PeerInfor peerInfor, boolean isSharedByMe) {
+        this.fileName = fileName;
+        this.fileSize = fileSize;
+        this.peerInfor = peerInfor;
+        this.isSharedByMe = isSharedByMe;
     }
 
     public String getFileName() {
@@ -30,6 +38,14 @@ public class FileBase {
     }
     public void setPeerInfor(PeerInfor peerInfor) {
         this.peerInfor = peerInfor;
+    }
+
+    public boolean isSharedByMe() {
+        return isSharedByMe;
+    }
+
+    public void setSharedByMe(boolean sharedByMe) {
+        isSharedByMe = sharedByMe;
     }
 
     @Override

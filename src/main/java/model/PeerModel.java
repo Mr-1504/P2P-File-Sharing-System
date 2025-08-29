@@ -1,8 +1,6 @@
 package main.java.model;
 
-import javafx.application.Platform;
 import main.java.utils.*;
-import main.java.view.P2PView;
 
 import java.io.*;
 import java.net.*;
@@ -31,14 +29,10 @@ public class PeerModel {
     private final CopyOnWriteArrayList<SocketChannel> openChannels = new CopyOnWriteArrayList<>();
     private final List<Future<Boolean>> futures = new ArrayList<>();
     private boolean isRunning;
-    private final P2PView view;
     private volatile boolean cancelled = false;
     private final ReentrantLock fileLock = new ReentrantLock();
 
-    public PeerModel(P2PView view) throws IOException {
-        this.view = view;
-        this.view.setCancelAction(this::cancelAction);
-        this.view.setCancelButtonEnabled(false);
+    public PeerModel() throws IOException {
         mySharedFiles = new HashMap<>();
         sharedFileNames = new HashSet<>();
         executor = Executors.newFixedThreadPool(8);
@@ -48,7 +42,7 @@ public class PeerModel {
         logInfo("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
     }
 
-    private void cancelAction() {
+    public void cancelAction() {
         cancelled = true;
         for (Future<Boolean> future : futures) {
             future.cancel(true);
@@ -355,10 +349,6 @@ public class PeerModel {
                 long readBytes = 0;
                 while ((bytesRead = is.read(buffer)) != -1) {
                     if (cancelled) {
-                        Platform.runLater(() ->
-                                view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.share.cancelled"),
-                                        0, 0, 0));
-
                         File sharedFile = new File(AppPaths.getSharedFile(file.getName()));
                         if (sharedFile.exists()) sharedFile.delete();
 
@@ -371,14 +361,11 @@ public class PeerModel {
 
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
-                    Platform.runLater(() ->
-                            view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.share.processing")
-                                    + " " + fileName, progress, finalReadBytes, totalBytes));
-                }
+                    }
 
                 String fullFileHash = bytesToHex(md.digest());
 
-                FileInfor fileInfor = new FileInfor(fileName, file.length(), fullFileHash, SERVER_HOST);
+                FileInfor fileInfor = new FileInfor(fileName, file.length(), fullFileHash, SERVER_HOST, true);
                 mySharedFiles.put(file.getName(), fileInfor);
 
                 notifyTracker(fileInfor, true);
@@ -685,9 +672,6 @@ public class PeerModel {
 
     private void cancelDownload(String savePath) {
         logInfo("Download process cancelled for file: " + savePath);
-        Platform.runLater(() ->
-                view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.download.cancelled"), 0, 0, 0));
-
         File sharedFile = new File(savePath);
         Path path = sharedFile.toPath();
         if (Files.exists(path) && sharedFile.delete()) {
@@ -778,10 +762,6 @@ public class PeerModel {
                 long totalChunks = fileInfor.getFileSize() / CHUNK_SIZE + (fileInfor.getFileSize() % CHUNK_SIZE == 0 ? 0 : 1);
                 long downloadedChunks = progressCounter.incrementAndGet();
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
-
-                Platform.runLater(() ->
-                        view.updateProgress(ConfigLoader.msgBundle.getString("msg.notification.file.download.processing") + " "
-                                + fileInfor.getFileName(), percent, downloadedChunks * CHUNK_SIZE, fileInfor.getFileSize()));
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
                 return true;
@@ -929,7 +909,7 @@ public class PeerModel {
                     logInfo("Error computing hash for file: " + fileName);
                     continue;
                 }
-                mySharedFiles.put(fileName, new FileInfor(fileName, fileSize, fileHash, SERVER_HOST));
+                mySharedFiles.put(fileName, new FileInfor(fileName, fileSize, fileHash, SERVER_HOST, true));
             }
         }
     }

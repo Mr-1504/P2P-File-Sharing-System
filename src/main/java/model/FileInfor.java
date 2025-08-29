@@ -10,6 +10,11 @@ public class FileInfor extends FileBase {
         this.fileHash = fileHash;
     }
 
+     public FileInfor(String fileName, long fileSize, String fileHash, PeerInfor peerInfor, boolean isShareByMe) {
+        super(fileName, fileSize, peerInfor, isShareByMe);
+        this.fileHash = fileHash;
+    }
+
     public String getFileHash() {
         return fileHash;
     }
