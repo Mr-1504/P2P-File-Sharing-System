@@ -187,6 +187,37 @@ public class P2PApi {
         });
     }
 
+    public void setRouteForDownloadFile(Callable<Integer> callable) {
+        server.createContext("/api/files/download", exchange -> {
+            addCorsHeaders(exchange);
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "GET":
+                        Integer res = callable.call();
+                        if (res == LogTag.I_NOT_CONNECTION) {
+                            sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE,
+                                    jsonError(LogTag.S_NOT_CONNECTION));
+                            return;
+                        }
+                        String response = gson.toJson(Collections.singletonMap("status", "download started"));
+                        logInfo(response);
+                        sendResponse(exchange, LogTag.OK, response);
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                logError("Download request error", e);
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
     public void setCancelTask(Runnable runnable) {
         cancelTask = runnable;
     }
