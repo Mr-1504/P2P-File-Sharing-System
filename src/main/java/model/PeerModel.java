@@ -365,8 +365,8 @@ public class PeerModel implements IPeerModel {
                     md.update(buffer, 0, bytesRead);
                     readBytes += bytesRead;
 
-                    int progress = (int) ((readBytes * 100.0) / totalBytes);
-                    long finalReadBytes = readBytes;
+//                    int progress = (int) ((readBytes * 100.0) / totalBytes);
+//                    long finalReadBytes = readBytes;
                 }
 
                 String fullFileHash = bytesToHex(md.digest());
@@ -470,11 +470,13 @@ public class PeerModel implements IPeerModel {
             AtomicInteger progressCounter = new AtomicInteger(0);
             ConcurrentHashMap<Integer, List<PeerInfor>> chunkPeers = new ConcurrentHashMap<>();
             int totalChunks = (int) Math.ceil((double) fileInfor.getFileSize() / CHUNK_SIZE);
-            logInfo("Total chunks to download: " + totalChunks);
             initializeHashMap(chunkPeers, totalChunks);
 
             int res = downloadAllChunks(fileInfor, peers, progressCounter, raf, chunkPeers);
-            if (res == LogTag.I_CANCELLED) return LogTag.I_CANCELLED;
+            if (res == LogTag.I_CANCELLED) {
+                cancelDownload(savePath);
+                return LogTag.I_CANCELLED;
+            }
 
             String downloadedFileHash = computeFileHash(saveFile);
             if (downloadedFileHash.equals(LogTag.S_ERROR)) return LogTag.I_ERROR;
@@ -688,6 +690,7 @@ public class PeerModel implements IPeerModel {
         } else {
             logInfo("Cannot delete file: " + sharedFile.getAbsolutePath() + ". It may not exist or is not writable.");
         }
+        cancelled = false;
     }
 
     private boolean downloadChunk(PeerInfor peer, int chunkIndex, RandomAccessFile raf, FileInfor fileInfor, AtomicInteger progressCounter) {
