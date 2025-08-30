@@ -18,7 +18,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import static main.java.utils.Infor.SOCKET_TIMEOUT_MS;
 import static main.java.utils.Log.*;
 
-public class PeerModel {
+public class PeerModel implements IPeerModel {
     private final int CHUNK_SIZE = Infor.CHUNK_SIZE;
     private final PeerInfor SERVER_HOST = new PeerInfor(Infor.SERVER_IP, Infor.SERVER_PORT);
     private final PeerInfor TRACKER_HOST = new PeerInfor(Infor.TRACKER_IP, Infor.TRACKER_PORT);
@@ -42,6 +42,7 @@ public class PeerModel {
         logInfo("Server socket initialized on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
     }
 
+    @Override
     public void cancelAction() {
         cancelled = true;
         for (Future<Boolean> future : futures) {
@@ -58,6 +59,7 @@ public class PeerModel {
         futures.clear();
     }
 
+    @Override
     public void initializeServerSocket() throws IOException {
         ServerSocketChannel serverSocket = ServerSocketChannel.open();
         serverSocket.bind(new InetSocketAddress(SERVER_HOST.getIp(), SERVER_HOST.getPort()));
@@ -66,6 +68,7 @@ public class PeerModel {
         logInfo("Server socket created on " + SERVER_HOST.getIp() + ":" + SERVER_HOST.getPort());
     }
 
+    @Override
     public void startServer() {
         executor.submit(() -> {
             logInfo("Starting TCP server loop...");
@@ -132,6 +135,7 @@ public class PeerModel {
         }
     }
 
+    @Override
     public void startUDPServer() {
         executor.submit(() -> {
             try (DatagramSocket socket = new DatagramSocket(SERVER_HOST.getPort())) {
@@ -271,6 +275,7 @@ public class PeerModel {
         client.register(selector, SelectionKey.OP_READ);
     }
 
+    @Override
     public int registerWithTracker() {
         for (int i = 0; i < Infor.MAX_RETRIES; i++) {
             try (Socket socket = createSocket(TRACKER_HOST)) {
@@ -339,6 +344,7 @@ public class PeerModel {
         return LogTag.I_ERROR;
     }
 
+    @Override
     public Future<Boolean> shareFileAsync(File file, String fileName) {
         return executor.submit(() -> {
             try (InputStream is = new FileInputStream(file)) {
@@ -361,7 +367,7 @@ public class PeerModel {
 
                     int progress = (int) ((readBytes * 100.0) / totalBytes);
                     long finalReadBytes = readBytes;
-                    }
+                }
 
                 String fullFileHash = bytesToHex(md.digest());
 
@@ -378,6 +384,7 @@ public class PeerModel {
     }
 
 
+    @Override
     public void shareFileList() {
         Set<FileInfor> files = convertSharedFilesToFileBase();
 
@@ -439,7 +446,7 @@ public class PeerModel {
         return sb.toString();
     }
 
-
+    @Override
     public Future<Integer> downloadFile(FileInfor fileInfor, String savePath, List<PeerInfor> peers) {
         return executor.submit(() -> {
             File saveFile = new File(savePath);
@@ -463,6 +470,7 @@ public class PeerModel {
             AtomicInteger progressCounter = new AtomicInteger(0);
             ConcurrentHashMap<Integer, List<PeerInfor>> chunkPeers = new ConcurrentHashMap<>();
             int totalChunks = (int) Math.ceil((double) fileInfor.getFileSize() / CHUNK_SIZE);
+            logInfo("Total chunks to download: " + totalChunks);
             initializeHashMap(chunkPeers, totalChunks);
 
             int res = downloadAllChunks(fileInfor, peers, progressCounter, raf, chunkPeers);
@@ -478,6 +486,7 @@ public class PeerModel {
             return LogTag.I_SUCCESS;
 
         } catch (Exception e) {
+            cancelDownload(savePath);
             return LogTag.I_ERROR;
         } finally {
             if (raf != null) {
@@ -487,7 +496,6 @@ public class PeerModel {
                     logError("Error close raf: " + e.getMessage(), e);
                 }
             }
-            cancelDownload(savePath);
             cancelAction();
         }
     }
@@ -601,6 +609,7 @@ public class PeerModel {
         }
     }
 
+    @Override
     public List<PeerInfor> getPeersWithFile(String fileHash) {
         try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
             String message = RequestInfor.GET_PEERS + Infor.FIELD_SEPARATOR + fileHash + "\n";
@@ -839,50 +848,7 @@ public class PeerModel {
         }
     }
 
-    public List<FileInfor> queryTracker(String keyword) {
-        List<FileInfor> peers = new ArrayList<>();
-        try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            out.println(RequestInfor.QUERY + Infor.FIELD_SEPARATOR + keyword);
-            String response = in.readLine();
-            if (response != null && response.startsWith(RequestInfor.QUERY)) {
-                String[] res = response.split(Infor.FIELD_SEPARATOR_REGEX);
-                if (res.length < 2) {
-                    logInfo("Invalid response format from tracker: " + response);
-                    return peers;
-                }
-                logInfo("Tracker response: " + response);
-
-                int fileCount = Integer.parseInt(res[1]);
-                if (fileCount == 0) {
-                    logInfo("No peers found for query: " + keyword);
-                    return peers;
-                }
-                String[] fileList = res[2].split(",");
-                logInfo("Found " + fileCount + " peers for query: " + keyword);
-
-                for (String fileInfo : fileList) {
-                    String[] parts = fileInfo.split("'");
-                    if (parts.length != 5) {
-                        logInfo("Invalid file info format: " + fileInfo);
-                        continue;
-                    }
-                    String fileName = parts[0];
-                    long fileSize = Long.parseLong(parts[1]);
-                    String fileHash = parts[2];
-                    String peerIp = parts[3];
-                    int peerPort = Integer.parseInt(parts[4]);
-                    peers.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, peerPort)));
-                }
-            }
-        } catch (Exception e) {
-            logError("Error querying tracker for keyword: " + keyword, e);
-            return null;
-        }
-        return peers;
-    }
-
+    @Override
     public void loadSharedFiles() {
         String path = AppPaths.getAppDataDirectory() + "\\shared_files\\";
         File sharedDir = new File(path);
@@ -914,6 +880,7 @@ public class PeerModel {
         }
     }
 
+    @Override
     public int refreshSharedFileNames() {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(TRACKER_HOST.getIp(), TRACKER_HOST.getPort()));
@@ -965,22 +932,22 @@ public class PeerModel {
         }
     }
 
+    @Override
     public Set<FileInfor> getSharedFileNames() {
         return sharedFileNames;
     }
 
+    @Override
     public void setSharedFileNames(Set<FileInfor> sharedFileNames) {
         this.sharedFileNames = sharedFileNames;
     }
 
+    @Override
     public Map<String, FileInfor> getMySharedFiles() {
         return mySharedFiles;
     }
 
-    public boolean isMe(String ip, int port) {
-        return SERVER_HOST.getIp().equals(ip) && SERVER_HOST.getPort() == port;
-    }
-
+    @Override
     public int stopSharingFile(String fileName) {
         if (mySharedFiles.containsKey(fileName)) {
             FileInfor fileInfor = mySharedFiles.get(fileName);

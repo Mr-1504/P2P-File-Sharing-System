@@ -1,11 +1,11 @@
 package main.java.controller;
 
 import com.google.gson.Gson;
+import main.java.api.IP2PApi;
 import main.java.model.FileInfor;
+import main.java.model.IPeerModel;
 import main.java.model.PeerInfor;
-import main.java.model.PeerModel;
 import main.java.utils.*;
-import main.java.api.P2PApi;
 
 import java.io.File;
 import java.util.*;
@@ -17,14 +17,14 @@ import static main.java.utils.Log.logInfo;
 
 
 public class P2PController {
-    private final PeerModel peerModel;
-    private final P2PApi api;
+    private final IPeerModel peerModel;
+    private final IP2PApi api;
     private boolean isConnected = false;
     private boolean isLoadSharedFiles = false;
     private boolean isRetrying = false;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
-    public P2PController(PeerModel peerModel, P2PApi view) {
+    public P2PController(IPeerModel peerModel, IP2PApi view) {
         this.peerModel = peerModel;
         this.api = view;
         setupListeners();
@@ -139,11 +139,35 @@ public class P2PController {
                 retryConnectToTracker();
                 return LogTag.I_NOT_CONNECTION;
             }
-            Integer res = peerModel.stopSharingFile(filename);
+            int res = peerModel.stopSharingFile(filename);
             if (res == LogTag.I_SUCCESS) {
                 refreshFileList();
             }
             return res;
+        });
+
+        api.setRouteForDownloadFile((file, savePath, isCanncelled) -> {
+            if (!isConnected) {
+                retryConnectToTracker();
+                return LogTag.I_NOT_CONNECTION;
+            }
+
+            List<PeerInfor> peers = peerModel.getPeersWithFile(file.getFileHash());
+        if (peers == null || peers.isEmpty()) {
+            return LogTag.I_NOT_FOUND;
+        }
+
+            Future<Integer> res = peerModel.downloadFile(file, savePath, peers);
+            if (res == null) {
+                return LogTag.I_ERROR;
+            } else {
+                try {
+                    return res.get();
+                } catch (Exception e) {
+                    logError("", e);
+                    return LogTag.I_ERROR;
+                }
+            }
         });
     }
 
