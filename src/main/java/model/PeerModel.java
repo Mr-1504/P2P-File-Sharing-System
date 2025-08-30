@@ -1,6 +1,9 @@
 package main.java.model;
 
 import main.java.utils.*;
+import org.java_websocket.WebSocket;
+import org.java_websocket.handshake.ClientHandshake;
+import org.java_websocket.server.WebSocketServer;
 
 import java.io.*;
 import java.net.*;
@@ -19,6 +22,10 @@ import static main.java.utils.Infor.SOCKET_TIMEOUT_MS;
 import static main.java.utils.Log.*;
 
 public class PeerModel implements IPeerModel {
+    private WebSocketServer progressWebSocketServer;
+    private final ReentrantLock progressLock = new ReentrantLock();
+    private long lastSentProgress = -1;
+    private final int WEBSOCKET_PORT = 8080;
     private final int CHUNK_SIZE = Infor.CHUNK_SIZE;
     private final PeerInfor SERVER_HOST = new PeerInfor(Infor.SERVER_IP, Infor.SERVER_PORT);
     private final PeerInfor TRACKER_HOST = new PeerInfor(Infor.TRACKER_IP, Infor.TRACKER_PORT);
@@ -57,6 +64,8 @@ public class PeerModel implements IPeerModel {
         }
         openChannels.clear();
         futures.clear();
+        sendProgressUpdate("cancelled_file", -1, 0, 0);
+        cancelled = false;
     }
 
     @Override
@@ -101,6 +110,37 @@ public class PeerModel implements IPeerModel {
         });
     }
 
+    private void initializeWebSocketServer() {
+        progressWebSocketServer = new WebSocketServer(new InetSocketAddress(WEBSOCKET_PORT)) {
+            @Override
+            public void onOpen(WebSocket conn, ClientHandshake handshake) {
+                logInfo("WebSocket client connected: " + conn.getRemoteSocketAddress());
+            }
+
+            @Override
+            public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+                logInfo("WebSocket client disconnected: " + conn.getRemoteSocketAddress());
+            }
+
+            @Override
+            public void onMessage(WebSocket conn, String message) {
+                logInfo("WebSocket message received: " + message);
+                // Có thể xử lý message từ React nếu cần
+            }
+
+            @Override
+            public void onError(WebSocket conn, Exception ex) {
+                logError("WebSocket error: " + ex.getMessage(), ex);
+            }
+
+            @Override
+            public void onStart() {
+                logInfo("WebSocket server started on port " + WEBSOCKET_PORT);
+            }
+        };
+        progressWebSocketServer.start();
+    }
+
     private void shutdown() {
         logInfo("Shutting down TCP server...");
         isRunning = false;
@@ -122,6 +162,15 @@ public class PeerModel implements IPeerModel {
             logError("Executor service interrupted during shutdown: " + e.getMessage(), e);
         }
         logInfo("TCP server shutdown complete.");
+
+        if (progressWebSocketServer != null) {
+            try {
+                progressWebSocketServer.stop();
+                logInfo("WebSocket server stopped");
+            } catch (Exception e) {
+                logError("Error stopping WebSocket server", e);
+            }
+        }
     }
 
     private void closeChannel(SelectableChannel channel) {
@@ -475,16 +524,23 @@ public class PeerModel implements IPeerModel {
             int res = downloadAllChunks(fileInfor, peers, progressCounter, raf, chunkPeers);
             if (res == LogTag.I_CANCELLED) {
                 cancelDownload(savePath);
+                sendProgressUpdate(fileInfor.getFileName(), -1, 0, 0);
                 return LogTag.I_CANCELLED;
             }
 
             String downloadedFileHash = computeFileHash(saveFile);
-            if (downloadedFileHash.equals(LogTag.S_ERROR)) return LogTag.I_ERROR;
+            if (downloadedFileHash.equals(LogTag.S_ERROR)) {
+                sendProgressUpdate(fileInfor.getFileName(), -1, 0, 0);
+                return LogTag.I_ERROR;
+            }
 
             String originalHash = fileInfor.getFileHash();
-            if (!downloadedFileHash.equalsIgnoreCase(originalHash)) return LogTag.I_HASH_MISMATCH;
+            if (!downloadedFileHash.equalsIgnoreCase(originalHash)) {
+                sendProgressUpdate(fileInfor.getFileName(), -1, 0, 0);
+                return LogTag.I_HASH_MISMATCH;
+            }
 
-
+            sendProgressUpdate(fileInfor.getFileName(), 100, 0, 0);
             return LogTag.I_SUCCESS;
 
         } catch (Exception e) {
@@ -698,6 +754,10 @@ public class PeerModel implements IPeerModel {
         if (cancelled) {
             return false;
         }
+
+        long startChunkTime = System.currentTimeMillis(); // Thời gian bắt đầu chunk
+        long chunkBytes = 0;
+
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             if (cancelled || Thread.currentThread().isInterrupted()) {
                 logInfo("Process cancelled by user while downloading chunk " + chunkIndex + " from peer " + peer);
@@ -760,20 +820,28 @@ public class PeerModel implements IPeerModel {
                     chunkBuffer.clear();
                 }
 
-                byte[] chunkBytes = chunkData.toByteArray();
-                if (chunkBytes.length == 0) {
+                byte[] chunkBytesArray = chunkData.toByteArray();
+                if (chunkBytesArray.length == 0) {
                     logInfo("Received empty chunk data from peer " + peer + " for chunk index " + chunkIndex + " (attempt " + attempt + ")");
                     continue;
                 }
 
                 synchronized (raf) {
                     raf.seek((long) chunkIndex * CHUNK_SIZE);
-                    raf.write(chunkBytes);
+                    raf.write(chunkBytesArray);
                 }
 
-                long totalChunks = fileInfor.getFileSize() / CHUNK_SIZE + (fileInfor.getFileSize() % CHUNK_SIZE == 0 ? 0 : 1);
+                long totalChunks = (fileInfor.getFileSize() + CHUNK_SIZE - 1) / CHUNK_SIZE;
                 long downloadedChunks = progressCounter.incrementAndGet();
                 int percent = (int) ((downloadedChunks * 100.0) / totalChunks);
+
+                long endChunkTime = System.currentTimeMillis();
+                long timeTaken = endChunkTime - startChunkTime;
+                double speed = (timeTaken > 0) ? (chunkBytes / 1024.0 / (timeTaken / 1000.0)) : 0; // KB/s
+                long remainingBytes = fileInfor.getFileSize() - (downloadedChunks * CHUNK_SIZE);
+                int eta = (speed > 0) ? (int) (remainingBytes / 1024 / speed) : -1;
+
+                sendProgressUpdate(fileInfor.getFileName(), percent, speed, eta);
 
                 logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peer + " (attempt " + attempt + ")");
                 return true;
@@ -802,6 +870,22 @@ public class PeerModel implements IPeerModel {
         return false;
     }
 
+    private void sendProgressUpdate(String fileName, int percent, double speed, int eta) {
+        progressLock.lock();
+        try {
+            if (percent == lastSentProgress) return;
+            lastSentProgress = percent;
+
+            String json = String.format("{\"fileName\": \"%s\", \"progress\": %d, \"speed\": %.2f, \"eta\": %d}",
+                    fileName, percent, speed, eta);
+            if (progressWebSocketServer != null) {
+                progressWebSocketServer.broadcast(json);
+                logInfo("Sent WebSocket progress: " + json);
+            }
+        } finally {
+            progressLock.unlock();
+        }
+    }
 
     private void sendChunk(SocketChannel client, String fileHash, int chunkIndex) {
         FileInfor orderedFile = null;

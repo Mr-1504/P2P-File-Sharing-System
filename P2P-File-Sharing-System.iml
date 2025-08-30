@@ -14,5 +14,6 @@
     <orderEntry type="library" name="openjfx.javafx.graphics" level="project" />
     <orderEntry type="library" name="error_prone_annotations-2.38.0" level="project" />
     <orderEntry type="library" name="dotenv-java-3.2.0" level="project" />
+    <orderEntry type="library" name="java.websocket.Java.WebSocket" level="project" />
   </component>
 </module>
