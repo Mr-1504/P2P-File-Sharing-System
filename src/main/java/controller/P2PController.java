@@ -1,10 +1,10 @@
 package main.java.controller;
 
-import com.google.gson.Gson;
 import main.java.api.IP2PApi;
 import main.java.model.FileInfor;
 import main.java.model.IPeerModel;
 import main.java.model.PeerInfor;
+import main.java.model.ProgressInfor;
 import main.java.utils.*;
 
 import java.io.File;
@@ -65,11 +65,14 @@ public class P2PController {
     }
 
     private void registerWithTracker() {
-        while (!isConnected) {
+       while (!isConnected) {
             int result = peerModel.registerWithTracker();
             switch (result) {
                 case LogTag.I_SUCCESS -> isConnected = true;
                 case LogTag.I_NOT_FOUND -> isConnected = true;
+                default -> {
+                    sleep(5000);
+                }
             }
         }
     }
@@ -116,7 +119,6 @@ public class P2PController {
     }
 
     private void setupListeners() {
-        api.setCancelTask(peerModel::cancelAction);
         api.setRouteForRefresh(() -> {
             if (!isConnected) {
                 retryConnectToTracker();
@@ -149,24 +151,45 @@ public class P2PController {
         api.setRouteForDownloadFile((file, savePath, isCanncelled) -> {
             if (!isConnected) {
                 retryConnectToTracker();
-                return LogTag.I_NOT_CONNECTION;
+                return LogTag.S_NOT_CONNECTION;
             }
 
             List<PeerInfor> peers = peerModel.getPeersWithFile(file.getFileHash());
-        if (peers == null || peers.isEmpty()) {
-            return LogTag.I_NOT_FOUND;
-        }
+            if (peers == null || peers.isEmpty()) {
+                return LogTag.S_NOT_FOUND;
+            }
 
-            Future<Integer> res = peerModel.downloadFile(file, savePath, peers);
-            if (res == null) {
-                return LogTag.I_ERROR;
+            File saveFile = new File(savePath);
+            if (!saveFile.getParentFile().exists()) {
+                logInfo("Lỗi: Thư mục lưu không tồn tại: " + saveFile.getParent());
+                return LogTag.S_INVALID;
+            }
+            if (!saveFile.getParentFile().canWrite()) {
+                logInfo("Lỗi: Không có quyền ghi vào thư mục: " + saveFile.getParent());
+                return LogTag.S_NOT_PERMISSION;
+            }
+            String progressId = ProgressInfor.generateProgressId();
+            peerModel.setProgress(new ProgressInfor(progressId, ProgressInfor.ProgressStatus.STARTING, file.getFileName()));
+            peerModel.downloadFile(file, saveFile, peers, progressId);
+            return progressId;
+        });
+
+        api.setRouteForCheckFile(AppPaths::isExistSharedFile);
+
+        api.setRouteForGetProgress(peerModel::getProgress);
+        api.setRouteForCleanupProgress((request) -> peerModel.cleanupProgress(request.taskIds));
+        api.setRouteForCancelTask((progressId) -> {
+            Map<String, ProgressInfor> progressMap = peerModel.getProgress();
+            if (progressMap.containsKey(progressId)) {
+                ProgressInfor progress = progressMap.get(progressId);
+                progress.setStatus(ProgressInfor.ProgressStatus.CANCELLED);
+                logInfo("Task with progress ID " + progressId + " has been marked as cancelled.");
+                executor.submit(() -> {
+                    sleep(3000);
+                    peerModel.cleanupProgress(Collections.singletonList(progressId));
+                });
             } else {
-                try {
-                    return res.get();
-                } catch (Exception e) {
-                    logError("", e);
-                    return LogTag.I_ERROR;
-                }
+                logInfo("No task found with progress ID " + progressId + " to cancel.");
             }
         });
     }
@@ -193,53 +216,26 @@ public class P2PController {
             retryConnectToTracker();
             return LogTag.S_NOT_CONNECTION;
         }
-
-        int result = prepareFileForSharing(file, fileName, isCancelled);
-        if (result != LogTag.I_SUCCESS) {
-            return LogTag.S_ERROR;
-        }
-        Future<Boolean> res = peerModel.shareFileAsync(file, fileName);
-        if (res == null) {
-            return LogTag.S_ERROR;
-        } else {
-            try {
-                if (res.get() == false) {
-                    return LogTag.S_CANCELLED;
-                }
-            } catch (Exception e) {
-                logError("", e);
-            }
-        }
-        FileInfor fileInfor = peerModel.getMySharedFiles().get(fileName);
-        Gson gson = new Gson();
-        return gson.toJson(fileInfor);
+        String progressId = ProgressInfor.generateProgressId();
+        ProgressInfor progressInfor = new ProgressInfor(progressId, ProgressInfor.ProgressStatus.STARTING, fileName);
+        peerModel.setProgress(progressInfor);
+        executor.submit(() -> {
+            AppPaths.copyFileToShare(file, fileName, progressInfor);
+            peerModel.shareFileAsync(file, fileName, progressId);
+        });
+        return progressId;
     }
 
     private String handleResultGetFileName(int isReplace, String fileName) {
-        switch (isReplace) {
-            case 0: {
+        return switch (isReplace) {
+            case 0 -> {
                 fileName = AppPaths.incrementFileName(fileName);
-                return fileName;
+                yield fileName;
             }
-            case 1:
-                return fileName;
-        }
-        return LogTag.S_ERROR;
+            case 1 -> fileName;
+            default -> LogTag.S_ERROR;
+        };
     }
-
-    private int prepareFileForSharing(File file, String fileName, AtomicBoolean isCancelled) {
-        String filePath = file.getAbsolutePath();
-        if (!file.exists() || !file.isFile()) {
-            return LogTag.I_NOT_FOUND;
-        }
-
-        boolean res = AppPaths.copyFileToShare(file, fileName, isCancelled);
-        if (!res) {
-            return LogTag.I_ERROR;
-        }
-        return LogTag.I_SUCCESS;
-    }
-
 
     private void sleep(int milliseconds) {
         try {

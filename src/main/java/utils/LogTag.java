@@ -2,6 +2,7 @@ package main.java.utils;
 
 public interface LogTag {
     String S_ERROR = "ERROR";
+    String S_NOT_PERMISSION = "NOT_PERMISSION";
     String S_CANCELLED = "CANCELLED";
     String S_NOT_FOUND = "NOT_FOUND";
     String S_SUCCESS = "SUCCESS";

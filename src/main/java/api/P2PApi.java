@@ -6,6 +6,8 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import main.java.model.FileInfor;
 import main.java.model.PeerInfor;
+import main.java.model.ProgressInfor;
+import main.java.request.CleanupRequest;
 import main.java.utils.LogTag;
 
 import java.io.IOException;
@@ -18,15 +20,15 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static main.java.utils.Log.logError;
 import static main.java.utils.Log.logInfo;
 
-public class P2PApi implements  IP2PApi{
+public class P2PApi implements IP2PApi {
     private HttpServer server;
     private List<FileInfor> files = new ArrayList<>();
-    private Runnable cancelTask = () -> {};
     private static final Gson gson = new Gson();
 
     public P2PApi() {
@@ -38,7 +40,6 @@ public class P2PApi implements  IP2PApi{
             server = HttpServer.create(new InetSocketAddress(8080), 0);
             server.setExecutor(Executors.newFixedThreadPool(8));
 
-            // CORS middleware
             server.createContext("/", exchange -> {
                 addCorsHeaders(exchange);
                 if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -51,6 +52,39 @@ public class P2PApi implements  IP2PApi{
         } catch (IOException e) {
             logError("Cannot init api server on port 8080", e);
         }
+    }
+
+    @Override
+    public void setRouteForCheckFile(Function<String, Boolean> callable) {
+        server.createContext("/api/files/exists", exchange -> {
+            addCorsHeaders(exchange);
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "GET":
+                        String query = exchange.getRequestURI().getRawQuery();
+                        Map<String, String> params = parseQuery(query);
+                        String fileName = params.get("fileName");
+                        if (fileName == null || fileName.isEmpty()) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("fileName is required"));
+                            return;
+                        }
+                        boolean exists = callable.apply(fileName);
+                        String response = gson.toJson(Collections.singletonMap("exists", exists));
+                        sendResponse(exchange, LogTag.OK, response);
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                logError("Check file request error", e);
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
     }
 
     @Override
@@ -136,7 +170,6 @@ public class P2PApi implements  IP2PApi{
                                 jsonError("Method not allowed"));
                 }
             } catch (Exception e) {
-                cancelTask.run();
                 logError("Error share file request", e);
                 sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
                         jsonError("Internal server error"));
@@ -192,7 +225,7 @@ public class P2PApi implements  IP2PApi{
     }
 
     @Override
-    public void setRouteForDownloadFile(TriFunction<FileInfor, String, AtomicBoolean, Integer> callable) {
+    public void setRouteForDownloadFile(TriFunction<FileInfor, String, AtomicBoolean, String> callable) {
         server.createContext("/api/files/download", exchange -> {
             addCorsHeaders(exchange);
             AtomicBoolean isCancelled = new AtomicBoolean(false);
@@ -216,8 +249,8 @@ public class P2PApi implements  IP2PApi{
                         PeerInfor peer = new PeerInfor(peerIp, peerPort);
                         for (FileInfor file : files) {
                             if (file.getFileName().equals(fileName) && file.getPeerInfor().equals(peer)) {
-                                Integer res = callable.apply(file, savePath, isCancelled);
-                                if (res == LogTag.I_NOT_CONNECTION) {
+                                String res = callable.apply(file, savePath, isCancelled);
+                                if (res == LogTag.S_NOT_CONNECTION) {
                                     sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE,
                                             jsonError(LogTag.S_NOT_CONNECTION));
                                     return;
@@ -236,7 +269,6 @@ public class P2PApi implements  IP2PApi{
                                 jsonError("Method not allowed"));
                 }
             } catch (Exception e) {
-                cancelTask.run();
                 logError("Download request error", e);
                 sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
                         jsonError("Internal server error"));
@@ -245,8 +277,100 @@ public class P2PApi implements  IP2PApi{
     }
 
     @Override
-    public void setCancelTask(Runnable runnable) {
-        cancelTask = runnable;
+    public void setRouteForGetProgress(Callable<Map<String, ProgressInfor>> callable) {
+        server.createContext("/api/progress", exchange -> {
+            addCorsHeaders(exchange);
+            logInfo("Get progress request");
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "GET":
+                        Map<String, ProgressInfor> progresses = callable.call();
+                        if (progresses != null) {
+                            String response = gson.toJson(progresses);
+                            logInfo("Response: " + response);
+                            sendResponse(exchange, 200, response);
+                        } else {
+                            sendResponse(exchange, 404, "{\"error\":\"Process not found\"}");
+                        }
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
+    @Override
+    public void setRouteForCleanupProgress(Consumer<CleanupRequest> handler) {
+        server.createContext("/api/progress/cleanup", exchange -> {
+            addCorsHeaders(exchange);
+            logInfo("Cleanup progress request");
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "POST":
+                        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                        logInfo("Request body: " + requestBody);
+                        CleanupRequest request = gson.fromJson(requestBody, CleanupRequest.class);
+                        if (request == null) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Invalid request body"));
+                            return;
+                        }
+                        handler.accept(request);
+
+                        sendResponse(exchange, LogTag.OK, "{\"status\":\"success\"}");
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
+    @Override
+    public void setRouteForCancelTask(Consumer<String> handler) {
+        server.createContext("/api/cancel", exchange -> {
+            addCorsHeaders(exchange);
+            logInfo("Cancel task request");
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "DELETE":
+                        // http://localhost:8080/api/cancel/${taskId}
+                        String query = exchange.getRequestURI().getRawQuery();
+                        Map<String, String> params = parseQuery(query);
+                        String taskId = params.get("taskId");
+                        if (taskId == null || taskId.isEmpty()) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("taskId is required"));
+                            return;
+                        }
+                        handler.accept(taskId);
+
+                        sendResponse(exchange, LogTag.OK, "{\"status\":\"success\"}");
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
     }
 
     @Override
@@ -263,6 +387,7 @@ public class P2PApi implements  IP2PApi{
 
     private static void sendResponse(HttpExchange exchange, int statusCode, String response) {
         try {
+            logInfo("Response: " + response + " with status code: " + statusCode);
             byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(statusCode, responseBytes.length);
             try (OutputStream os = exchange.getResponseBody()) {
@@ -277,7 +402,7 @@ public class P2PApi implements  IP2PApi{
         return gson.toJson(Collections.singletonMap("error", message));
     }
 
-     private Map<String, String> parseQuery(String query) {
+    private Map<String, String> parseQuery(String query) {
         Map<String, String> result = new HashMap<>();
         if (query == null) return result;
 

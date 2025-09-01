@@ -1,5 +1,7 @@
 package main.java.utils;
 
+import main.java.model.ProgressInfor;
+
 import java.io.*;
 import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,7 +36,12 @@ public class AppPaths {
         return Paths.get(getAppDataDirectory(), "shared_files", fileName).toString();
     }
 
-    public static boolean copyFileToShare(File sourceFile, String newfileName, AtomicBoolean isCancelled) {
+    public static boolean isExistSharedFile(String fileName) {
+        File file = new File(getSharedFile(fileName));
+        return file.exists();
+    }
+
+    public static boolean copyFileToShare(File sourceFile, String newfileName, ProgressInfor progressInfor) {
         File destFile = new File(getSharedFile(newfileName));
         try (
                 InputStream in = new FileInputStream(sourceFile);
@@ -43,7 +50,7 @@ public class AppPaths {
             byte[] buffer = new byte[4096];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
-                if (isCancelled.get()) {
+                if (progressInfor.getStatus().equals(ProgressInfor.ProgressStatus.CANCELLED)) {
                     out.close();
                     destFile.delete();
                     logInfo("File copy cancelled by user: " + sourceFile.getName());

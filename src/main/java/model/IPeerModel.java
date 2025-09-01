@@ -8,8 +8,6 @@ import java.util.Set;
 import java.util.concurrent.Future;
 
 public interface IPeerModel {
-    void cancelAction();
-
     void initializeServerSocket() throws IOException;
 
     void startServer();
@@ -18,11 +16,11 @@ public interface IPeerModel {
 
     int registerWithTracker();
 
-    Future<Boolean> shareFileAsync(File file, String fileName);
+    void shareFileAsync(File file, String fileName, String progressId);
 
     void shareFileList();
 
-    Future<Integer> downloadFile(FileInfor fileInfor, String savePath, List<PeerInfor> peers);
+    void downloadFile(FileInfor fileInfor, File saveFile, List<PeerInfor> peers, String progressId);
 
     List<PeerInfor> getPeersWithFile(String fileHash);
 
@@ -37,4 +35,10 @@ public interface IPeerModel {
     Map<String, FileInfor> getMySharedFiles();
 
     int stopSharingFile(String fileName);
+
+    Map<String, ProgressInfor> getProgress();
+
+    void setProgress(ProgressInfor progressInfor);
+
+    void cleanupProgress(List<String> progressIds);
 }
