@@ -18,15 +18,17 @@ import utils.RequestInfor;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<String> knownPeers;
-    private final Set<FileInfor> sharedFiles;
-    private final ConcurrentHashMap<String, Set<String>> fileToPeers;
+    private final Set<FileInfor> publicSharedFiles;
+    private final ConcurrentHashMap<String, Set<String>> publicFileToPeers;
+    private final ConcurrentHashMap<FileInfor, Set<PeerInfor>> privateSharedFile;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Selector selector;
     private final ScheduledExecutorService pingExecutor;
 
     public TrackerModel() throws IOException {
-        fileToPeers = new ConcurrentHashMap<>();
-        sharedFiles = ConcurrentHashMap.newKeySet();
+        privateSharedFile = new ConcurrentHashMap<>();
+        publicFileToPeers = new ConcurrentHashMap<>();
+        publicSharedFiles = ConcurrentHashMap.newKeySet();
         knownPeers = new CopyOnWriteArraySet<>();
         selector = Selector.open();
         pingExecutor = Executors.newScheduledThreadPool(1);
@@ -213,7 +215,7 @@ public class TrackerModel {
 
     private String sendPeerList(String fileHash) {
         List<String> peers = new ArrayList<>();
-        for (FileInfor file : sharedFiles) {
+        for (FileInfor file : publicSharedFiles) {
             if (file.getFileHash().equals(fileHash)) {
                 peers.add(file.getPeerInfor().getIp() + Infor.FILE_SEPARATOR + file.getPeerInfor().getPort());
             }
@@ -242,18 +244,18 @@ public class TrackerModel {
         String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
 
-        sharedFiles.removeIf(file -> file.getFileHash().equals(fileHash) && file.getPeerInfor().toString().equals(peerInfor));
-        Set<String> peers = fileToPeers.get(fileName);
+        publicSharedFiles.removeIf(file -> file.getFileHash().equals(fileHash) && file.getPeerInfor().toString().equals(peerInfor));
+        Set<String> peers = publicFileToPeers.get(fileName);
         peers.remove(peerInfor);
 
         if (peers.isEmpty()) {
-            fileToPeers.remove(fileName);
+            publicFileToPeers.remove(fileName);
             logInfo("[TRACKER]: Removed file " + fileName + " from sharing list on " + getCurrentTime());
         } else {
             logInfo("[TRACKER]: Removed peer " + peerInfor + " from file " + fileName + " on " + getCurrentTime());
         }
-        logInfo(sharedFiles.toString());
-        logInfo(fileToPeers.toString());
+        logInfo(publicSharedFiles.toString());
+        logInfo(publicFileToPeers.toString());
         return LogTag.S_SUCCESS;
     }
 
@@ -265,7 +267,7 @@ public class TrackerModel {
         String keyword = keywordBuilder.toString();
 
         Set<FileInfor> resultPeers = new HashSet<>();
-        for (FileInfor file : sharedFiles) {
+        for (FileInfor file : publicSharedFiles) {
             if (file.getFileName().toLowerCase().contains(keyword.toLowerCase())) {
                 resultPeers.add(file);
             }
@@ -343,12 +345,12 @@ public class TrackerModel {
 
             String fileHash = fileInfor[2];
 
-            fileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-            sharedFiles.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, peerPort)));
+            publicFileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
+            publicSharedFiles.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, peerPort)));
             logInfo("[TRACKER]: File " + fileName + "shared by " + peerInfor + " on " + getCurrentTime());
         }
         logInfo("[TRACKER]: SHARE_LIST processed for " + peerInfor + " on " + getCurrentTime());
-        logInfo(sharedFiles.toString());
+        logInfo(publicSharedFiles.toString());
         return "Files shared successfully by " + peerInfor;
     }
 
@@ -359,8 +361,8 @@ public class TrackerModel {
         String peerIp = parts[4];
         String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
-        fileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-        sharedFiles.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, Integer.parseInt(peerPort))));
+        publicFileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
+        publicSharedFiles.add(new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, Integer.parseInt(peerPort))));
         logInfo("[TRACKER]: File " + fileName + " shared by " + peerInfor + " on " + getCurrentTime());
         return "File " + fileName + " được chia sẻ thành công bởi " + peerInfor;
     }
@@ -387,13 +389,13 @@ public class TrackerModel {
     }
 
     private String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
-        if (sharedFiles.isEmpty()) {
+        if (publicSharedFiles.isEmpty()) {
             logInfo("[TRACKER]: No shared files to send to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
             return RequestInfor.FILE_NOT_FOUND;
         }
 
         StringBuilder msgBuilder = new StringBuilder();
-        for (FileInfor file : sharedFiles) {
+        for (FileInfor file : publicSharedFiles) {
             msgBuilder.append(file.getFileName())
                     .append("'").append(file.getFileSize())
                     .append("'").append(file.getFileHash())
@@ -406,7 +408,7 @@ public class TrackerModel {
         }
         String shareList = msgBuilder.toString();
         logInfo("[TRACKER]: Sending share list to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
-        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + sharedFiles.size() + "|" + shareList;
+        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + publicSharedFiles.size() + "|" + shareList;
     }
 
     private void pingPeers() {
@@ -486,7 +488,7 @@ public class TrackerModel {
             knownPeers.addAll(alivePeers);
             logInfo("[TRACKER]: Updated known peers: " + knownPeers + " on " + getCurrentTime());
 
-            Iterator<Map.Entry<String, Set<String>>> iterator = fileToPeers.entrySet().iterator();
+            Iterator<Map.Entry<String, Set<String>>> iterator = publicFileToPeers.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Set<String>> entry = iterator.next();
                 String fileName = entry.getKey();
@@ -496,7 +498,7 @@ public class TrackerModel {
                     iterator.remove();
                     logInfo("[TRACKER]: Removed file " + fileName + " from tracker as no alive peers found on " + getCurrentTime());
                 }
-                sharedFiles.removeIf(fileInfor ->
+                publicSharedFiles.removeIf(fileInfor ->
                         fileInfor.getFileName().equals(fileName) &&
                                 !alivePeers.contains(fileInfor.getPeerInfor().toString()));
             }
