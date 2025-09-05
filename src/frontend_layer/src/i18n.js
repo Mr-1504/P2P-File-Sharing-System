@@ -1,0 +1,111 @@
+import i18n from "i18next";
+import { initReactI18next } from "react-i18next";
+
+i18n.use(initReactI18next).init({
+  resources: {
+    vi: {
+      translation: {
+        title: "P2P File Sharing",
+        files: "Tệp",
+        chat: "Chat",
+        selectFile: "Chọn tệp để chia sẻ",
+        language: "Ngôn ngữ",
+        search: "Tìm kiếm",
+        myFiles: "Tệp của tôi",
+        allFiles: "Tất cả tệp",
+        peerList: "Danh sách Peer",
+        refresh: "Làm mới",
+        chat_with: "Chat với",
+        send: "Gửi",
+        confirm: "Xác nhận",
+        cancel: "Hủy",
+        continue: "Tiếp tục",
+        replace: "Thay thế",
+        fileName: "Tên tệp",
+        fileSize: "Kích thước tệp",
+        peer: "Peer",
+        action: "Hành động",
+        canceled: "Đã hủy",
+        failed: "Thất bại",
+        starting: "Đang bắt đầu",
+        downloading: "Đang tải xuống",
+        sharing: "Đang chia sẻ",
+        completed: "Đã hoàn thành",
+        unknown: "Không xác định",
+        no_files: "Không có tệp nào",
+        download: "Tải xuống",
+        cancel_sharing: "Hủy chia sẻ",
+        select_peer: "Chọn một peer",
+        message_sent: "Tin nhắn đã gửi",
+        loading: "Đang tải dữ liệu...",
+        cancel_confirm: "Bạn có chắc chắn muốn hủy không?",
+        file_exists: "Tệp đã tồn tại, bạn muốn làm gì?",
+        show_my_files: "Đang hiển thị tệp của bạn",
+        cannot_load_electronAPI: "Lỗi: Không thể tải electronAPI",
+        no_file_selected: "Không có tệp nào được chọn",
+        start_sharing_file: "Bắt đầu chia sẻ tệp: ",
+        error_sharing_file: "Lỗi khi chia sẻ tệp: ",
+        cancel_sharing_file: "Đã hủy chia sẻ tệp",
+        start_download_file: "Bắt đầu tải xuống tệp: ",
+        error_downloading_file: "Lỗi khi tải xuống tệp: ",
+        error_cancel_sharing_file: "Lỗi khi hủy chia sẻ tệp: "
+      }
+    },
+    en: {
+      translation: {
+        title: "P2P File Sharing",
+        files: "Files",
+        chat: "Chat",
+        selectFile: "Select file to share",
+        language: "Language",
+        search: "Search",
+        myFiles: "My Files",
+        allFiles: "All Files",
+        peerList: "Peer List",
+        refresh: "Refresh",
+        chat_with: "Chat with",
+        send: "Send",
+        confirm: "Confirm",
+        cancel: "Cancel",
+        continue: "Continue",
+        replace: "Replace",
+        fileName: "File Name",
+        fileSize: "File Size",
+        peer: "Peer",
+        action: "Action",
+        canceled: "Canceled",
+        failed: "Failed",
+        starting: "Starting",
+        downloading: "Downloading",
+        sharing: "Sharing",
+        completed: "Completed",
+        unknown: "Unknown",
+        no_files: "No files",
+        download: "Download",
+        cancel_sharing: "Cancel Sharing",
+        select_peer: "Select a peer",
+        message_sent: "Message sent",
+        loading: "Loading...",
+
+        cancel_confirm: "Are you sure you want to cancel?",
+        file_exists: "File already exists, what do you want to do?",
+        show_my_files: "Showing my files",
+        cannot_load_electronAPI: "Error: Cannot load electronAPI",
+        no_file_selected: "Error: No file selected",
+        start_sharing_file: "Start sharing file: ",
+        error_sharing_file: "Error: Sharing file failed: ",
+        cancel_sharing_file: "Canceled sharing file: ",
+        start_download_file: "Start downloading file: ",
+        error_downloading_file: "Error: Downloading file failed: ",
+        error_cancel_sharing_file: "Error: Canceled sharing file: "
+      }
+    }
+  },
+  lng: "vi",
+  fallbackLng: "en",
+  interpolation: {
+    escapeValue: false
+  }
+});
+
+export default i18n;

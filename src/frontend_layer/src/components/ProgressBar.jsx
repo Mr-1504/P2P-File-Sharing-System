@@ -1,6 +1,25 @@
 import React, { useEffect } from 'react';
+import ConfirmCancelDialog from './ConfirmCancelDiaglog';
+import { useTranslation } from 'react-i18next';
+
 
 const ProgressBar = ({ tasks, setTasks }) => {
+    const { t } = useTranslation();
+    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+    const [taskToCancel, setTaskToCancel] = React.useState(null);
+
+    const handleCancelTask = (taskId) => {
+        setTaskToCancel(taskId);
+        setIsDialogOpen(true);
+    };
+
+    const handleDialogClose = (confirm) => {
+        setIsDialogOpen(false);
+        if (confirm && taskToCancel) {
+            cancelTask(taskToCancel);
+        }
+    };
+
     const addTask = (taskId, taskName) => {
         const id = String(taskId);
         setTasks(prev => {
@@ -62,17 +81,15 @@ const ProgressBar = ({ tasks, setTasks }) => {
             case 'failed':
                 return 'text-red-600';
             case 'starting':
-            case 'downloading...':
-            case 'sharing...':
-                return 'text-blue-600';  // hoặc xanh lá cũng được
+            case 'downloading':
+            case 'sharing':
+                return 'text-blue-600';  
             case 'completed':
                 return 'text-green-600';
             default:
-                return 'text-gray-600'; // fallback
+                return 'text-gray-600'; 
         }
     };
-
-
 
     return (
         <div className="space-y-4">
@@ -81,7 +98,7 @@ const ProgressBar = ({ tasks, setTasks }) => {
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-sm font-semibold text-gray-700">{task.taskName}</span>
                         <span className={`text-sm ${getStatusColor(task.status)}`}>
-                            {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                            {t(task.status)}
                         </span>
 
                     </div>
@@ -96,15 +113,16 @@ const ProgressBar = ({ tasks, setTasks }) => {
                         <span>{task.progress}%</span>
                     </div>
                     {((task.status === 'starting') ||
-                        (task.status === 'downloading...') ||
-                        (task.status === 'sharing...')) && (
+                        (task.status === 'downloading') ||
+                        (task.status === 'sharing')) && (
                             <button
-                                onClick={() => cancelTask(task.id)}
+                                onClick={() => handleCancelTask(task.id)}
                                 className="mt-2 px-4 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200"
                             >
                                 Hủy
                             </button>
                         )}
+                    <ConfirmCancelDialog open={isDialogOpen} onClose={handleDialogClose} />
 
                 </div>
             ))}

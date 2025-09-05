@@ -66,8 +66,8 @@ public class ProgressInfor {
 
     public interface ProgressStatus {
         String STARTING = "starting";
-        String DOWNLOADING = "downloading...";
-        String SHARING = "sharing...";
+        String DOWNLOADING = "downloading";
+        String SHARING = "sharing";
         String COMPLETED = "completed";
         String FAILED = "failed";
         String CANCELLED = "canceled";

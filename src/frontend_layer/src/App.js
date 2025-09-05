@@ -4,11 +4,18 @@ import FileTable from './components/FileTable';
 import Notification from './components/Notification';
 import ConfirmDialog from './components/ConfirmDialog';
 import Chat from './components/Chat';
+import { useTranslation } from "react-i18next";
 import './App.css';
 
 function App() {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [pendingFile, setPendingFile] = useState(null);
+    const { t, i18n } = useTranslation();
+
+    const changeLanguage = (lng) => {
+        i18n.changeLanguage(lng === "Tiếng Việt" ? "vi" : "en");
+        setLanguage(lng);
+    };
     const [taskMap] = useState(new Map());
     const [activeTab, setActiveTab] = useState('files');
     const [files, setFiles] = useState([]);
@@ -161,7 +168,7 @@ function App() {
 
     const handleFileUpload = async () => {
         if (!window.electronAPI || !window.electronAPI.selectFile) {
-            addNotification('Lỗi: electronAPI không được tải', true);
+            addNotification(t('cannot_load_electronAPI'), true);
             return;
         }
 
@@ -169,7 +176,7 @@ function App() {
         try {
             const filePath = await window.electronAPI.selectFile();
             if (!filePath) {
-                addNotification('Không có tệp nào được chọn', true);
+                addNotification(t('no_file_selected'), true);
                 return;
             }
 
@@ -184,12 +191,12 @@ function App() {
                 }
             }
 
-            const progressId = await window.electronAPI.shareFile(filePath, 0);
+            const progressId = await window.electronAPI.shareFile(filePath, 1);
             console.log('Progress ID:', progressId);
             taskMap.set(progressId, { fileName, status: 'starting' });
-            addNotification(` Bắt đầu chia sẻ tệp: ${fileName}`, false);
+            addNotification(t('start_sharing_file', { fileName }), false);
         } catch (error) {
-            addNotification(` Lỗi khi chia sẻ tệp: ${error.message}`, true);
+            addNotification(t('error_sharing_file', { error: error.message }), true);
             console.error('Error in handleFileUpload:', error);
         } finally {
             setIsLoading(false);
@@ -199,7 +206,7 @@ function App() {
     const handleDialogClose = async (action) => {
         setDialogOpen(false);
         if (action === -1 || !action) {
-            addNotification('Đã hủy chia sẻ tệp', false);
+            addNotification(t('cancel_sharing_file'), false);
             setPendingFile(null);
             return;
         }
@@ -213,9 +220,9 @@ function App() {
             const progressId = await window.electronAPI.shareFile(pendingFile.filePath, isReplace);
             console.log('Progress ID:', progressId);
             taskMap.set(progressId, { fileName: pendingFile.fileName, status: 'starting' });
-            addNotification(` Bắt đầu chia sẻ tệp: ${pendingFile.fileName}`, false);
+            addNotification(t('start_sharing_file', { fileName: pendingFile.fileName }), false);
         } catch (error) {
-            addNotification(` Lỗi khi chia sẻ tệp: ${error.message}`, true);
+            addNotification(t('error_sharing_file', { error: error.message }), true);
             console.error('Error in handleDialogClose:', error);
         } finally {
             setPendingFile(null);
@@ -225,7 +232,7 @@ function App() {
 
     const handleDownload = async (file) => {
         if (!window.electronAPI) {
-            addNotification(' Lỗi: electronAPI chưa sẵn sàng', true);
+            addNotification(t('cannot_load_electronAPI'), true);
             return;
         }
 
@@ -233,11 +240,11 @@ function App() {
         try {
             const savePath = await window.electronAPI.saveFile(file.fileName);
             if (!savePath) {
-                addNotification(' Không chọn nơi lưu tệp', true);
+                addNotification(t('no_file_selected'), true);
                 return;
             }
 
-            addNotification(` Bắt đầu tải xuống: ${file.fileName}`, false);
+            addNotification(t('start_download_file', { fileName: file.fileName }), false);
             const progressId = await window.electronAPI.downloadFile({
                 fileName: file.fileName.trim(),
                 peerInfor: `${file.peerInfor.ip}:${file.peerInfor.port}`,
@@ -246,7 +253,7 @@ function App() {
             console.log('Progress ID:', progressId);
             taskMap.set(progressId, { fileName: file.fileName.trim(), status: 'starting' });
         } catch (error) {
-            addNotification(` Lỗi khi tải xuống tệp: ${error.message}`, true);
+            addNotification(t('error_downloading_file', { error: error.message }), true);
             console.error('Error in handleDownload:', error);
         } finally {
             setIsLoading(false);
@@ -267,20 +274,20 @@ function App() {
             clearTimeout(timeoutId);
             if (response.ok) {
                 fetchFiles();
-                addNotification(`Đã hủy chia sẻ: ${file.fileName}`, false);
+                addNotification(t('cancel_sharing_file', { fileName: file.fileName }), false);
             } else {
                 const errorData = await response.json();
-                throw new Error(`Lỗi khi hủy chia sẻ: ${errorData.error || response.status}`);
+                throw new Error(t('error_cancel_sharing_file', { error: errorData.error || response.status }));
             }
         } catch (error) {
-            addNotification('Lỗi khi hủy chia sẻ: ' + error.message, true);
+            addNotification(t('error_cancel_sharing_file', { error: error.message }), true);
         } finally {
             setIsLoading(false);
         }
     };
 
     const handleSearch = async () => {
-        addNotification(`Tìm kiếm: ${searchTerm}`, false);
+        addNotification(t('search', { searchTerm }), false);
         if (searchTerm.trim()) {
             const filteredFiles = files.filter(file => file.fileName.toLowerCase().includes(searchTerm.toLowerCase()));
             setFiles(filteredFiles);
@@ -295,7 +302,7 @@ function App() {
 
     const handleMyFiles = () => {
         setFiles(files.filter(file => file.isSharedByMe));
-        addNotification('Đang hiển thị tệp của bạn', false);
+        addNotification(t('show_my_files'), false);
     };
 
     const handleAllFiles = () => {
@@ -308,7 +315,7 @@ function App() {
             ...prev,
             [peerId]: [...(prev[peerId] || []), newMessage]
         }));
-        addNotification('Tin nhắn đã gửi', false);
+        addNotification(t('message_sent'), false);
         setTimeout(() => {
             const responseMessage = { sender: `Peer ${peerId}`, text: 'Tin nhắn nhận được!', timestamp: new Date().toLocaleTimeString() };
             setMessages(prev => ({
@@ -325,24 +332,24 @@ function App() {
                     <svg className="w-24 h-24 mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <h2 className="text-2xl font-bold text-white mb-4">Đang tải dữ liệu...</h2>
+                    <h2 className="text-2xl font-bold text-white mb-4">{t('loading')}</h2>
                     <div className="w-12 h-12 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
                 </div>
             )}
             <div className={`container mx-auto p-6 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}>
-                <h1 className="text-4xl font-extrabold text-center mb-8 text-blue-900 tracking-tight">P2P File Sharing</h1>
+                <h1 className="text-4xl font-extrabold text-center mb-8 text-blue-900 tracking-tight">{t('title')}</h1>
                 <div className="flex space-x-4 mb-6 bg-white rounded-xl shadow-lg p-2 border border-gray-100">
                     <button
                         onClick={() => setActiveTab('files')}
                         className={`flex-1 py-3 text-lg font-semibold rounded-lg transition-all duration-200 ${activeTab === 'files' ? 'bg-blue-600 text-white shadow-md' : 'text-blue-600 hover:bg-blue-50'}`}
                     >
-                        Tệp
+                        {t('files')}
                     </button>
                     <button
                         onClick={() => setActiveTab('chat')}
                         className={`flex-1 py-3 text-lg font-semibold rounded-lg transition-all duration-200 ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-md' : 'text-blue-600 hover:bg-blue-50'}`}
                     >
-                        Chat
+                        {t('chat')}
                     </button>
                 </div>
                 {activeTab === 'files' ? (
@@ -358,14 +365,14 @@ function App() {
                                         <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                                         </svg>
-                                        Chọn tệp để chia sẻ
+                                        {t('selectFile')}
                                     </button>
                                 </div>
                                 <div className="flex items-center space-x-4 w-full md:w-auto">
-                                    <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">Ngôn ngữ:</label>
+                                    <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">{t('language')}:</label>
                                     <select
                                         value={language}
-                                        onChange={(e) => setLanguage(e.target.value)}
+                                        onChange={(e) => changeLanguage(e.target.value)}
                                         className="border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                                         disabled={isLoading}
                                     >
@@ -392,7 +399,7 @@ function App() {
                                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                     </svg>
-                                    Tìm kiếm
+                                    {t('search')}
                                 </button>
                             </div>
                             <div className="flex flex-wrap gap-4">
@@ -404,7 +411,7 @@ function App() {
                                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
                                     </svg>
-                                    Tệp của tôi
+                                    {t('myFiles')}
                                 </button>
                                 <button
                                     onClick={handleAllFiles}
@@ -414,7 +421,7 @@ function App() {
                                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
                                     </svg>
-                                    Tất cả tệp
+                                    {t('allFiles')}
                                 </button>
                                 <button
                                     onClick={handleRefresh}
@@ -430,11 +437,13 @@ function App() {
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                         </svg>
                                     )}
-                                    Làm mới
+                                    {t('refresh')}
                                 </button>
                             </div>
                         </div>
                         <FileTable files={files} onDownload={handleDownload} onStopSharing={handleStopSharing} isLoading={isLoading} />
+
+                        <div style={{ margin: '16px' }}></div>
                         <ProgressBar tasks={tasks} setTasks={setTasks} taskMap={taskMap} />
                     </div>
                 ) : (

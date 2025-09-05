@@ -1,4 +1,8 @@
+import { useTranslation } from 'react-i18next';
+
 const FileTable = ({ files, onDownload, onStopSharing, isLoading }) => {
+    const { t } = useTranslation();
+
     const formatFileSize = (sizeInBytes) => {
         const sizeMB = sizeInBytes / (1024 * 1024);
         if (sizeMB < 1) {
@@ -12,16 +16,16 @@ const FileTable = ({ files, onDownload, onStopSharing, isLoading }) => {
             <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-blue-700 text-white">
                     <tr>
-                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">Tên tệp</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">Kích thước</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">Peer</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">Hành động</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">{t('fileName')}</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">{t('fileSize')}</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">{t('peer')}</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">{t('action')}</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                     {files.length === 0 ? (
                         <tr>
-                            <td colSpan="4" className="px-6 py-6 text-center text-gray-500 text-lg">Không có tệp nào</td>
+                            <td colSpan="4" className="px-6 py-6 text-center text-gray-500 text-lg">{t('no_files')}</td>
                         </tr>
                     ) : (
                         files.map((file, index) => (
@@ -39,7 +43,7 @@ const FileTable = ({ files, onDownload, onStopSharing, isLoading }) => {
                                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
                                             </svg>
-                                            Tải xuống
+                                            {t('download')}
                                         </button>
                                     )}
                                     {file.isSharedByMe && (
@@ -55,7 +59,7 @@ const FileTable = ({ files, onDownload, onStopSharing, isLoading }) => {
                                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                                             </svg>
-                                            Hủy chia sẻ
+                                            {t('cancel_sharing')}
                                         </button>
                                     )}
                                 </td>
