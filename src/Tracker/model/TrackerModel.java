@@ -35,9 +35,6 @@ public class TrackerModel {
         selector = Selector.open();
         pingExecutor = Executors.newScheduledThreadPool(1);
         pingExecutor.scheduleAtFixedRate(this::pingPeers, 0, 60, TimeUnit.SECONDS);
-
-        // Load persistent data on startup
-        loadPersistentData();
     }
 
     public void startTracker() {
@@ -392,7 +389,7 @@ public class TrackerModel {
         String peerPort;
         try {
             peerPort = parts[2];
-            Integer.parseInt(peerPort); // Validate port
+            Integer.parseInt(peerPort);
         } catch (NumberFormatException e) {
             logInfo("[TRACKER]: Invalid Port in REGISTER: " + parts[2] + " on " + getCurrentTime());
             return LogTag.S_INVALID;
@@ -400,6 +397,33 @@ public class TrackerModel {
         String peerInfor = peerIp + "|" + peerPort;
         knownPeers.add(peerInfor);
         logInfo("[TRACKER]: Peer registered: " + peerInfor + " on " + getCurrentTime());
+
+        if (parts.length > 3) {
+            try {
+                int fileCount = Integer.parseInt(parts[3]);
+                if (fileCount > 0 && parts.length > 4) {
+                    String[] fileList = parts[4].split(",");
+                    logInfo("[TRACKER]: Peer " + peerInfor + " registered " + fileCount + " files on " + getCurrentTime());
+
+                    for (String fileStr : fileList) {
+                        String[] fileParts = fileStr.split("'");
+                        if (fileParts.length == 3) {
+                            String fileName = fileParts[0];
+                            long fileSize = Long.parseLong(fileParts[1]);
+                            String fileHash = fileParts[2];
+
+                            FileInfor fileInfo = new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, Integer.parseInt(peerPort)));
+                            publicSharedFiles.add(fileInfo);
+                            publicFileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
+
+                            logInfo("[TRACKER]: Added file " + fileName + " from peer " + peerInfor + " to active sharing list on " + getCurrentTime());
+                        }
+                    }
+                }
+            } catch (NumberFormatException e) {
+                logInfo("[TRACKER]: Invalid file count in REGISTER: " + parts[3] + " on " + getCurrentTime());
+            }
+        }
 
         String shareListResponse = sendShareList(peerIp, Integer.parseInt(peerPort), false);
         if (!shareListResponse.startsWith(RequestInfor.SHARED_LIST)) {
@@ -421,7 +445,6 @@ public class TrackerModel {
             Set<String> allowedPeers = entry.getValue();
 
             if (allowedPeers.contains(requestingPeer)) {
-                // Find the file information for this hash
                 for (FileInfor file : privateSharedFile) {
                     if (file.getFileHash().equals(fileHash)) {
                         filesToSend.add(file);
@@ -635,127 +658,4 @@ public class TrackerModel {
         return LocalDateTime.now().format(formatter);
     }
 
-    private void loadPersistentData() {
-        // Load known peers
-        loadKnownPeers();
-
-        // Load public shared files
-        loadPublicSharedFiles();
-
-        // Load selective sharing data
-        loadSelectiveSharingData();
-
-        logInfo("[TRACKER]: Loaded persistent data on startup");
-    }
-
-    private void loadKnownPeers() {
-        try {
-            java.io.File peersFile = new java.io.File("tracker_peers.dat");
-            if (!peersFile.exists()) {
-                logInfo("[TRACKER]: No peers persistence file found");
-                return;
-            }
-
-            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(peersFile))) {
-                @SuppressWarnings("unchecked")
-                Set<String> loadedPeers = (Set<String>) ois.readObject();
-                knownPeers.addAll(loadedPeers);
-                logInfo("[TRACKER]: Loaded " + loadedPeers.size() + " known peers from persistence");
-            }
-        } catch (Exception e) {
-            logError("[TRACKER]: Error loading known peers: " + e.getMessage(), e);
-        }
-    }
-
-    private void loadPublicSharedFiles() {
-        try {
-            java.io.File filesFile = new java.io.File("tracker_files.dat");
-            if (!filesFile.exists()) {
-                logInfo("[TRACKER]: No files persistence file found");
-                return;
-            }
-
-            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(filesFile))) {
-                @SuppressWarnings("unchecked")
-                Set<FileInfor> loadedFiles = (Set<FileInfor>) ois.readObject();
-                publicSharedFiles.addAll(loadedFiles);
-                logInfo("[TRACKER]: Loaded " + loadedFiles.size() + " public shared files from persistence");
-            }
-        } catch (Exception e) {
-            logError("[TRACKER]: Error loading public shared files: " + e.getMessage(), e);
-        }
-    }
-
-    private void loadSelectiveSharingData() {
-        try {
-            java.io.File selectiveFile = new java.io.File("tracker_selective.dat");
-            if (!selectiveFile.exists()) {
-                logInfo("[TRACKER]: No selective sharing persistence file found");
-                return;
-            }
-
-            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(selectiveFile))) {
-                @SuppressWarnings("unchecked")
-                Map<String, Set<String>> loadedSelective = (Map<String, Set<String>>) ois.readObject();
-                @SuppressWarnings("unchecked")
-                Set<FileInfor> loadedPrivateFiles = (Set<FileInfor>) ois.readObject();
-                selectiveSharedFiles.putAll(loadedSelective);
-                privateSharedFile.addAll(loadedPrivateFiles);
-                logInfo("[TRACKER]: Loaded " + loadedPrivateFiles.size() + " private shared files from persistence");
-                logInfo("[TRACKER]: Loaded selective sharing data for " + loadedSelective.size() + " files from persistence");
-            }
-        } catch (Exception e) {
-            logError("[TRACKER]: Error loading selective sharing data: " + e.getMessage(), e);
-        }
-    }
-
-    private void savePersistentData() {
-        // Save known peers
-        saveKnownPeers();
-
-        // Save public shared files
-        savePublicSharedFiles();
-
-        // Save selective sharing data
-        saveSelectiveSharingData();
-
-        logInfo("[TRACKER]: Saved persistent data");
-    }
-
-    private void saveKnownPeers() {
-        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream("tracker_peers.dat"))) {
-            oos.writeObject(new HashSet<>(knownPeers));
-            logInfo("[TRACKER]: Saved " + knownPeers.size() + " known peers to persistence");
-        } catch (Exception e) {
-            logError("[TRACKER]: Error saving known peers: " + e.getMessage(), e);
-        }
-    }
-
-    private void savePublicSharedFiles() {
-        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream("tracker_files.dat"))) {
-            oos.writeObject(new HashSet<>(publicSharedFiles));
-            logInfo("[TRACKER]: Saved " + publicSharedFiles.size() + " public shared files to persistence");
-        } catch (Exception e) {
-            logError("[TRACKER]: Error saving public shared files: " + e.getMessage(), e);
-        }
-    }
-
-    private void saveSelectiveSharingData() {
-        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream("tracker_selective.dat"))) {
-            oos.writeObject(new HashMap<>(selectiveSharedFiles));
-            oos.writeObject(new HashSet<>(privateSharedFile));
-            logInfo("[TRACKER]: Saved selective sharing data for " + selectiveSharedFiles.size() + " files to persistence");
-            logInfo("[TRACKER]: Saved " + privateSharedFile.size() + " private shared files to persistence");
-        } catch (Exception e) {
-            logError("[TRACKER]: Error saving selective sharing data: " + e.getMessage(), e);
-        }
-    }
-
-    // Add shutdown hook to save data when tracker stops
-    {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            logInfo("[TRACKER]: Shutdown hook triggered, saving persistent data...");
-            savePersistentData();
-        }));
-    }
 }

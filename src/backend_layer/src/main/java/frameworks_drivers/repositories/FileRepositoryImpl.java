@@ -92,7 +92,7 @@ public class FileRepositoryImpl implements FileRepository {
 
     @Override
     public Map<String, FileInfo> getMySharedFiles() {
-        Map<String, FileInfo> modelFiles = peerModel.getMySharedFiles();
+        Map<String, FileInfo> modelFiles = peerModel.getPublicSharedFiles();
         return modelFiles.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,

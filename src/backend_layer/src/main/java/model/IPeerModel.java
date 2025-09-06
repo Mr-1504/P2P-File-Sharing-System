@@ -41,7 +41,7 @@ public interface IPeerModel {
 
     void setSharedFileNames(Set<FileInfo> sharedFileNames);
 
-    Map<String, FileInfo> getMySharedFiles();
+    Map<String, FileInfo> getPublicSharedFiles();
 
     int stopSharingFile(String fileName);
 
