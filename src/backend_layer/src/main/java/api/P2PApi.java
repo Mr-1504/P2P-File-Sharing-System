@@ -374,6 +374,94 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
+    public void setRouteForShareToPeers(BiFunction<String, List<String>, String> callable) {
+        server.createContext("/api/files/share-to-peers", exchange -> {
+            addCorsHeaders(exchange);
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "POST":
+                        logInfo("Share to peers request");
+                        JsonObject body = gson.fromJson(
+                                new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8),
+                                JsonObject.class
+                        );
+
+                        String filePath = body.has("filePath") ? body.get("filePath").getAsString() : null;
+                        int isReplace = body.has("isReplace") ? body.get("isReplace").getAsInt() : 0;
+                        List<String> peerList = new ArrayList<>();
+                        if (body.has("peers")) {
+                            body.get("peers").getAsJsonArray().forEach(peer -> peerList.add(peer.getAsString()));
+                        }
+
+                        if (filePath == null || filePath.isEmpty() || peerList.isEmpty()) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("filePath and peers are required"));
+                            return;
+                        }
+
+                        String result = callable.apply(filePath + "|" + isReplace, peerList);
+                        logInfo("Share to peers result: " + result);
+
+                        switch (result) {
+                            case LogTag.S_NOT_CONNECTION:
+                                sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE,
+                                        jsonError(LogTag.S_NOT_CONNECTION));
+                                break;
+                            case LogTag.S_INVALID:
+                                sendResponse(exchange, LogTag.BAD_REQUEST,
+                                        jsonError("Invalid peer list"));
+                                break;
+                            case LogTag.S_ERROR:
+                                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                                        jsonError("Internal server error"));
+                                break;
+                            default:
+                                sendResponse(exchange, LogTag.OK, gson.toJson(Collections.singletonMap("status", "shared")));
+                        }
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                logError("Error share to peers request", e);
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
+    @Override
+    public void setRouteForGetKnownPeers(Callable<List<String>> callable) {
+        server.createContext("/api/peers/known", exchange -> {
+            addCorsHeaders(exchange);
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "GET":
+                        logInfo("Get known peers request");
+                        List<String> peers = callable.call();
+                        String response = gson.toJson(peers);
+                        logInfo("Known peers response: " + response);
+                        sendResponse(exchange, LogTag.OK, response);
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                logError("Error get known peers request", e);
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
+    @Override
     public void setFiles(List<FileInfor> files) {
         this.files = files;
     }

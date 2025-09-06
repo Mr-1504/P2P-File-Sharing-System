@@ -38,7 +38,7 @@ i18n.use(initReactI18next).init({
         select_peer: "Chọn một peer",
         message_sent: "Tin nhắn đã gửi",
         loading: "Đang tải dữ liệu...",
-        cancel_confirm: "Bạn có chắc chắn muốn hủy không?",
+        cancel_confirmation: "Bạn có chắc chắn muốn hủy không?",
         file_exists: "Tệp đã tồn tại, bạn muốn làm gì?",
         show_my_files: "Đang hiển thị tệp của bạn",
         cannot_load_electronAPI: "Lỗi: Không thể tải electronAPI",
@@ -86,8 +86,7 @@ i18n.use(initReactI18next).init({
         select_peer: "Select a peer",
         message_sent: "Message sent",
         loading: "Loading...",
-
-        cancel_confirm: "Are you sure you want to cancel?",
+        cancel_confirmation: "Are you sure you want to cancel?",
         file_exists: "File already exists, what do you want to do?",
         show_my_files: "Showing my files",
         cannot_load_electronAPI: "Error: Cannot load electronAPI",

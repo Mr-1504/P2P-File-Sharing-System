@@ -1,8 +1,10 @@
 package main.java.model;
 
 import java.util.Objects;
+import java.io.Serializable;
 
-public class FileBase {
+public class FileBase implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String fileName;
     private long fileSize;
     private PeerInfor peerInfor;

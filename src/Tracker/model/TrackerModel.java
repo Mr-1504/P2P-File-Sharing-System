@@ -20,19 +20,24 @@ public class TrackerModel {
     private final CopyOnWriteArraySet<String> knownPeers;
     private final Set<FileInfor> publicSharedFiles;
     private final ConcurrentHashMap<String, Set<String>> publicFileToPeers;
-    private final ConcurrentHashMap<FileInfor, Set<PeerInfor>> privateSharedFile;
+    private final Set<FileInfor> privateSharedFile;
+    private final ConcurrentHashMap<String, Set<String>> selectiveSharedFiles; // fileHash -> set of peer IPs
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Selector selector;
     private final ScheduledExecutorService pingExecutor;
 
     public TrackerModel() throws IOException {
-        privateSharedFile = new ConcurrentHashMap<>();
+        privateSharedFile = new HashSet<>();
         publicFileToPeers = new ConcurrentHashMap<>();
         publicSharedFiles = ConcurrentHashMap.newKeySet();
+        selectiveSharedFiles = new ConcurrentHashMap<>();
         knownPeers = new CopyOnWriteArraySet<>();
         selector = Selector.open();
         pingExecutor = Executors.newScheduledThreadPool(1);
         pingExecutor.scheduleAtFixedRate(this::pingPeers, 0, 60, TimeUnit.SECONDS);
+
+        // Load persistent data on startup
+        loadPersistentData();
     }
 
     public void startTracker() {
@@ -175,6 +180,12 @@ public class TrackerModel {
             }
             logInfo("[TRACKER]: Invalid REGISTER request: " + request + " on " + getCurrentTime());
             return "Định dạng yêu cầu REGISTER không hợp lệ. Sử dụng: REGISTER|<peerIp>|<peerPort>";
+        } else if (request.startsWith(RequestInfor.SHARE_TO_PEERS)) {
+            if (parts.length >= 4) {
+                return shareToPeers(parts);
+            }
+            logInfo("[TRACKER]: Invalid SHARE_TO_PEERS request: " + request + " on " + getCurrentTime());
+            return "Định dạng yêu cầu SHARE_TO_PEERS không hợp lệ. Sử dụng: SHARE_TO_PEERS|<fileHash>|<peerCount>|<peer1>|<peer2>|...";
         } else if (request.startsWith(RequestInfor.SHARED_LIST)) {
             if (parts.length == 5) {
                 return receiveFileList(parts, request);
@@ -208,6 +219,15 @@ public class TrackerModel {
                 String fileHash = parts[1];
                 return sendPeerList(fileHash);
             }
+        } else if (request.startsWith(RequestInfor.GET_SHARED_PEERS)) {
+            if (parts.length == 2) {
+                String fileHash = parts[1];
+                return getSharedPeers(fileHash);
+            }
+            logInfo("[TRACKER]: Invalid GET_SHARED_PEERS request: " + request + " on " + getCurrentTime());
+            return "Định dạng yêu cầu GET_SHARED_PEERS không hợp lệ. Sử dụng: GET_SHARED_PEERS|<fileHash>";
+        } else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
+            return getKnownPeers();
         }
         logInfo("[TRACKER]: Unkhown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
@@ -389,13 +409,41 @@ public class TrackerModel {
     }
 
     private String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
-        if (publicSharedFiles.isEmpty()) {
+        String requestingPeer = peerIp + ":" + peerPort;
+        Set<FileInfor> filesToSend = new HashSet<>();
+
+        // Add all public shared files
+        filesToSend.addAll(publicSharedFiles);
+
+        // Add selectively shared files for this peer
+        for (Map.Entry<String, Set<String>> entry : selectiveSharedFiles.entrySet()) {
+            String fileHash = entry.getKey();
+            Set<String> allowedPeers = entry.getValue();
+
+            if (allowedPeers.contains(requestingPeer)) {
+                // Find the file information for this hash
+                for (FileInfor file : privateSharedFile) {
+                    if (file.getFileHash().equals(fileHash)) {
+                        filesToSend.add(file);
+                        break;
+                    }
+                }
+            }
+        }
+        PeerInfor requestingPeerInfor = new PeerInfor(peerIp, peerPort);
+        for (FileInfor fileInfor : privateSharedFile) {
+            if (fileInfor.getPeerInfor().equals(requestingPeerInfor)) {
+                filesToSend.add(fileInfor);
+            }
+        }
+
+        if (filesToSend.isEmpty()) {
             logInfo("[TRACKER]: No shared files to send to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
             return RequestInfor.FILE_NOT_FOUND;
         }
 
         StringBuilder msgBuilder = new StringBuilder();
-        for (FileInfor file : publicSharedFiles) {
+        for (FileInfor file : filesToSend) {
             msgBuilder.append(file.getFileName())
                     .append("'").append(file.getFileSize())
                     .append("'").append(file.getFileHash())
@@ -403,12 +451,13 @@ public class TrackerModel {
                     .append("'").append(file.getPeerInfor().getPort())
                     .append(Infor.LIST_SEPARATOR);
         }
+
         if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {
             msgBuilder.deleteCharAt(msgBuilder.length() - 1);
         }
         String shareList = msgBuilder.toString();
-        logInfo("[TRACKER]: Sending share list to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
-        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + publicSharedFiles.size() + "|" + shareList;
+        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + filesToSend.size() + "|" + shareList;
     }
 
     private void pingPeers() {
@@ -505,7 +554,208 @@ public class TrackerModel {
         }
     }
 
+    private String shareToPeers(String[] parts) {
+        if (parts.length != 8) {
+            logInfo("[TRACKER]: Peer count doesn't match in SHARE_TO_PEERS: expected " + 8 + ", got " + parts.length + " on " + getCurrentTime());
+            return "Số lượng peer không khớp.";
+        }
+        String fileName = parts[1];
+        long fileSize = Long.parseLong(parts[2]);
+        String fileHash = parts[3];
+        String ip = parts[4];
+        int port = Integer.parseInt(parts[5]);
+        int peerCount;
+        try {
+            peerCount = Integer.parseInt(parts[6]);
+        } catch (NumberFormatException e) {
+            logInfo("[TRACKER]: Invalid peer count in SHARE_TO_PEERS: " + parts[6] + " on " + getCurrentTime());
+            return "Số lượng peer không hợp lệ.";
+        }
+        FileInfor fileInfor = new FileInfor(fileName, fileSize, fileHash, new PeerInfor(ip, port));
+        if (publicSharedFiles.contains(fileInfor)) {
+            publicSharedFiles.remove(fileInfor);
+            logInfo("[TRACKER]: Removed public sharing of file " + fileHash + " from " + ip + "|" + port + " on " + getCurrentTime());
+        }
+
+        privateSharedFile.add(fileInfor);
+        logInfo("[TRACKER]: File " + fileHash + " set to private sharing by " + ip + "|" + port + " on " + getCurrentTime());
+
+        Set<String> peers = selectiveSharedFiles.computeIfAbsent(fileHash, k -> new CopyOnWriteArraySet<>());
+        String[] peerList = parts[7].split(Infor.LIST_SEPARATOR);
+        if (peerList.length != peerCount) {
+            logInfo("[TRACKER]: Peer count doesn't match in SHARE_TO_PEERS: expected " + peerCount + ", got " + peerList.length + " on " + getCurrentTime());
+            return "Số lượng peer không khớp với số peer được chỉ định.";
+        }
+
+        for (int i = 0; i < peerList.length; i++) {
+            String peer = peerList[i];
+            peers.add(peer);
+        }
+
+        logInfo("[TRACKER]: File " + fileHash + " selectively shared to " + peers.size() + " peers on " + getCurrentTime());
+        return "File " + fileHash + " được chia sẻ thành công đến " + peers.size() + " peers.";
+    }
+
+    private String getSharedPeers(String fileHash) {
+        Set<String> peers = selectiveSharedFiles.get(fileHash);
+        if (peers == null || peers.isEmpty()) {
+            logInfo("[TRACKER]: No selective peers found for file hash: " + fileHash + " on " + getCurrentTime());
+            return RequestInfor.NOT_FOUND + "|No selective peers found for file hash: " + fileHash;
+        }
+
+        StringBuilder response = new StringBuilder(RequestInfor.GET_SHARED_PEERS + "|" + peers.size() + "|");
+        for (String peer : peers) {
+            response.append(peer).append(Infor.LIST_SEPARATOR);
+        }
+        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+            response.deleteCharAt(response.length() - 1);
+        }
+        logInfo("[TRACKER]: Sending selective peer list for file hash: " + fileHash + " on " + getCurrentTime());
+        return response.toString();
+    }
+
+    private String getKnownPeers() {
+        if (knownPeers.isEmpty()) {
+            logInfo("[TRACKER]: No known peers found on " + getCurrentTime());
+            return RequestInfor.NOT_FOUND + "|No known peers found";
+        }
+
+        StringBuilder response = new StringBuilder(RequestInfor.GET_KNOWN_PEERS + "|" + knownPeers.size() + "|");
+        for (String peer : knownPeers) {
+            response.append(peer.replace('|', ':')).append(Infor.LIST_SEPARATOR);
+        }
+        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+            response.deleteCharAt(response.length() - 1);
+        }
+        logInfo("[TRACKER]: Sending known peers list on " + getCurrentTime());
+        return response.toString();
+    }
+
     private String getCurrentTime() {
         return LocalDateTime.now().format(formatter);
+    }
+
+    private void loadPersistentData() {
+        // Load known peers
+        loadKnownPeers();
+
+        // Load public shared files
+        loadPublicSharedFiles();
+
+        // Load selective sharing data
+        loadSelectiveSharingData();
+
+        logInfo("[TRACKER]: Loaded persistent data on startup");
+    }
+
+    private void loadKnownPeers() {
+        try {
+            java.io.File peersFile = new java.io.File("tracker_peers.dat");
+            if (!peersFile.exists()) {
+                logInfo("[TRACKER]: No peers persistence file found");
+                return;
+            }
+
+            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(peersFile))) {
+                @SuppressWarnings("unchecked")
+                Set<String> loadedPeers = (Set<String>) ois.readObject();
+                knownPeers.addAll(loadedPeers);
+                logInfo("[TRACKER]: Loaded " + loadedPeers.size() + " known peers from persistence");
+            }
+        } catch (Exception e) {
+            logError("[TRACKER]: Error loading known peers: " + e.getMessage(), e);
+        }
+    }
+
+    private void loadPublicSharedFiles() {
+        try {
+            java.io.File filesFile = new java.io.File("tracker_files.dat");
+            if (!filesFile.exists()) {
+                logInfo("[TRACKER]: No files persistence file found");
+                return;
+            }
+
+            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(filesFile))) {
+                @SuppressWarnings("unchecked")
+                Set<FileInfor> loadedFiles = (Set<FileInfor>) ois.readObject();
+                publicSharedFiles.addAll(loadedFiles);
+                logInfo("[TRACKER]: Loaded " + loadedFiles.size() + " public shared files from persistence");
+            }
+        } catch (Exception e) {
+            logError("[TRACKER]: Error loading public shared files: " + e.getMessage(), e);
+        }
+    }
+
+    private void loadSelectiveSharingData() {
+        try {
+            java.io.File selectiveFile = new java.io.File("tracker_selective.dat");
+            if (!selectiveFile.exists()) {
+                logInfo("[TRACKER]: No selective sharing persistence file found");
+                return;
+            }
+
+            try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(selectiveFile))) {
+                @SuppressWarnings("unchecked")
+                Map<String, Set<String>> loadedSelective = (Map<String, Set<String>>) ois.readObject();
+                @SuppressWarnings("unchecked")
+                Set<FileInfor> loadedPrivateFiles = (Set<FileInfor>) ois.readObject();
+                selectiveSharedFiles.putAll(loadedSelective);
+                privateSharedFile.addAll(loadedPrivateFiles);
+                logInfo("[TRACKER]: Loaded " + loadedPrivateFiles.size() + " private shared files from persistence");
+                logInfo("[TRACKER]: Loaded selective sharing data for " + loadedSelective.size() + " files from persistence");
+            }
+        } catch (Exception e) {
+            logError("[TRACKER]: Error loading selective sharing data: " + e.getMessage(), e);
+        }
+    }
+
+    private void savePersistentData() {
+        // Save known peers
+        saveKnownPeers();
+
+        // Save public shared files
+        savePublicSharedFiles();
+
+        // Save selective sharing data
+        saveSelectiveSharingData();
+
+        logInfo("[TRACKER]: Saved persistent data");
+    }
+
+    private void saveKnownPeers() {
+        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream("tracker_peers.dat"))) {
+            oos.writeObject(new HashSet<>(knownPeers));
+            logInfo("[TRACKER]: Saved " + knownPeers.size() + " known peers to persistence");
+        } catch (Exception e) {
+            logError("[TRACKER]: Error saving known peers: " + e.getMessage(), e);
+        }
+    }
+
+    private void savePublicSharedFiles() {
+        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream("tracker_files.dat"))) {
+            oos.writeObject(new HashSet<>(publicSharedFiles));
+            logInfo("[TRACKER]: Saved " + publicSharedFiles.size() + " public shared files to persistence");
+        } catch (Exception e) {
+            logError("[TRACKER]: Error saving public shared files: " + e.getMessage(), e);
+        }
+    }
+
+    private void saveSelectiveSharingData() {
+        try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream("tracker_selective.dat"))) {
+            oos.writeObject(new HashMap<>(selectiveSharedFiles));
+            oos.writeObject(new HashSet<>(privateSharedFile));
+            logInfo("[TRACKER]: Saved selective sharing data for " + selectiveSharedFiles.size() + " files to persistence");
+            logInfo("[TRACKER]: Saved " + privateSharedFile.size() + " private shared files to persistence");
+        } catch (Exception e) {
+            logError("[TRACKER]: Error saving selective sharing data: " + e.getMessage(), e);
+        }
+    }
+
+    // Add shutdown hook to save data when tracker stops
+    {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            logInfo("[TRACKER]: Shutdown hook triggered, saving persistent data...");
+            savePersistentData();
+        }));
     }
 }

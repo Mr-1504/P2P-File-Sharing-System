@@ -1,11 +1,11 @@
-package main.java.model;
+package domain.entities;
 
 import java.util.Objects;
 import java.io.Serializable;
 
 import static main.java.utils.Log.logError;
 
-public class PeerInfor implements Serializable {
+public class PeerInfo implements Serializable {
     private static final long serialVersionUID = 1L;
     private String ip;
     private int port;
@@ -37,7 +37,7 @@ public class PeerInfor implements Serializable {
         return taskForDownloadCount < 3;
     }
 
-    public PeerInfor(String ip, int port) {
+    public PeerInfo(String ip, int port) {
         this.taskForDownloadCount = 1;
         this.ip = ip;
         this.port = port;
@@ -68,7 +68,7 @@ public class PeerInfor implements Serializable {
     public boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
-        PeerInfor other = (PeerInfor) obj;
+        PeerInfo other = (PeerInfo) obj;
         return port == other.port && Objects.equals(ip, other.ip);
     }
 

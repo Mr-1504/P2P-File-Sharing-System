@@ -1,0 +1,29 @@
+package domain.repositories;
+
+import domain.entities.FileInfo;
+import domain.entities.PeerInfo;
+import domain.entities.ProgressInfo;
+
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public interface FileRepository {
+    void shareFileAsync(File file, String fileName, String progressId);
+    void shareFileList();
+    void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId);
+    List<PeerInfo> getPeersWithFile(String fileHash);
+    boolean shareFileToPeers(File file, String progressId, List<String> peerList);
+    List<String> getSelectivePeers(String fileHash);
+    List<String> getKnownPeers();
+    void loadSharedFiles();
+    int refreshSharedFileNames();
+    Set<FileInfo> getSharedFileNames();
+    void setSharedFileNames(Set<FileInfo> sharedFileNames);
+    Map<String, FileInfo> getMySharedFiles();
+    int stopSharingFile(String fileName);
+    Map<String, ProgressInfo> getProgress();
+    void setProgress(ProgressInfo progressInfo);
+    void cleanupProgress(List<String> progressIds);
+}

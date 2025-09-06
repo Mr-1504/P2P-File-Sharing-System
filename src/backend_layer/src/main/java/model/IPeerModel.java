@@ -24,6 +24,12 @@ public interface IPeerModel {
 
     List<PeerInfor> getPeersWithFile(String fileHash);
 
+    boolean shareFileToPeers(File file, String progressId, List<String> peerList);
+
+    List<String> getSelectivePeers(String fileHash);
+
+    List<String> getKnownPeers();
+
     void loadSharedFiles();
 
     int refreshSharedFileNames();

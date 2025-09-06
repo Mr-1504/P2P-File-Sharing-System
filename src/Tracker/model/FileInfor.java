@@ -1,8 +1,10 @@
 package model;
 
 import java.util.Objects;
+import java.io.Serializable;
 
-public class FileInfor extends FileBase {
+public class FileInfor extends FileBase implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String fileHash;
 
     public FileInfor(String fileName, long fileSize, String fileHash, PeerInfor peerInfor) {

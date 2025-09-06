@@ -196,16 +196,28 @@ public class PeerModel implements IPeerModel {
                 logInfo("Empty request received");
                 return;
             }
+
+            // Get client IP for access control
+            String clientIP = client.getRemoteAddress().toString().split(":")[0].replace("/", "");
+            String clientPeerInfo = clientIP + "|" + SERVER_HOST.getPort();
+
             if (request.startsWith(RequestInfor.SEARCH)) {
                 String fileName = request.split("\\|")[1];
                 logInfo("Processing SEARCH for file: " + fileName);
                 sendFileInfor(client, fileName);
             } else if (request.startsWith(RequestInfor.GET_CHUNK)) {
                 String[] parts = request.split("\\|");
-                String fileName = parts[1];
+                String fileHash = parts[1];
                 int chunkIndex = Integer.parseInt(parts[2]);
-                logInfo("Processing GET_CHUNK for file: " + fileName + ", chunk: " + chunkIndex);
-                sendChunk(client, fileName, chunkIndex);
+                logInfo("Processing GET_CHUNK for file hash: " + fileHash + ", chunk: " + chunkIndex);
+
+                // Check access control before sending chunk
+                if (hasAccessToFile(clientPeerInfo, fileHash)) {
+                    sendChunk(client, fileHash, chunkIndex);
+                } else {
+                    logInfo("Access denied for peer " + clientPeerInfo + " to file " + fileHash);
+                    sendAccessDenied(client);
+                }
             } else {
                 logInfo("Unknown request: [" + request + "]");
             }
@@ -331,52 +343,59 @@ public class PeerModel implements IPeerModel {
     @Override
     public void shareFileAsync(File file, String fileName, String progressId) {
         executor.submit(() -> {
-            try (InputStream is = new FileInputStream(file)) {
-                MessageDigest md = MessageDigest.getInstance("SHA-256");
-                byte[] buffer = new byte[CHUNK_SIZE];
-                int bytesRead;
-                long totalBytes = file.length();
-                long readBytes = 0;
-                ProgressInfor progressInfor = processes.get(progressId);
-                if (Objects.equals(progressInfor.getStatus(), ProgressInfor.ProgressStatus.CANCELLED)) {
-                    return Boolean.FALSE;
-                }
-                progressInfor.setStatus(ProgressInfor.ProgressStatus.SHARING);
-                progressInfor.setTotalBytes(totalBytes);
-                progressInfor.setBytesTransferred(readBytes);
-                while ((bytesRead = is.read(buffer)) != -1) {
-                    if (progressInfor.getStatus().equals(ProgressInfor.ProgressStatus.CANCELLED)) {
-                        File sharedFile = new File(AppPaths.getSharedFile(file.getName()));
-                        if (sharedFile.exists()) sharedFile.delete();
+            ProgressInfor progressInfor = processes.get(progressId);
+            progressInfor.setStatus(ProgressInfor.ProgressStatus.SHARING);
+            progressInfor.setProgressPercentage(0);
+            progressInfor.setBytesTransferred(0);
+            progressInfor.setTotalBytes(file.length());
+            String fileHash = hashFile(file, progressId);
 
-                        cancelled = false;
-                        progressInfor.setStatus(ProgressInfor.ProgressStatus.CANCELLED);
-                        return Boolean.FALSE;
-                    }
+            FileInfor fileInfor = new FileInfor(fileName, file.length(), fileHash, SERVER_HOST, true);
+            mySharedFiles.put(file.getName(), fileInfor);
 
-                    md.update(buffer, 0, bytesRead);
-                    readBytes += bytesRead;
-
-                    int progress = (int) ((readBytes * 100.0) / totalBytes);
-                    progressInfor.setProgressPercentage(progress);
-                    progressInfor.setBytesTransferred(readBytes);
-                }
-
-                String fullFileHash = bytesToHex(md.digest());
-
-                FileInfor fileInfor = new FileInfor(fileName, file.length(), fullFileHash, SERVER_HOST, true);
-                mySharedFiles.put(file.getName(), fileInfor);
-
-                notifyTracker(fileInfor, true);
-                progressInfor.setProgressPercentage(100);
-                progressInfor.setStatus(ProgressInfor.ProgressStatus.COMPLETED);
-                return Boolean.TRUE;
-
-            } catch (IOException | NoSuchAlgorithmException e) {
-                processes.get(progressId).setStatus(LogTag.S_ERROR);
-                return Boolean.FALSE;
-            }
+            notifyTracker(fileInfor, true);
+            progressInfor = processes.get(progressId);
+            progressInfor.setProgressPercentage(100);
+            progressInfor.setStatus(ProgressInfor.ProgressStatus.COMPLETED);
+            return Boolean.TRUE;
         });
+    }
+
+    private String hashFile(File file, String progressId) {
+        try (InputStream is = new FileInputStream(file)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[CHUNK_SIZE];
+            int bytesRead;
+            long totalBytes = file.length();
+            long readBytes = 0;
+            ProgressInfor progressInfor = processes.get(progressId);
+            if (Objects.equals(progressInfor.getStatus(), ProgressInfor.ProgressStatus.CANCELLED)) {
+                return null;
+            }
+            progressInfor.setStatus(ProgressInfor.ProgressStatus.SHARING);
+            progressInfor.setTotalBytes(totalBytes);
+            progressInfor.setBytesTransferred(readBytes);
+            while ((bytesRead = is.read(buffer)) != -1) {
+                if (progressInfor.getStatus().equals(ProgressInfor.ProgressStatus.CANCELLED)) {
+                    progressInfor.setStatus(ProgressInfor.ProgressStatus.CANCELLED);
+                    return null;
+                }
+
+                md.update(buffer, 0, bytesRead);
+                readBytes += bytesRead;
+
+                int progress = (int) ((readBytes * 100.0) / totalBytes);
+                progressInfor.setProgressPercentage(progress);
+                progressInfor.setBytesTransferred(readBytes);
+            }
+
+            String fullFileHash = bytesToHex(md.digest());
+            return fullFileHash;
+
+        } catch (IOException | NoSuchAlgorithmException e) {
+            processes.get(progressId).setStatus(LogTag.S_ERROR);
+            return null;
+        }
     }
 
 
@@ -654,6 +673,151 @@ public class PeerModel implements IPeerModel {
         }
     }
 
+    public boolean shareFileToPeers(File file, String progressId, List<String> peerList) {
+        ProgressInfor progressInfor = processes.get(progressId);
+        progressInfor.setStatus(ProgressInfor.ProgressStatus.SHARING);
+        progressInfor.setProgressPercentage(0);
+        progressInfor.setBytesTransferred(0);
+        progressInfor.setTotalBytes(file.length());
+        String fileHash = hashFile(file, progressId);
+
+        try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
+            StringBuilder messageBuilder = new StringBuilder(RequestInfor.SHARE_TO_PEERS + Infor.FIELD_SEPARATOR);
+            messageBuilder.append(file.getName()).append(Infor.FIELD_SEPARATOR);
+            messageBuilder.append(file.length()).append(Infor.FIELD_SEPARATOR);
+            messageBuilder.append(fileHash).append(Infor.FIELD_SEPARATOR);
+            messageBuilder.append(SERVER_HOST.getIp()).append(Infor.FIELD_SEPARATOR);
+            messageBuilder.append(SERVER_HOST.getPort()).append(Infor.FIELD_SEPARATOR);
+            messageBuilder.append(peerList.size()).append(Infor.FIELD_SEPARATOR);
+            for (String peer : peerList) {
+                messageBuilder.append(peer).append(Infor.LIST_SEPARATOR);
+            }
+            if (messageBuilder.charAt(messageBuilder.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+                messageBuilder.deleteCharAt(messageBuilder.length() - 1);
+            }
+            messageBuilder.append("\n");
+            String message = messageBuilder.toString();
+
+            socket.getOutputStream().write(message.getBytes());
+            logInfo("Sharing file " + file.getName() + " (hash: " + fileHash + ") to specific peers: " + peerList + ", message: " + message);
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String response = in.readLine();
+            progressInfor = processes.get(progressId);
+            progressInfor.setStatus(ProgressInfor.ProgressStatus.COMPLETED);
+            progressInfor.setProgressPercentage(100);
+            logInfo("Response from tracker: " + response);
+
+            // Save sharing metadata after successful selective sharing
+            if (response != null && response.contains("thành công")) {
+                saveSharingMetadata();
+            }
+
+            return response != null && response.contains("thành công");
+        } catch (IOException e) {
+            logError("Error sharing file to peers: " + file.getName(), e);
+            return false;
+        }
+    }
+
+    public List<String> getSelectivePeers(String fileHash) {
+        try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
+            String message = RequestInfor.GET_SHARED_PEERS + Infor.FIELD_SEPARATOR + fileHash + "\n";
+
+            socket.getOutputStream().write(message.getBytes());
+            logInfo("Requesting selective peers for file hash: " + fileHash + ", message: " + message);
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String response = in.readLine();
+            if (response == null || response.isEmpty()) {
+                logInfo("No response from tracker for selective peers of file hash: " + fileHash);
+                return Collections.emptyList();
+            }
+
+            String[] parts = response.split(Infor.FIELD_SEPARATOR_REGEX);
+            if (parts.length != 3 || !parts[0].equals(RequestInfor.GET_SHARED_PEERS)) {
+                logInfo("Invalid response format from tracker: " + response);
+                return Collections.emptyList();
+            }
+
+            int peerCount = Integer.parseInt(parts[1]);
+            if (peerCount == 0) {
+                logInfo("No selective peers found for file hash: " + fileHash);
+                return Collections.emptyList();
+            }
+
+            String[] peerInfos = parts[2].split(",");
+            List<String> peers = new ArrayList<>();
+            for (String peerInfo : peerInfos) {
+                peers.add(peerInfo);
+            }
+
+            if (peers.isEmpty()) {
+                logInfo("No valid selective peers found for file hash: " + fileHash);
+                return Collections.emptyList();
+            }
+            if (peerCount != peers.size()) {
+                logInfo("Selective peer count mismatch: expected " + peerCount + ", found " + peers.size());
+                return Collections.emptyList();
+            }
+
+            logInfo("Received selective peers from tracker: " + response);
+            return peers;
+        } catch (IOException e) {
+            logError("Error getting selective peers for file hash: " + fileHash, e);
+            return Collections.emptyList();
+        }
+    }
+
+    public List<String> getKnownPeers() {
+        try (Socket socket = new Socket(TRACKER_HOST.getIp(), TRACKER_HOST.getPort())) {
+            String message = RequestInfor.GET_KNOWN_PEERS + "\n";
+
+            socket.getOutputStream().write(message.getBytes());
+            logInfo("Requesting known peers from tracker, message: " + message);
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String response = in.readLine();
+            if (response == null || response.isEmpty()) {
+                logInfo("No response from tracker for known peers");
+                return Collections.emptyList();
+            }
+
+            String[] parts = response.split(Infor.FIELD_SEPARATOR_REGEX);
+            if (parts.length != 3 || !parts[0].equals(RequestInfor.GET_KNOWN_PEERS)) {
+                logInfo("Invalid response format from tracker: " + response);
+                return Collections.emptyList();
+            }
+
+            int peerCount = Integer.parseInt(parts[1]);
+            if (peerCount == 0) {
+                logInfo("No known peers found");
+                return Collections.emptyList();
+            }
+
+            String[] peerInfos = parts[2].split(",");
+            List<String> peers = new ArrayList<>();
+            for (String peerInfo : peerInfos) {
+                peers.add(peerInfo);
+            }
+
+            if (peers.isEmpty()) {
+                logInfo("No valid known peers found");
+                return Collections.emptyList();
+            }
+            if (peerCount != peers.size()) {
+                logInfo("Known peer count mismatch: expected " + peerCount + ", found " + peers.size());
+                return Collections.emptyList();
+            }
+
+            logInfo("Received known peers from tracker: " + response);
+            return peers;
+        } catch (IOException e) {
+            logError("Error getting known peers from tracker", e);
+            return Collections.emptyList();
+        }
+    }
+
     private String computeFileHash(File file) {
         try (InputStream is = new FileInputStream(file)) {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -843,8 +1007,44 @@ public class PeerModel implements IPeerModel {
         }
     }
 
+    private boolean hasAccessToFile(String clientPeerInfo, String fileHash) {
+        // Check if file is publicly shared (no access control needed)
+        for (FileInfor file : mySharedFiles.values()) {
+            if (file.getFileHash().equals(fileHash)) {
+                // File exists, now check if it's selectively shared
+                List<String> selectivePeers = getSelectivePeers(fileHash);
+                if (selectivePeers.isEmpty()) {
+                    // Public file - allow access
+                    return true;
+                } else {
+                    // Selective file - check if client is in the allowed list
+                    return selectivePeers.contains(clientPeerInfo);
+                }
+            }
+        }
+        // File not found
+        return false;
+    }
+
+    private void sendAccessDenied(SocketChannel client) {
+        try {
+            String response = "ACCESS_DENIED\n";
+            ByteBuffer buffer = ByteBuffer.wrap(response.getBytes());
+            while (buffer.hasRemaining()) {
+                client.write(buffer);
+            }
+            logInfo("Access denied response sent to client");
+        } catch (IOException e) {
+            logError("Error sending access denied response: " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public void loadSharedFiles() {
+        // Load sharing metadata first
+        loadSharingMetadata();
+
+        // Then load actual files
         String path = AppPaths.getAppDataDirectory() + "\\shared_files\\";
         File sharedDir = new File(path);
         if (!sharedDir.exists() || !sharedDir.isDirectory()) {
@@ -870,8 +1070,133 @@ public class PeerModel implements IPeerModel {
                     logInfo("Error computing hash for file: " + fileName);
                     continue;
                 }
-                mySharedFiles.put(fileName, new FileInfor(fileName, fileSize, fileHash, SERVER_HOST, true));
+
+                // Check if this file was previously shared
+                FileInfor existingFile = mySharedFiles.get(fileName);
+                if (existingFile != null && existingFile.getFileHash().equals(fileHash)) {
+                    // File exists and hash matches, keep existing sharing info
+                    logInfo("File " + fileName + " was previously shared, keeping sharing status");
+                } else {
+                    // New file or hash changed, add as public by default
+                    mySharedFiles.put(fileName, new FileInfor(fileName, fileSize, fileHash, SERVER_HOST, true));
+                    logInfo("New file " + fileName + " added to sharing");
+                }
             }
+        }
+
+        // Save updated metadata
+        saveSharingMetadata();
+    }
+
+    private void loadSharingMetadata() {
+        String metadataPath = AppPaths.getAppDataDirectory() + "\\sharing_metadata.json";
+        File metadataFile = new File(metadataPath);
+
+        if (!metadataFile.exists()) {
+            logInfo("No sharing metadata file found, starting fresh");
+            return;
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(metadataFile))) {
+            StringBuilder jsonBuilder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                jsonBuilder.append(line);
+            }
+
+            String json = jsonBuilder.toString();
+            if (json.trim().isEmpty()) {
+                logInfo("Sharing metadata file is empty");
+                return;
+            }
+
+            // Simple JSON parsing for sharing metadata
+            // Format: {"files":{"filename":{"hash":"...", "isPublic":true, "peers":["peer1","peer2"]}}}
+            mySharedFiles.clear();
+
+            // Basic parsing - extract file information
+            String filesSection = json.substring(json.indexOf("\"files\":") + 8);
+            filesSection = filesSection.substring(0, filesSection.lastIndexOf("}"));
+
+            // This is a simplified parser - in production you'd use a proper JSON library
+            String[] fileEntries = filesSection.split("},");
+            for (String entry : fileEntries) {
+                if (entry.trim().isEmpty()) continue;
+
+                try {
+                    String fileName = entry.substring(entry.indexOf("\"") + 1, entry.indexOf("\":"));
+                    String fileData = entry.substring(entry.indexOf(":{") + 1);
+
+                    String hash = extractValue(fileData, "hash");
+                    String isPublicStr = extractValue(fileData, "isPublic");
+
+                    if (hash != null && isPublicStr != null) {
+                        boolean isPublic = Boolean.parseBoolean(isPublicStr);
+                        // We don't have file size here, will be updated when files are loaded
+                        FileInfor fileInfo = new FileInfor(fileName, 0, hash, SERVER_HOST, isPublic);
+                        mySharedFiles.put(fileName, fileInfo);
+                        logInfo("Loaded sharing metadata for file: " + fileName + " (public: " + isPublic + ")");
+                    }
+                } catch (Exception e) {
+                    logError("Error parsing metadata entry: " + entry, e);
+                }
+            }
+
+            logInfo("Loaded sharing metadata for " + mySharedFiles.size() + " files");
+
+        } catch (IOException e) {
+            logError("Error loading sharing metadata: " + e.getMessage(), e);
+        }
+    }
+
+    private void saveSharingMetadata() {
+        String metadataPath = AppPaths.getAppDataDirectory() + "\\sharing_metadata.json";
+        File metadataFile = new File(metadataPath);
+
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(metadataFile))) {
+            writer.write("{\"files\":{");
+
+            boolean first = true;
+            for (Map.Entry<String, FileInfor> entry : mySharedFiles.entrySet()) {
+                if (!first) writer.write(",");
+                first = false;
+
+                String fileName = entry.getKey();
+                FileInfor fileInfo = entry.getValue();
+
+                writer.write("\"" + fileName + "\":{");
+                writer.write("\"hash\":\"" + fileInfo.getFileHash() + "\",");
+                writer.write("\"isPublic\":" + fileInfo.isSharedByMe());
+                writer.write("}");
+            }
+
+            writer.write("}}");
+            logInfo("Saved sharing metadata for " + mySharedFiles.size() + " files");
+
+        } catch (IOException e) {
+            logError("Error saving sharing metadata: " + e.getMessage(), e);
+        }
+    }
+
+    private String extractValue(String json, String key) {
+        String keyPattern = "\"" + key + "\":";
+        int keyIndex = json.indexOf(keyPattern);
+        if (keyIndex == -1) return null;
+
+        int valueStart = keyIndex + keyPattern.length();
+        char firstChar = json.charAt(valueStart);
+
+        if (firstChar == '"') {
+            // String value
+            int valueEnd = json.indexOf('"', valueStart + 1);
+            if (valueEnd == -1) return null;
+            return json.substring(valueStart + 1, valueEnd);
+        } else {
+            // Boolean or number value
+            int valueEnd = json.indexOf(',', valueStart);
+            if (valueEnd == -1) valueEnd = json.indexOf('}', valueStart);
+            if (valueEnd == -1) return null;
+            return json.substring(valueStart, valueEnd).trim();
         }
     }
 

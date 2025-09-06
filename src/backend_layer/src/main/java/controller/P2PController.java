@@ -1,10 +1,7 @@
 package main.java.controller;
 
 import main.java.api.IP2PApi;
-import main.java.model.FileInfor;
-import main.java.model.IPeerModel;
-import main.java.model.PeerInfor;
-import main.java.model.ProgressInfor;
+import main.java.model.*;
 import main.java.utils.*;
 
 import java.io.File;
@@ -65,7 +62,7 @@ public class P2PController {
     }
 
     private void registerWithTracker() {
-       while (!isConnected) {
+        while (!isConnected) {
             int result = peerModel.registerWithTracker();
             switch (result) {
                 case LogTag.I_SUCCESS -> isConnected = true;
@@ -192,6 +189,22 @@ public class P2PController {
                 logInfo("No task found with progress ID " + progressId + " to cancel.");
             }
         });
+
+        api.setRouteForShareToPeers((fileHash, peerList) -> {
+            if (!isConnected) {
+                retryConnectToTracker();
+                return LogTag.S_NOT_CONNECTION;
+            }
+            return shareFileToPeers(fileHash, peerList);
+        });
+
+        api.setRouteForGetKnownPeers(() -> {
+            if (!isConnected) {
+                retryConnectToTracker();
+                return Collections.emptyList();
+            }
+            return getKnownPeers();
+        });
     }
 
     private void refreshFileList() {
@@ -244,6 +257,40 @@ public class P2PController {
             Thread.currentThread().interrupt();
             logError("Thread was interrupted during sleep: " + e.getMessage(), e);
         }
+    }
+
+    private String shareFileToPeers(String filePathAndReplace, List<String> peerList) {
+        if (peerList == null || peerList.isEmpty()) {
+            return LogTag.S_INVALID;
+        }
+
+        String[] parts = filePathAndReplace.split("\\|");
+        if (parts.length != 2) {
+            return LogTag.S_INVALID;
+        }
+
+        String filePath = parts[0];
+        int isReplace = Integer.parseInt(parts[1]);
+
+        File file = new File(filePath);
+        String fileName = handleResultGetFileName(isReplace, file.getName());
+        if (fileName.equals(LogTag.S_ERROR) || fileName.equals(LogTag.S_NOT_FOUND)) {
+            return fileName;
+        }
+
+        String progressId = ProgressInfor.generateProgressId();
+        ProgressInfor progressInfor = new ProgressInfor(progressId, ProgressInfor.ProgressStatus.STARTING, fileName);
+        peerModel.setProgress(progressInfor);
+
+        executor.submit(() -> {
+            AppPaths.copyFileToShare(file, fileName, progressInfor);
+            peerModel.shareFileToPeers(file, progressId, peerList);
+        });
+        return progressId;
+    }
+
+    private List<String> getKnownPeers() {
+        return ((PeerModel) peerModel).getKnownPeers();
     }
 
     private void retryConnectToTracker() {

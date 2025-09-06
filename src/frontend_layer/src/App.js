@@ -3,6 +3,7 @@ import ProgressBar from './components/ProgressBar';
 import FileTable from './components/FileTable';
 import Notification from './components/Notification';
 import ConfirmDialog from './components/ConfirmDialog';
+import ShareModal from './components/ShareModal';
 import Chat from './components/Chat';
 import { useTranslation } from "react-i18next";
 import './App.css';
@@ -37,6 +38,8 @@ function App() {
     const [selectedPeer, setSelectedPeer] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [showSplash, setShowSplash] = useState(true);
+    const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [selectedFileForSharing, setSelectedFileForSharing] = useState(null);
 
     const addNotification = (message, isError) => {
         const id = Date.now();
@@ -187,14 +190,20 @@ function App() {
                 if (exists) {
                     setPendingFile({ filePath, fileName });
                     setDialogOpen(true);
+                    setIsLoading(false);
                     return;
                 }
             }
 
-            const progressId = await window.electronAPI.shareFile(filePath, 1);
-            console.log('Progress ID:', progressId);
-            taskMap.set(progressId, { fileName, status: 'starting' });
-            addNotification(t('start_sharing_file', { fileName }), false);
+            // Create a file object for sharing
+            const fileForSharing = {
+                filePath,
+                fileName,
+                fileHash: '' // Will be computed by backend
+            };
+
+            setSelectedFileForSharing(fileForSharing);
+            setShareModalOpen(true);
         } catch (error) {
             addNotification(t('error_sharing_file', { error: error.message }), true);
             console.error('Error in handleFileUpload:', error);
@@ -217,10 +226,14 @@ function App() {
         try {
             const isReplace = action === 1 ? 1 : 0;
 
-            const progressId = await window.electronAPI.shareFile(pendingFile.filePath, isReplace);
-            console.log('Progress ID:', progressId);
-            taskMap.set(progressId, { fileName: pendingFile.fileName, status: 'starting' });
-            addNotification(t('start_sharing_file', { fileName: pendingFile.fileName }), false);
+            const fileForSharing = {
+                filePath: pendingFile.filePath,
+                fileName: pendingFile.fileName,
+                isReplace: isReplace
+            };
+
+            setSelectedFileForSharing(fileForSharing);
+            setShareModalOpen(true);
         } catch (error) {
             addNotification(t('error_sharing_file', { error: error.message }), true);
             console.error('Error in handleDialogClose:', error);
@@ -307,6 +320,83 @@ function App() {
 
     const handleAllFiles = () => {
         fetchFiles();
+    };
+
+    const handleShareToPeers = async (file, isReplace) => {
+        // For simplicity, we'll use a prompt to get peer IPs
+        const peerInput = prompt('Nhập danh sách IP peer (cách nhau bằng dấu phẩy):', '192.168.1.1:8080,192.168.1.2:8080');
+        if (!peerInput) return;
+
+        const peerList = peerInput.split(',').map(peer => peer.trim()).filter(peer => peer);
+        if (peerList.length === 0) {
+            addNotification('Không có peer nào được chọn', true);
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const response = await fetch('http://localhost:8080/api/files/share-to-peers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filePath: file.filePath,
+                    isReplace: isReplace,
+                    peers: peerList
+                })
+            });
+
+            console.log('progressId:', response.body);
+            taskMap.set(response.body, { fileName: file.fileName, status: 'starting' });
+            fetchFiles();
+
+        } catch (error) {
+            addNotification(`Lỗi khi chia sẻ file: ${error.message}`, true);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleShareAll = async (file) => {
+        setIsLoading(true);
+        try {
+            const progressId = await window.electronAPI.shareFile(file.filePath, 1);
+            console.log('Progress ID:', progressId);
+            taskMap.set(progressId, { fileName: file.fileName, status: 'starting' });
+            addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
+        } catch (error) {
+            addNotification(t('error_sharing_file', { error: error.message }), true);
+            console.error('Error in handleShareAll:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleShareSelective = async (file, selectedPeers) => {
+        setIsLoading(true);
+        try {
+            const response = await fetch('http://localhost:8080/api/files/share-to-peers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    filePath: file.filePath,
+                    isReplace: file.isReplace || 1,
+                    peers: selectedPeers
+                })
+            });
+
+            if (response.ok) {
+                const progressId = await response.json();
+                taskMap.set(progressId, { fileName: file.fileName, status: 'starting' });
+                fetchFiles();
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Lỗi: ${response.status}`);
+            }
+        } catch (error) {
+            addNotification(`Lỗi khi chia sẻ file: ${error.message}`, true);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleSendMessage = (peerId, text) => {
@@ -441,7 +531,7 @@ function App() {
                                 </button>
                             </div>
                         </div>
-                        <FileTable files={files} onDownload={handleDownload} onStopSharing={handleStopSharing} isLoading={isLoading} />
+                        <FileTable files={files} onDownload={handleDownload} onStopSharing={handleStopSharing} onShareToPeers={handleShareToPeers} isLoading={isLoading} />
 
                         <div style={{ margin: '16px' }}></div>
                         <ProgressBar tasks={tasks} setTasks={setTasks} taskMap={taskMap} />
@@ -464,6 +554,13 @@ function App() {
                     />
                 ))}
                 <ConfirmDialog open={dialogOpen} onClose={handleDialogClose} />
+                <ShareModal
+                    isOpen={shareModalOpen}
+                    onClose={() => setShareModalOpen(false)}
+                    onShareAll={handleShareAll}
+                    onShareSelective={handleShareSelective}
+                    file={selectedFileForSharing}
+                />
             </div>
         </>
     );

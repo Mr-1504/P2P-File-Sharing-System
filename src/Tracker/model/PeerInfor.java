@@ -1,8 +1,10 @@
 package model;
 
 import java.util.Objects;
+import java.io.Serializable;
 
-public class PeerInfor {
+public class PeerInfor implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String ip;
     private int port;
 
