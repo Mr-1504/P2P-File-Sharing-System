@@ -1,9 +1,7 @@
-package domain.entities;
+package main.java.domain.entities;
 
 import java.util.Objects;
 import java.io.Serializable;
-
-import static main.java.utils.Log.logError;
 
 public class PeerInfo implements Serializable {
     private static final long serialVersionUID = 1L;
@@ -22,8 +20,6 @@ public class PeerInfo implements Serializable {
 
         if (taskForDownloadCount <= 3) {
             taskForDownloadCount++;
-        } else {
-            logError("Task limit exceeded for peer: " + this, null);
         }
     }
 

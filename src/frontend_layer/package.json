@@ -1,5 +1,5 @@
 {
-  "name": "hello-electron",
+  "name": "p2p-file-sharing",
   "version": "0.1.0",
   "main": "public/electron.js",
   "private": true,

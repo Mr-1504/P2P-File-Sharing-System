@@ -1,4 +1,4 @@
-package domain.entities;
+package main.java.domain.entities;
 
 public class ProgressInfo {
     private String id;

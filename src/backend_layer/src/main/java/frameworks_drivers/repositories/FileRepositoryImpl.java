@@ -1,0 +1,159 @@
+package main.java.frameworks_drivers.repositories;
+
+import main.java.domain.entities.FileInfo;
+import main.java.domain.entities.PeerInfo;
+import main.java.domain.entities.ProgressInfo;
+import main.java.domain.repositories.FileRepository;
+import main.java.model.IPeerModel;
+import main.java.model.PeerModel;
+
+import java.io.File;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+public class FileRepositoryImpl implements FileRepository {
+    private final IPeerModel peerModel;
+
+    public FileRepositoryImpl(IPeerModel peerModel) {
+        this.peerModel = peerModel;
+    }
+
+    @Override
+    public void shareFileAsync(File file, String fileName, String progressId) {
+        peerModel.shareFileAsync(file, fileName, progressId);
+    }
+
+    @Override
+    public void shareFileList() {
+        peerModel.shareFileList();
+    }
+
+    @Override
+    public void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId) {
+        // Convert domain entities to model entities
+        FileInfo modelFileInfo = convertToModelFileInfo(fileInfo);
+        List<PeerInfo> modelPeers = peers.stream()
+                .map(this::convertToModelPeerInfo)
+                .collect(Collectors.toList());
+
+        peerModel.downloadFile(modelFileInfo, saveFile, modelPeers, progressId);
+    }
+
+    @Override
+    public List<PeerInfo> getPeersWithFile(String fileHash) {
+        List<PeerInfo> modelPeers = peerModel.getPeersWithFile(fileHash);
+        return modelPeers.stream()
+                .map(this::convertToDomainPeerInfo)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean shareFileToPeers(File file, String progressId, List<String> peerList) {
+        return ((PeerModel) peerModel).shareFileToPeers(file, progressId, peerList);
+    }
+
+    @Override
+    public List<String> getSelectivePeers(String fileHash) {
+        return ((PeerModel) peerModel).getSelectivePeers(fileHash);
+    }
+
+    @Override
+    public List<String> getKnownPeers() {
+        return ((PeerModel) peerModel).getKnownPeers();
+    }
+
+    @Override
+    public void loadSharedFiles() {
+        peerModel.loadSharedFiles();
+    }
+
+    @Override
+    public int refreshSharedFileNames() {
+        return peerModel.refreshSharedFileNames();
+    }
+
+    @Override
+    public Set<FileInfo> getSharedFileNames() {
+        Set<FileInfo> modelFiles = peerModel.getSharedFileNames();
+        return modelFiles.stream()
+                .map(this::convertToDomainFileInfo)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public void setSharedFileNames(Set<FileInfo> sharedFileNames) {
+        Set<FileInfo> modelFiles = sharedFileNames.stream()
+                .map(this::convertToModelFileInfo)
+                .collect(Collectors.toSet());
+        peerModel.setSharedFileNames(modelFiles);
+    }
+
+    @Override
+    public Map<String, FileInfo> getMySharedFiles() {
+        Map<String, FileInfo> modelFiles = peerModel.getMySharedFiles();
+        return modelFiles.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> convertToDomainFileInfo(e.getValue())
+                ));
+    }
+
+    @Override
+    public int stopSharingFile(String fileName) {
+        return peerModel.stopSharingFile(fileName);
+    }
+
+    @Override
+    public Map<String, ProgressInfo> getProgress() {
+        Map<String, ProgressInfo> modelProgress = peerModel.getProgress();
+        return modelProgress.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> convertToDomainProgressInfo(e.getValue())
+                ));
+    }
+
+    @Override
+    public void setProgress(ProgressInfo progressInfo) {
+        ProgressInfo modelProgress = convertToModelProgressInfo(progressInfo);
+        peerModel.setProgress(modelProgress);
+    }
+
+    @Override
+    public void cleanupProgress(List<String> progressIds) {
+        peerModel.cleanupProgress(progressIds);
+    }
+
+    // Conversion methods
+    private FileInfo convertToDomainFileInfo(FileInfo modelFile) {
+        PeerInfo peerInfo = convertToDomainPeerInfo(modelFile.getPeerInfo());
+        return new FileInfo(modelFile.getFileName(), modelFile.getFileSize(),
+                          modelFile.getFileHash(), peerInfo, modelFile.isSharedByMe());
+    }
+
+    private FileInfo convertToModelFileInfo(FileInfo domainFile) {
+        PeerInfo peerInfo = convertToModelPeerInfo(domainFile.getPeerInfo());
+        return new FileInfo(domainFile.getFileName(), domainFile.getFileSize(),
+                                           domainFile.getFileHash(), peerInfo, domainFile.isSharedByMe());
+    }
+
+    private PeerInfo convertToDomainPeerInfo(PeerInfo modelPeer) {
+        return new PeerInfo(modelPeer.getIp(), modelPeer.getPort());
+    }
+
+    private PeerInfo convertToModelPeerInfo(PeerInfo domainPeer) {
+        return new PeerInfo(domainPeer.getIp(), domainPeer.getPort());
+    }
+
+    private ProgressInfo convertToDomainProgressInfo(ProgressInfo modelProgress) {
+        return new ProgressInfo(modelProgress.getId(), modelProgress.getStatus(),
+                              modelProgress.getFileName());
+    }
+
+    private ProgressInfo convertToModelProgressInfo(ProgressInfo domainProgress) {
+        return new ProgressInfo(domainProgress.getId(), domainProgress.getStatus(),
+                                               domainProgress.getFileName());
+    }
+}

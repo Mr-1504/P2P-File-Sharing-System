@@ -1,8 +1,8 @@
-package domain.repositories;
+package main.java.domain.repositories;
 
-import domain.entities.FileInfo;
-import domain.entities.PeerInfo;
-import domain.entities.ProgressInfo;
+import main.java.domain.entities.FileInfo;
+import main.java.domain.entities.PeerInfo;
+import main.java.domain.entities.ProgressInfo;
 
 import java.io.File;
 import java.util.List;

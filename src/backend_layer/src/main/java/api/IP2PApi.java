@@ -1,7 +1,7 @@
 package main.java.api;
 
-import main.java.model.FileInfor;
-import main.java.model.ProgressInfor;
+import main.java.domain.entities.FileInfo;
+import main.java.domain.entities.ProgressInfo;
 import main.java.request.CleanupRequest;
 
 import java.util.List;
@@ -20,9 +20,9 @@ public interface IP2PApi {
 
     void setRouteForRemoveFile(Function<String, Integer> callable);
 
-    void setRouteForDownloadFile(P2PApi.TriFunction<FileInfor, String, AtomicBoolean, String> callable);
+    void setRouteForDownloadFile(P2PApi.TriFunction<FileInfo, String, AtomicBoolean, String> callable);
 
-    void setRouteForGetProgress(Callable<Map<String, ProgressInfor>> callable);
+    void setRouteForGetProgress(Callable<Map<String, ProgressInfo>> callable);
 
     void setRouteForCleanupProgress(Consumer<CleanupRequest> handler);
 
@@ -32,7 +32,7 @@ public interface IP2PApi {
 
     void setRouteForGetKnownPeers(Callable<List<String>> callable);
 
-    void setFiles(List<FileInfor> files);
+    void setFiles(List<FileInfo> files);
 
     @FunctionalInterface
     public interface BiFunction<T, U, R> {

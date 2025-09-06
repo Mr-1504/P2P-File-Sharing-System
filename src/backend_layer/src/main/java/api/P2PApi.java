@@ -4,9 +4,9 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import main.java.model.FileInfor;
-import main.java.model.PeerInfor;
-import main.java.model.ProgressInfor;
+import main.java.domain.entities.FileInfo;
+import main.java.domain.entities.PeerInfo;
+import main.java.domain.entities.ProgressInfo;
 import main.java.request.CleanupRequest;
 import main.java.utils.LogTag;
 
@@ -28,7 +28,7 @@ import static main.java.utils.Log.logInfo;
 
 public class P2PApi implements IP2PApi {
     private HttpServer server;
-    private List<FileInfor> files = new ArrayList<>();
+    private List<FileInfo> files = new ArrayList<>();
     private static final Gson gson = new Gson();
 
     public P2PApi() {
@@ -225,7 +225,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForDownloadFile(TriFunction<FileInfor, String, AtomicBoolean, String> callable) {
+    public void setRouteForDownloadFile(TriFunction<FileInfo, String, AtomicBoolean, String> callable) {
         server.createContext("/api/files/download", exchange -> {
             addCorsHeaders(exchange);
             AtomicBoolean isCancelled = new AtomicBoolean(false);
@@ -246,11 +246,11 @@ public class P2PApi implements IP2PApi {
                             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("fileName, savePath and peerInfor are required"));
                             return;
                         }
-                        PeerInfor peer = new PeerInfor(peerIp, peerPort);
-                        for (FileInfor file : files) {
-                            if (file.getFileName().equals(fileName) && file.getPeerInfor().equals(peer)) {
+                        PeerInfo peer = new PeerInfo(peerIp, peerPort);
+                        for (FileInfo file : files) {
+                            if (file.getFileName().equals(fileName) && file.getPeerInfo().equals(peer)) {
                                 String res = callable.apply(file, savePath, isCancelled);
-                                if (res == LogTag.S_NOT_CONNECTION) {
+                                if (res.equals(LogTag.S_NOT_CONNECTION)) {
                                     sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE,
                                             jsonError(LogTag.S_NOT_CONNECTION));
                                     return;
@@ -277,7 +277,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForGetProgress(Callable<Map<String, ProgressInfor>> callable) {
+    public void setRouteForGetProgress(Callable<Map<String, ProgressInfo>> callable) {
         server.createContext("/api/progress", exchange -> {
             addCorsHeaders(exchange);
             logInfo("Get progress request");
@@ -287,7 +287,7 @@ public class P2PApi implements IP2PApi {
                         sendResponse(exchange, LogTag.OK, "");
                         break;
                     case "GET":
-                        Map<String, ProgressInfor> progresses = callable.call();
+                        Map<String, ProgressInfo> progresses = callable.call();
                         if (progresses != null) {
                             String response = gson.toJson(progresses);
                             logInfo("Response: " + response);
@@ -462,7 +462,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setFiles(List<FileInfor> files) {
+    public void setFiles(List<FileInfo> files) {
         this.files = files;
     }
 
