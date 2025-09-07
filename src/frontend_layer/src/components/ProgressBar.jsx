@@ -126,7 +126,7 @@ const ProgressBar = ({ tasks, setTasks }) => {
 
                 </div>
             ))}
-        </div>
+        </div>  
     );
 };
 

@@ -104,13 +104,6 @@ function App() {
                             Object.entries(data).forEach(([id, info]) => {
                                 const taskId = String(id);
 
-                                // if (['completed', 'failed', 'canceled'].includes(info.status)) {
-                                //     completedTasks.push(taskId);
-                                //     taskMap.delete(taskId);
-                                //     updated = updated.filter(t => t.id !== taskId);
-                                //     return;
-                                // }
-
                                 const taskExists = updated.find(t => t.id === taskId);
 
                                 if (!taskExists) {
@@ -260,7 +253,7 @@ function App() {
             addNotification(t('start_download_file', { fileName: file.fileName }), false);
             const progressId = await window.electronAPI.downloadFile({
                 fileName: file.fileName.trim(),
-                peerInfor: `${file.peerInfor.ip}:${file.peerInfor.port}`,
+                peerInfo: `${file.peerInfo.ip}:${file.peerInfo.port}`,
                 savePath
             });
             console.log('Progress ID:', progressId);

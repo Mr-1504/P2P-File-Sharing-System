@@ -9,6 +9,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 
+import com.google.gson.Gson;
 import utils.Infor;
 
 import static utils.Log.*;
@@ -172,7 +173,7 @@ public class TrackerModel {
 
         String[] parts = request.split("\\|");
         if (request.startsWith(RequestInfor.REGISTER)) {
-            if (parts.length == 3) {
+            if (parts.length >= 6) {
                 return registerPeer(parts);
             }
             logInfo("[TRACKER]: Invalid REGISTER request: " + request + " on " + getCurrentTime());
@@ -385,6 +386,11 @@ public class TrackerModel {
     }
 
     private String registerPeer(String[] parts) {
+        if (parts.length < 6) {
+            logInfo("[TRACKER]: Invalid REGISTER request format: expected at least 6 parts, got " + parts.length + " on " + getCurrentTime());
+            return LogTag.S_INVALID;
+        }
+
         String peerIp = parts[1];
         String peerPort;
         try {
@@ -398,31 +404,45 @@ public class TrackerModel {
         knownPeers.add(peerInfor);
         logInfo("[TRACKER]: Peer registered: " + peerInfor + " on " + getCurrentTime());
 
-        if (parts.length > 3) {
-            try {
-                int fileCount = Integer.parseInt(parts[3]);
-                if (fileCount > 0 && parts.length > 4) {
-                    String[] fileList = parts[4].split(",");
-                    logInfo("[TRACKER]: Peer " + peerInfor + " registered " + fileCount + " files on " + getCurrentTime());
+        // Deserialize the data structures
+        try {
+            // Assuming parts[3] is publicFileToPeers JSON, parts[4] privateSharedFile JSON, parts[5] selectiveSharedFiles JSON
+            // For simplicity, we'll just log them for now
+            String publicFileToPeersJson = parts[3];
+            String privateSharedFileJson = parts[4];
+            String selectiveSharedFilesJson = parts[5];
 
-                    for (String fileStr : fileList) {
-                        String[] fileParts = fileStr.split("'");
-                        if (fileParts.length == 3) {
-                            String fileName = fileParts[0];
-                            long fileSize = Long.parseLong(fileParts[1]);
-                            String fileHash = fileParts[2];
+            logInfo("[TRACKER]: Received publicFileToPeers: " + publicFileToPeersJson + " on " + getCurrentTime());
+            logInfo("[TRACKER]: Received privateSharedFile: " + privateSharedFileJson + " on " + getCurrentTime());
+            logInfo("[TRACKER]: Received selectiveSharedFiles: " + selectiveSharedFilesJson + " on " + getCurrentTime());
 
-                            FileInfor fileInfo = new FileInfor(fileName, fileSize, fileHash, new PeerInfor(peerIp, Integer.parseInt(peerPort)));
-                            publicSharedFiles.add(fileInfo);
-                            publicFileToPeers.computeIfAbsent(fileName, k -> new CopyOnWriteArraySet<>()).add(peerInfor);
-
-                            logInfo("[TRACKER]: Added file " + fileName + " from peer " + peerInfor + " to active sharing list on " + getCurrentTime());
-                        }
-                    }
+            //Deserialize and store the data structures use gson
+            Gson gson = new Gson();
+            Map<String, Set<String>> receivedPublicFileToPeers = gson.fromJson(publicFileToPeersJson, ConcurrentHashMap.class);
+            Set<FileInfor> receivedPrivateSharedFile = gson.fromJson(privateSharedFileJson, HashSet.class);
+            Map<String, Set<String>> receivedSelectiveSharedFiles = gson.fromJson(selectiveSharedFilesJson, ConcurrentHashMap.class);
+            if (receivedPublicFileToPeers != null) {
+                for (Map.Entry<String, Set<String>> entry : receivedPublicFileToPeers.entrySet()) {
+                    String fileName = entry.getKey();
+                    Set<String> peers = entry.getValue();
+                    publicFileToPeers.putIfAbsent(fileName, ConcurrentHashMap.newKeySet());
+                    publicFileToPeers.get(fileName).addAll(peers);
                 }
-            } catch (NumberFormatException e) {
-                logInfo("[TRACKER]: Invalid file count in REGISTER: " + parts[3] + " on " + getCurrentTime());
             }
+            if (receivedPrivateSharedFile != null) {
+                privateSharedFile.addAll(receivedPrivateSharedFile);
+            }
+            if (receivedSelectiveSharedFiles != null) {
+                for (Map.Entry<String, Set<String>> entry : receivedSelectiveSharedFiles.entrySet()) {
+                    String fileHash = entry.getKey();
+                    Set<String> peers = entry.getValue();
+                    selectiveSharedFiles.putIfAbsent(fileHash, ConcurrentHashMap.newKeySet());
+                    selectiveSharedFiles.get(fileHash).addAll(peers);
+                }
+            }
+            logInfo("[TRACKER]: Updated data structures from peer " + peerInfor + " on " + getCurrentTime());
+        } catch (Exception e) {
+            logInfo("[TRACKER]: Error processing REGISTER data structures: " + e.getMessage() + " on " + getCurrentTime());
         }
 
         String shareListResponse = sendShareList(peerIp, Integer.parseInt(peerPort), false);
@@ -432,56 +452,6 @@ public class TrackerModel {
         return shareListResponse;
     }
 
-    private String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
-        String requestingPeer = peerIp + ":" + peerPort;
-        Set<FileInfor> filesToSend = new HashSet<>();
-
-        // Add all public shared files
-        filesToSend.addAll(publicSharedFiles);
-
-        // Add selectively shared files for this peer
-        for (Map.Entry<String, Set<String>> entry : selectiveSharedFiles.entrySet()) {
-            String fileHash = entry.getKey();
-            Set<String> allowedPeers = entry.getValue();
-
-            if (allowedPeers.contains(requestingPeer)) {
-                for (FileInfor file : privateSharedFile) {
-                    if (file.getFileHash().equals(fileHash)) {
-                        filesToSend.add(file);
-                        break;
-                    }
-                }
-            }
-        }
-        PeerInfor requestingPeerInfor = new PeerInfor(peerIp, peerPort);
-        for (FileInfor fileInfor : privateSharedFile) {
-            if (fileInfor.getPeerInfor().equals(requestingPeerInfor)) {
-                filesToSend.add(fileInfor);
-            }
-        }
-
-        if (filesToSend.isEmpty()) {
-            logInfo("[TRACKER]: No shared files to send to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
-            return RequestInfor.FILE_NOT_FOUND;
-        }
-
-        StringBuilder msgBuilder = new StringBuilder();
-        for (FileInfor file : filesToSend) {
-            msgBuilder.append(file.getFileName())
-                    .append("'").append(file.getFileSize())
-                    .append("'").append(file.getFileHash())
-                    .append("'").append(file.getPeerInfor().getIp())
-                    .append("'").append(file.getPeerInfor().getPort())
-                    .append(Infor.LIST_SEPARATOR);
-        }
-
-        if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {
-            msgBuilder.deleteCharAt(msgBuilder.length() - 1);
-        }
-        String shareList = msgBuilder.toString();
-        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
-        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + filesToSend.size() + "|" + shareList;
-    }
 
     private void pingPeers() {
         try (DatagramChannel channel = DatagramChannel.open()) {
@@ -654,8 +624,63 @@ public class TrackerModel {
         return response.toString();
     }
 
-    private String getCurrentTime() {
+    String getCurrentTime() {
         return LocalDateTime.now().format(formatter);
+    }
+
+    void addKnownPeer(String peer) {
+        knownPeers.add(peer);
+    }
+
+    String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
+        String requestingPeer = peerIp + ":" + peerPort;
+        Set<FileInfor> filesToSend = new HashSet<>();
+
+        // Add all public shared files
+        filesToSend.addAll(publicSharedFiles);
+
+        // Add selectively shared files for this peer
+        for (Map.Entry<String, Set<String>> entry : selectiveSharedFiles.entrySet()) {
+            String fileHash = entry.getKey();
+            Set<String> allowedPeers = entry.getValue();
+
+            if (allowedPeers.contains(requestingPeer)) {
+                for (FileInfor file : privateSharedFile) {
+                    if (file.getFileHash().equals(fileHash)) {
+                        filesToSend.add(file);
+                        break;
+                    }
+                }
+            }
+        }
+        PeerInfor requestingPeerInfor = new PeerInfor(peerIp, peerPort);
+        for (FileInfor fileInfor : privateSharedFile) {
+            if (fileInfor.getPeerInfor().equals(requestingPeerInfor)) {
+                filesToSend.add(fileInfor);
+            }
+        }
+
+        if (filesToSend.isEmpty()) {
+            logInfo("[TRACKER]: No shared files to send to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+            return RequestInfor.FILE_NOT_FOUND;
+        }
+
+        StringBuilder msgBuilder = new StringBuilder();
+        for (FileInfor file : filesToSend) {
+            msgBuilder.append(file.getFileName())
+                    .append("'").append(file.getFileSize())
+                    .append("'").append(file.getFileHash())
+                    .append("'").append(file.getPeerInfor().getIp())
+                    .append("'").append(file.getPeerInfor().getPort())
+                    .append(Infor.LIST_SEPARATOR);
+        }
+
+        if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {
+            msgBuilder.deleteCharAt(msgBuilder.length() - 1);
+        }
+        String shareList = msgBuilder.toString();
+        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + filesToSend.size() + "|" + shareList;
     }
 
 }

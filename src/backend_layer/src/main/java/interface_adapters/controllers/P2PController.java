@@ -8,6 +8,7 @@ import main.java.domain.repositories.PeerRepository;
 import main.java.api.IP2PApi;
 import main.java.usecases.DownloadFileUseCase;
 import main.java.usecases.ShareFileUseCase;
+import main.java.utils.LogTag;
 
 import java.util.List;
 import java.util.Map;
@@ -73,7 +74,7 @@ public class P2PController {
         while (!isConnected) {
             int result = peerRepository.registerWithTracker();
             switch (result) {
-                case 0 -> isConnected = true;
+                case LogTag.I_SUCCESS, LogTag.I_NOT_FOUND  -> isConnected = true;
                 default -> {
                     try {
                         Thread.sleep(5000);

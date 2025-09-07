@@ -78,14 +78,14 @@ app.whenReady().then(() => {
         }
     });
 
-    ipcMain.handle('download-file', async (event, { fileName, peerInfor, savePath }) => {
+    ipcMain.handle('download-file', async (event, { fileName, peerInfo, savePath }) => {
         try {
             const controller = new AbortController();
             const response = await fetch(
-                `http://localhost:8080/api/files/download?fileName=${encodeURIComponent(fileName)}&peerInfor=${encodeURIComponent(peerInfor)}&savePath=${encodeURIComponent(savePath)}`,
+                `http://localhost:8080/api/files/download?fileName=${encodeURIComponent(fileName)}&peerInfo=${encodeURIComponent(peerInfo)}&savePath=${encodeURIComponent(savePath)}`,
                 {
                     method: 'GET',
-                    signal: controller.signal,
+                    signal: controller.signal,      
                 }
             );
             if (response.ok) {

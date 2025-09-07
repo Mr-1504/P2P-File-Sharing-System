@@ -236,10 +236,11 @@ public class P2PApi implements IP2PApi {
                         break;
                     case "GET":
                         String query = exchange.getRequestURI().getRawQuery();
+                        logInfo(query);
                         Map<String, String> params = parseQuery(query);
                         String fileName = params.get("fileName");
                         String savePath = params.get("savePath");
-                        String peerInfor = params.get("peerInfor");
+                        String peerInfor = params.get("peerInfo");
                         String peerIp = peerInfor.split(":")[0];
                         int peerPort = Integer.parseInt(peerInfor.split(":")[1]);
                         if (fileName == null || fileName.isEmpty() || savePath == null || savePath.isEmpty() || peerInfor.isEmpty()) {
