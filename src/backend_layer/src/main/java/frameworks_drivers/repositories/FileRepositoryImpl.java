@@ -148,12 +148,20 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     private ProgressInfo convertToDomainProgressInfo(ProgressInfo modelProgress) {
-        return new ProgressInfo(modelProgress.getId(), modelProgress.getStatus(),
+        ProgressInfo domainProgress = new ProgressInfo(modelProgress.getId(), modelProgress.getStatus(),
                               modelProgress.getFileName());
+        domainProgress.setProgressPercentage(modelProgress.getProgressPercentage());
+        domainProgress.setBytesTransferred(modelProgress.getBytesTransferred());
+        domainProgress.setTotalBytes(modelProgress.getTotalBytes());
+        return domainProgress;
     }
 
     private ProgressInfo convertToModelProgressInfo(ProgressInfo domainProgress) {
-        return new ProgressInfo(domainProgress.getId(), domainProgress.getStatus(),
+        ProgressInfo modelProgress = new ProgressInfo(domainProgress.getId(), domainProgress.getStatus(),
                                                domainProgress.getFileName());
+        modelProgress.setProgressPercentage(domainProgress.getProgressPercentage());
+        modelProgress.setBytesTransferred(domainProgress.getBytesTransferred());
+        modelProgress.setTotalBytes(domainProgress.getTotalBytes());
+        return modelProgress;
     }
 }

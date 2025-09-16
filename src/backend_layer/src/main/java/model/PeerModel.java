@@ -362,10 +362,13 @@ public class PeerModel implements IPeerModel {
             String var4 = this.hashFile(file, var3);
             FileInfo var5 = new FileInfo(var2, file.length(), var4, this.SERVER_HOST, true);
             this.publicSharedFiles.put(file.getName(), var5);
+            this.sharedFileNames.add(var5); // Add to sharedFileNames so it's included in API responses
             this.notifyTracker(var5, true);
             ProgressInfo var6 = this.processes.get(var3);
-            var6.setProgressPercentage(100);
-            var6.setStatus("completed");
+            synchronized (var6) {
+                var6.setProgressPercentage(100);
+                var6.setStatus("completed");
+            }
             return Boolean.TRUE;
         });
     }
@@ -393,8 +396,10 @@ public class PeerModel implements IPeerModel {
                     messageDigest.update(bytes, 0, readedByteCount);
                     readbyte += readedByteCount;
                     int percentage = (int) ((double) readbyte * (double) 100.0F / (double) fileSize);
-                    progressInfo.setProgressPercentage(percentage);
-                    progressInfo.setBytesTransferred(readbyte);
+                    synchronized (progressInfo) {
+                        progressInfo.setProgressPercentage(percentage);
+                        progressInfo.setBytesTransferred(readbyte);
+                    }
                 }
 
                 String fullFileHash = this.bytesToHex(messageDigest.digest());
@@ -506,11 +511,18 @@ public class PeerModel implements IPeerModel {
                         if (!fileHash.equalsIgnoreCase(expectedFileHash)) {
                             return LogTag.I_HASH_MISMATCH;
                         } else {
-                            progressInfo.setStatus(ProgressInfo.ProgressStatus.COMPLETED);
-                            progressInfo.setBytesTransferred(fileInfo.getFileSize());
-                            processes.get(progressId).setProgressPercentage(100);
-                            processes.get(progressId).setBytesTransferred(fileInfo.getFileSize());
-                            processes.get(progressId).setTotalBytes(fileInfo.getFileSize());
+                            ProgressInfo finalProgress = processes.get(progressId);
+                            if (finalProgress != null) {
+                                synchronized (finalProgress) {
+                                    finalProgress.setStatus(ProgressInfo.ProgressStatus.COMPLETED);
+                                    finalProgress.setProgressPercentage(100);
+                                    finalProgress.setBytesTransferred(fileInfo.getFileSize());
+                                    finalProgress.setTotalBytes(fileInfo.getFileSize());
+                                }
+                                Log.logInfo("Download completed successfully for " + progressId + ", final bytes: " + fileInfo.getFileSize());
+                            } else {
+                                Log.logError("Progress object not found for completed download: " + progressId, null);
+                            }
                             return LogTag.I_SUCCESS;
                         }
                     }
@@ -950,8 +962,13 @@ public class PeerModel implements IPeerModel {
                                 long totalChunks = (file.getFileSize() + (long) this.CHUNK_SIZE - 1L) / (long) this.CHUNK_SIZE;
                                 long downloadedChunks = chunkCount.incrementAndGet();
                                 int percent = (int) ((double) downloadedChunks * (double) 100.0F / (double) totalChunks);
-                                processes.get(progressId).addBytesTransferred(downloadedChunks * CHUNK_SIZE);
-                                processes.get(progressId).setProgressPercentage(percent);
+                                ProgressInfo progress = processes.get(progressId);
+                                if (progress != null) {
+                                    synchronized (progress) {
+                                        progress.addBytesTransferred(CHUNK_SIZE);
+                                        progress.setProgressPercentage(percent);
+                                    }
+                                }
                                 Log.logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
                                 return true;
                             }
@@ -1092,7 +1109,9 @@ public class PeerModel implements IPeerModel {
                         if (fileHash.equals("ERROR")) {
                             Log.logInfo("Error computing hash for file: " + fileName);
                         } else {
-                            this.publicSharedFiles.put(fileName, new FileInfo(fileName, fileSize, fileHash, this.SERVER_HOST, true));
+                            FileInfo fileInfo = new FileInfo(fileName, fileSize, fileHash, this.SERVER_HOST, true);
+                            this.publicSharedFiles.put(fileName, fileInfo);
+                            this.sharedFileNames.add(fileInfo); // Add to sharedFileNames so it's included in API responses
                         }
                     }
                 }
@@ -1137,7 +1156,9 @@ public class PeerModel implements IPeerModel {
                                 long fileSize = Long.parseLong(f[1]);
                                 String fileHash = f[2];
                                 PeerInfo peerInfo = new PeerInfo(f[3], Integer.parseInt(f[4]));
-                                this.sharedFileNames.add(new FileInfo(fileName, fileSize, fileHash, peerInfo));
+                                // Check if this file is shared by us
+                                boolean isSharedByMe = this.publicSharedFiles.containsKey(fileName);
+                                this.sharedFileNames.add(new FileInfo(fileName, fileSize, fileHash, peerInfo, isSharedByMe));
                             }
                         }
 

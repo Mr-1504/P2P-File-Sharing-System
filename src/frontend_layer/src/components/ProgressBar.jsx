@@ -1,12 +1,113 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ConfirmCancelDialog from './ConfirmCancelDiaglog';
 import { useTranslation } from 'react-i18next';
 
-
 const ProgressBar = ({ tasks, setTasks }) => {
     const { t } = useTranslation();
-    const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-    const [taskToCancel, setTaskToCancel] = React.useState(null);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [taskToCancel, setTaskToCancel] = useState(null);
+    const [taskSpeeds, setTaskSpeeds] = useState({});
+    const [previousTasks, setPreviousTasks] = useState({});
+
+    // Calculate speed and ETA
+    useEffect(() => {
+        const now = Date.now();
+        const newSpeeds = {};
+
+        tasks.forEach(task => {
+            const prev = previousTasks[task.id];
+            if (prev && prev.bytesTransferred !== task.bytesTransferred && (task.status === 'downloading' || task.status === 'sharing')) {
+                const timeDiff = now - (prev.timestamp || now);
+                const bytesDiff = task.bytesTransferred - prev.bytesTransferred;
+                if (timeDiff > 0) {
+                    const speed = (bytesDiff / timeDiff) * 1000; // bytes per second
+                    newSpeeds[task.id] = speed;
+                }
+            }
+        });
+
+        setTaskSpeeds(prev => ({ ...prev, ...newSpeeds }));
+
+        const updatedPrevious = {};
+        tasks.forEach(task => {
+            updatedPrevious[task.id] = { ...task, timestamp: now };
+        });
+        setPreviousTasks(updatedPrevious);
+    }, [tasks]);
+
+    const formatSpeed = (bytesPerSecond) => {
+        if (!bytesPerSecond) return '0 B/s';
+        const units = ["B/s", "KB/s", "MB/s", "GB/s"];
+        const k = 1024;
+        const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+        const speed = bytesPerSecond / Math.pow(k, i);
+        return `${speed.toFixed(2)} ${units[i]}`;
+    };
+
+    const calculateETA = (task) => {
+        const speed = taskSpeeds[task.id];
+        if (!speed || speed === 0 || task.progress >= 100) return null;
+
+        const remainingBytes = task.totalBytes - task.bytesTransferred;
+        const etaSeconds = remainingBytes / speed;
+
+        if (etaSeconds < 60) return `${Math.ceil(etaSeconds)}s`;
+        if (etaSeconds < 3600) return `${Math.ceil(etaSeconds / 60)}m`;
+        return `${Math.ceil(etaSeconds / 3600)}h`;
+    };
+
+    const getTaskIcon = (status) => {
+        switch (status) {
+            case 'downloading':
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                );
+            case 'sharing':
+            case 'starting':
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                );
+            case 'completed':
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                );
+            case 'failed':
+            case 'canceled':
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                );
+            default:
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                );
+        }
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'canceled':
+            case 'failed':
+                return { text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' };
+            case 'starting':
+            case 'downloading':
+            case 'sharing':
+                return { text: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' };
+            case 'completed':
+                return { text: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' };
+            default:
+                return { text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' };
+        }
+    };
 
     const handleCancelTask = (taskId) => {
         setTaskToCancel(taskId);
@@ -75,58 +176,102 @@ const ProgressBar = ({ tasks, setTasks }) => {
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'canceled':
-            case 'failed':
-                return 'text-red-600';
-            case 'starting':
-            case 'downloading':
-            case 'sharing':
-                return 'text-blue-600';  
-            case 'completed':
-                return 'text-green-600';
-            default:
-                return 'text-gray-600'; 
-        }
-    };
-
     return (
-        <div className="space-y-4">
-            {tasks.map(task => (
-                <div key={task.id} className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-semibold text-gray-700">{task.taskName}</span>
-                        <span className={`text-sm ${getStatusColor(task.status)}`}>
-                            {t(task.status)}
-                        </span>
-
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
-                            style={{ width: `${task.progress}%` }}
-                        ></div>
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>{(formatBytes(task.bytesTransferred))} / {(formatBytes(task.totalBytes))}</span>
-                        <span>{task.progress}%</span>
-                    </div>
-                    {((task.status === 'starting') ||
-                        (task.status === 'downloading') ||
-                        (task.status === 'sharing')) && (
-                            <button
-                                onClick={() => handleCancelTask(task.id)}
-                                className="mt-2 px-4 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200"
-                            >
-                                Hủy
-                            </button>
-                        )}
-                    <ConfirmCancelDialog open={isDialogOpen} onClose={handleDialogClose} />
-
+        <div className="space-y-6">
+            {tasks.length === 0 ? (
+                <div className="text-center py-12">
+                    <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <p className="text-gray-500 text-lg">{t('no_active_transfers')}</p>
                 </div>
-            ))}
-        </div>  
+            ) : (
+                tasks.map(task => {
+                    const colors = getStatusColor(task.status);
+                    const eta = calculateETA(task);
+                    const speed = taskSpeeds[task.id];
+
+                    return (
+                        <div key={task.id} className={`bg-white p-6 rounded-xl shadow-lg border-2 ${colors.border} ${colors.bg} transition-all duration-300 hover:shadow-xl`}>
+                            {/* Header with icon, title, and status */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                    <div className={`p-2 rounded-lg ${colors.bg} ${colors.text}`}>
+                                        {getTaskIcon(task.status)}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-gray-800 truncate max-w-xs" title={task.taskName}>
+                                            {task.taskName}
+                                        </h3>
+                                        <div className="flex items-center space-x-2">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
+                                                {t(task.status)}
+                                            </span>
+                                            {eta && (
+                                                <span className="text-xs text-gray-500">
+                                                    ETA: {eta}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Cancel button for active tasks */}
+                                {((task.status === 'starting') ||
+                                    (task.status === 'downloading') ||
+                                    (task.status === 'sharing')) && (
+                                    <button
+                                        onClick={() => handleCancelTask(task.id)}
+                                        className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors duration-200 text-sm font-medium"
+                                    >
+                                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                        </svg>
+                                        {t('cancel')}
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="mb-4">
+                                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                    <div
+                                        className={`h-3 rounded-full transition-all duration-500 ease-out ${
+                                            task.status === 'completed' ? 'bg-gradient-to-r from-green-400 to-green-600' :
+                                            task.status === 'failed' || task.status === 'canceled' ? 'bg-gradient-to-r from-red-400 to-red-600' :
+                                            'bg-gradient-to-r from-blue-400 to-blue-600'
+                                        }`}
+                                        style={{ width: `${task.progress}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+
+                            {/* Stats grid */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div className="text-center">
+                                    <div className="text-gray-500 text-xs uppercase tracking-wide">{t('progress')}</div>
+                                    <div className="text-lg font-semibold text-gray-800">{task.progress}%</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-gray-500 text-xs uppercase tracking-wide">{t('transferred')}</div>
+                                    <div className="text-lg font-semibold text-gray-800">{formatBytes(task.bytesTransferred)}</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-gray-500 text-xs uppercase tracking-wide">{t('total')}</div>
+                                    <div className="text-lg font-semibold text-gray-800">{formatBytes(task.totalBytes)}</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-gray-500 text-xs uppercase tracking-wide">{t('speed')}</div>
+                                    <div className="text-lg font-semibold text-gray-800">{formatSpeed(speed)}</div>
+                                </div>
+                            </div>
+
+                            <ConfirmCancelDialog open={isDialogOpen} onClose={handleDialogClose} />
+                        </div>
+                    );
+                })
+            )}
+        </div>
     );
 };
 

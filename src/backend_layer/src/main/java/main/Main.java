@@ -14,7 +14,7 @@ public class Main {
     public static void main(String[] args) throws IOException {
         System.setProperty("file.encoding", "UTF-8");
 
-        // Initialize the existing PeerModel (infrastructure layer)
+            // Initialize the existing PeerModel (infrastructure layer)
         PeerModel peerModel = null;
         try {
             peerModel = new PeerModel();

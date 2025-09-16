@@ -20,6 +20,20 @@ public class ShareFileUseCase {
             }
 
             String fileName = file.getName();
+
+            // Check if file is already being shared
+            boolean alreadyShared = fileRepository.getSharedFileNames().stream()
+                    .anyMatch(f -> f.getFileName().equals(fileName) && f.isSharedByMe());
+
+            if (alreadyShared && isReplace == 0) {
+                return "File already shared";
+            }
+
+            // If replacing, stop sharing the existing file first
+            if (alreadyShared && isReplace == 1) {
+                fileRepository.stopSharingFile(fileName);
+            }
+
             String progressId = ProgressInfo.generateProgressId();
             ProgressInfo progressInfo = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
             fileRepository.setProgress(progressInfo);

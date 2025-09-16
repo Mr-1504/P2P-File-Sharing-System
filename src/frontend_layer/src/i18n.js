@@ -48,7 +48,12 @@ i18n.use(initReactI18next).init({
         cancel_sharing_file: "Đã hủy chia sẻ tệp",
         start_download_file: "Bắt đầu tải xuống tệp: ",
         error_downloading_file: "Lỗi khi tải xuống tệp: ",
-        error_cancel_sharing_file: "Lỗi khi hủy chia sẻ tệp: "
+        error_cancel_sharing_file: "Lỗi khi hủy chia sẻ tệp: ",
+        progress: "Tiến trình",
+        transferred: "Đã chuyển",
+        total: "Tổng cộng",
+        speed: "Tốc độ",
+        no_active_transfers: "Không có hoạt động chuyển tiếp nào"
       }
     },
     en: {
@@ -96,7 +101,12 @@ i18n.use(initReactI18next).init({
         cancel_sharing_file: "Canceled sharing file: ",
         start_download_file: "Start downloading file: ",
         error_downloading_file: "Error: Downloading file failed: ",
-        error_cancel_sharing_file: "Error: Canceled sharing file: "
+        error_cancel_sharing_file: "Error: Canceled sharing file: ",
+        progress: "Progress",
+        transferred: "Transferred",
+        total: "Total",
+        speed: "Speed",
+        no_active_transfers: "No active transfers"
       }
     }
   },

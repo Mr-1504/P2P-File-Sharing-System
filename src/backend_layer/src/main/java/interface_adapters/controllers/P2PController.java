@@ -179,7 +179,10 @@ public class P2PController {
             return downloadFile(domainFile, savePath);
         });
 
-        api.setRouteForCheckFile(fileName -> true); // Simplified check
+        api.setRouteForCheckFile(fileName -> {
+            Set<FileInfo> sharedFiles = fileRepository.getSharedFileNames();
+            return sharedFiles.stream().anyMatch(file -> file.getFileName().equals(fileName) && file.isSharedByMe());
+        });
 
         api.setRouteForGetProgress(() -> getProgress());
 

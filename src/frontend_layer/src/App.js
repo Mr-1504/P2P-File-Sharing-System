@@ -352,7 +352,7 @@ function App() {
     const handleShareAll = async (file) => {
         setIsLoading(true);
         try {
-            const progressId = await window.electronAPI.shareFile(file.filePath, 1);
+            const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace || 0);
             console.log('Progress ID:', progressId);
             taskMap.set(progressId, { fileName: file.fileName, status: 'starting' });
             addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
