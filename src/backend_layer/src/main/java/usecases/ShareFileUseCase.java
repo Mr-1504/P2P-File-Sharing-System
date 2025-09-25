@@ -1,9 +1,13 @@
 package main.java.usecases;
 
+import main.java.domain.entities.FileInfo;
 import main.java.domain.entities.ProgressInfo;
 import main.java.domain.repositories.FileRepository;
+import main.java.utils.AppPaths;
+import main.java.utils.LogTag;
 
 import java.io.File;
+import java.util.Set;
 
 public class ShareFileUseCase {
     private final FileRepository fileRepository;
@@ -12,36 +16,46 @@ public class ShareFileUseCase {
         this.fileRepository = fileRepository;
     }
 
-    public String execute(String filePath, int isReplace) {
+    public String execute(String filePath, int isReplace, String fileName, String progressId) {
         try {
             File file = new File(filePath);
-            if (!file.exists()) {
-                return "File not found";
+            ProgressInfo progressInfo = fileRepository.getProgress().get(progressId);
+
+            boolean result = AppPaths.copyFileToShare(file, fileName, progressInfo);
+
+            if (!result) {
+                progressInfo.setStatus(ProgressInfo.ProgressStatus.FAILED);
+                return LogTag.S_ERROR;
             }
 
-            String fileName = file.getName();
-
-            // Check if file is already being shared
-            boolean alreadyShared = fileRepository.getSharedFileNames().stream()
-                    .anyMatch(f -> f.getFileName().equals(fileName) && f.isSharedByMe());
-
-            if (alreadyShared && isReplace == 0) {
-                return "File already shared";
+            FileInfo oldFileInfo = fileRepository.getPuclicSharedFiles().get(file.getName());
+            if (oldFileInfo == null) {
+                oldFileInfo = fileRepository.getPrivateSharedFiles().get(file.getName());
             }
-
-            // If replacing, stop sharing the existing file first
-            if (alreadyShared && isReplace == 1) {
-                fileRepository.stopSharingFile(fileName);
-            }
-
-            String progressId = ProgressInfo.generateProgressId();
-            ProgressInfo progressInfo = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
-            fileRepository.setProgress(progressInfo);
-
-            fileRepository.shareFileAsync(file, fileName, progressId);
+            fileRepository.shareFileAsync(file, fileName, progressId, isReplace, oldFileInfo);
             return progressId;
         } catch (Exception e) {
             return "Internal server error";
         }
+    }
+
+    private String getUniqueFileName(String baseName, Set<String> existingNames) {
+        if (!existingNames.contains(baseName)) {
+            return baseName;
+        }
+        String nameWithoutExt = baseName;
+        String ext = "";
+        int dotIndex = baseName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            nameWithoutExt = baseName.substring(0, dotIndex);
+            ext = baseName.substring(dotIndex);
+        }
+        int counter = 1;
+        String newName;
+        do {
+            newName = nameWithoutExt + "(" + counter + ")" + ext;
+            counter++;
+        } while (existingNames.contains(newName));
+        return newName;
     }
 }

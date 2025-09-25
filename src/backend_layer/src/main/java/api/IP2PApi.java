@@ -28,7 +28,9 @@ public interface IP2PApi {
 
     void setRouteForCancelTask(Consumer<String> handler);
 
-    void setRouteForShareToPeers(P2PApi.BiFunction<String, List<String>, String> callable);
+    void setRouteForResumeTask(Consumer<String> handler);
+
+    void setRouteForShareToPeers(BiFunction<String, List<String>, String> callable);
 
     void setRouteForGetKnownPeers(Callable<List<String>> callable);
 

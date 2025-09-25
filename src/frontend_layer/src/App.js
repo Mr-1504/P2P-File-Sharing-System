@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import ProgressBar from './components/ProgressBar';
+import { useEffect, useState, useRef } from 'react';
 import FileTable from './components/FileTable';
 import Notification from './components/Notification';
 import ConfirmDialog from './components/ConfirmDialog';
 import ShareModal from './components/ShareModal';
 import Chat from './components/Chat';
+import Tasks from './components/Tasks';
 import { useTranslation } from "react-i18next";
 import './App.css';
 
@@ -24,6 +24,7 @@ function App() {
     const [language, setLanguage] = useState('Tiếng Việt');
     const [notifications, setNotifications] = useState([]);
     const [tasks, setTasks] = useState([]);
+    const [taskTimeouts, setTaskTimeouts] = useState({});
     const [peers, setPeers] = useState([
         { id: 1, name: 'Peer 1', ip: '192.168.1.1', status: 'Online' },
         { id: 2, name: 'Peer 2', ip: '192.168.1.2', status: 'Offline' }
@@ -40,6 +41,8 @@ function App() {
     const [showSplash, setShowSplash] = useState(true);
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [selectedFileForSharing, setSelectedFileForSharing] = useState(null);
+    const prevTasksLength = useRef(0);
+    const [isNewTask, setIsNewTask] = useState(false);
 
     const addNotification = (message, isError) => {
         const id = Date.now();
@@ -84,7 +87,7 @@ function App() {
         if (taskMap.size === 0) return;
         let completedTaskCount = 0;
         taskMap.forEach((info, id) => {
-            if (['completed', 'failed', 'canceled'].includes(info.status)) {
+            if (['completed', 'failed', 'canceled', 'timeout'].includes(info.status)) {
                 completedTaskCount++;
             }
         });
@@ -96,43 +99,81 @@ function App() {
                 if (response.ok) {
                     const data = await response.json();
 
-                    if (data) {
-                        // let completedTasks = [];
-                        setTasks(prev => {
-                            let updated = [...prev];
+                        if (data) {
+                            let completedTasks = [];
+                            const now = Date.now();
+                            const timeoutThreshold = 2 * 60 * 1000; // 2 minutes
 
-                            Object.entries(data).forEach(([id, info]) => {
-                                const taskId = String(id);
+                            setTasks(prev => {
+                                let updated = [...prev];
 
-                                const taskExists = updated.find(t => t.id === taskId);
+                                Object.entries(data).forEach(([id, info]) => {
+                                    const taskId = String(id);
 
-                                if (!taskExists) {
-                                    updated.push({
-                                        id: taskId,
-                                        taskName: info.fileName || "Unknown Task",
-                                        progress: info.progressPercentage || 0,
-                                        bytesTransferred: info.bytesTransferred || 0,
-                                        totalBytes: info.totalBytes || 1,
-                                        status: info.status
-                                    });
-                                } else {
-                                    updated = updated.map(t =>
-                                        t.id === taskId
-                                            ? {
-                                                ...t,
-                                                taskName: info.fileName || "Unknown Task",
-                                                progress: info.progressPercentage,
-                                                bytesTransferred: info.bytesTransferred,
-                                                totalBytes: info.totalBytes,
-                                                status: info.status
+                                    const taskExists = updated.find(t => t.id === taskId);
+
+                                    if (!taskExists) {
+                                        updated.push({
+                                            id: taskId,
+                                            taskName: info.fileName || "Unknown Task",
+                                            progress: info.progressPercentage || 0,
+                                            bytesTransferred: info.bytesTransferred || 0,
+                                            totalBytes: info.totalBytes || 1,
+                                            status: info.status
+                                        });
+                                    } else {
+                                        // Don't override cancelled status with progress updates
+                                        const currentTask = updated.find(t => t.id === taskId);
+                                        let newStatus = (currentTask.status === 'canceled')
+                                            ? currentTask.status
+                                            : info.status;
+
+                                        // Check for timeout/stalled downloads
+                                        const lastUpdate = taskTimeouts[taskId] || now;
+                                        const timeSinceLastUpdate = now - lastUpdate;
+
+                                        if (newStatus === 'downloading' || newStatus === 'starting') {
+                                            if (timeSinceLastUpdate >= timeoutThreshold) {
+                                                newStatus = 'timeout';
+                                                addNotification(`Tải xuống ${currentTask.taskName} đã bị timeout`, true);
+                                            } else if (timeSinceLastUpdate >= 30 * 1000) { // 30 seconds for stalled
+                                                newStatus = 'stalled';
                                             }
-                                            : t
-                                    );
-                                }
-                            });
+                                        }
 
-                            return updated;
-                        });
+                                        // Only reset timeout if actual progress was made
+                                        if (currentTask.progress !== info.progressPercentage ||
+                                            currentTask.bytesTransferred !== info.bytesTransferred) {
+                                            setTaskTimeouts(prev => ({
+                                                ...prev,
+                                                [taskId]: now
+                                            }));
+                                        } else {
+                                            setTaskTimeouts(prev => ({
+                                                ...prev,
+                                                [taskId]: lastUpdate
+                                            }));
+                                        }
+
+                                        const updatedTask = {
+                                            ...t,
+                                            taskName: info.fileName || "Unknown Task",
+                                            progress: info.progressPercentage,
+                                            bytesTransferred: info.bytesTransferred,
+                                            totalBytes: info.totalBytes,
+                                            status: newStatus
+                                        };
+
+                                        if (['completed', 'failed', 'canceled', 'timeout'].includes(newStatus)) {
+                                            completedTasks.push(taskId);
+                                        }
+
+                                        return updatedTask;
+                                    }
+                                });
+
+                                return updated;
+                            });
 
                         if (completedTasks.length > 0) {
                             try {
@@ -161,6 +202,15 @@ function App() {
         const interval = setInterval(queryProgress, 2000);
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        if (tasks.length > prevTasksLength.current) {
+            addNotification('Có tiến trình mới bắt đầu', false);
+            setIsNewTask(true);
+            setTimeout(() => setIsNewTask(false), 2000); // Reset animation after 2 seconds
+        }
+        prevTasksLength.current = tasks.length;
+    }, [tasks.length]);
 
     const handleFileUpload = async () => {
         if (!window.electronAPI || !window.electronAPI.selectFile) {
@@ -392,6 +442,28 @@ function App() {
         }
     };
 
+    const handleResume = async (taskId) => {
+        try {
+            const response = await fetch(`http://localhost:8080/api/resume?taskId=${taskId}`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                setTasks(prev =>
+                    prev.map(t =>
+                        t.id === taskId ? { ...t, status: 'downloading' } : t
+                    )
+                );
+                addNotification('Đã tiếp tục tải xuống', false);
+            } else {
+                addNotification('Lỗi khi tiếp tục tải xuống', true);
+            }
+        } catch (err) {
+            console.error('Lỗi khi resume task:', err);
+            addNotification('Lỗi khi tiếp tục tải xuống', true);
+        }
+    };
+
     const handleSendMessage = (peerId, text) => {
         const newMessage = { sender: 'You', text, timestamp: new Date().toLocaleTimeString() };
         setMessages(prev => ({
@@ -420,7 +492,23 @@ function App() {
                 </div>
             )}
             <div className={`container mx-auto p-6 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}>
-                <h1 className="text-4xl font-extrabold text-center mb-8 text-blue-900 tracking-tight">{t('title')}</h1>
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-4xl font-extrabold text-blue-900 tracking-tight">{t('title')}</h1>
+                    <button
+                        onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
+                        className={`p-3 rounded-lg transition-all duration-200 relative ${activeTab === 'tasks' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 hover:bg-blue-50 shadow-lg border border-gray-100'} ${isNewTask ? 'animate-pulse bg-green-500' : ''}`}
+                        title={t('tasks')}
+                    >
+                        <svg className={`w-6 h-6 ${isNewTask ? 'animate-bounce' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        {tasks.length > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                {tasks.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
                 <div className="flex space-x-4 mb-6 bg-white rounded-xl shadow-lg p-2 border border-gray-100">
                     <button
                         onClick={() => setActiveTab('files')}
@@ -525,10 +613,9 @@ function App() {
                             </div>
                         </div>
                         <FileTable files={files} onDownload={handleDownload} onStopSharing={handleStopSharing} onShareToPeers={handleShareToPeers} isLoading={isLoading} />
-
-                        <div style={{ margin: '16px' }}></div>
-                        <ProgressBar tasks={tasks} setTasks={setTasks} taskMap={taskMap} />
                     </div>
+                ) : activeTab === 'tasks' ? (
+                    <Tasks tasks={tasks} setTasks={setTasks} onResume={handleResume} />
                 ) : (
                     <Chat
                         peers={peers}

@@ -2,6 +2,7 @@ package main.java.api;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonArray;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import main.java.domain.entities.FileInfo;
@@ -352,6 +353,40 @@ public class P2PApi implements IP2PApi {
                         break;
                     case "DELETE":
                         // http://localhost:8080/api/cancel/${taskId}
+                        String query = exchange.getRequestURI().getRawQuery();
+                        Map<String, String> params = parseQuery(query);
+                        String taskId = params.get("taskId");
+                        if (taskId == null || taskId.isEmpty()) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("taskId is required"));
+                            return;
+                        }
+                        handler.accept(taskId);
+
+                        sendResponse(exchange, LogTag.OK, "{\"status\":\"success\"}");
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
+    @Override
+    public void setRouteForResumeTask(Consumer<String> handler) {
+        server.createContext("/api/resume", exchange -> {
+            addCorsHeaders(exchange);
+            logInfo("Resume task request");
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "POST":
+                        // http://localhost:8080/api/resume?taskId=${taskId}
                         String query = exchange.getRequestURI().getRawQuery();
                         Map<String, String> params = parseQuery(query);
                         String taskId = params.get("taskId");

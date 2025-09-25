@@ -7,6 +7,7 @@ i18n.use(initReactI18next).init({
       translation: {
         title: "P2P File Sharing",
         files: "Tệp",
+        tasks: "Tác vụ",
         chat: "Chat",
         selectFile: "Chọn tệp để chia sẻ",
         language: "Ngôn ngữ",
@@ -60,6 +61,7 @@ i18n.use(initReactI18next).init({
       translation: {
         title: "P2P File Sharing",
         files: "Files",
+        tasks: "Tasks",
         chat: "Chat",
         selectFile: "Select file to share",
         language: "Language",

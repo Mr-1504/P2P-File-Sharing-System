@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ConfirmCancelDialog from './ConfirmCancelDiaglog';
 import { useTranslation } from 'react-i18next';
 
-const ProgressBar = ({ tasks, setTasks }) => {
+const ProgressBar = ({ tasks, setTasks, onResume }) => {
     const { t } = useTranslation();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [taskToCancel, setTaskToCancel] = useState(null);
@@ -79,9 +79,22 @@ const ProgressBar = ({ tasks, setTasks }) => {
                 );
             case 'failed':
             case 'canceled':
+            case 'timeout':
                 return (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                );
+            case 'resumable':
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                );
+            case 'stalled':
+                return (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
                     </svg>
                 );
             default:
@@ -97,6 +110,7 @@ const ProgressBar = ({ tasks, setTasks }) => {
         switch (status) {
             case 'canceled':
             case 'failed':
+            case 'timeout':
                 return { text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' };
             case 'starting':
             case 'downloading':
@@ -104,6 +118,10 @@ const ProgressBar = ({ tasks, setTasks }) => {
                 return { text: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' };
             case 'completed':
                 return { text: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' };
+            case 'resumable':
+                return { text: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' };
+            case 'stalled':
+                return { text: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' };
             default:
                 return { text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200' };
         }
@@ -216,20 +234,37 @@ const ProgressBar = ({ tasks, setTasks }) => {
                                     </div>
                                 </div>
 
-                                {/* Cancel button for active tasks */}
-                                {((task.status === 'starting') ||
-                                    (task.status === 'downloading') ||
-                                    (task.status === 'sharing')) && (
-                                    <button
-                                        onClick={() => handleCancelTask(task.id)}
-                                        className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors duration-200 text-sm font-medium"
-                                    >
-                                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                                        </svg>
-                                        {t('cancel')}
-                                    </button>
-                                )}
+                                {/* Action buttons */}
+                                <div className="flex space-x-2">
+                                    {/* Cancel button for active tasks */}
+                                    {((task.status === 'starting') ||
+                                        (task.status === 'downloading') ||
+                                        (task.status === 'sharing')) && (
+                                        <button
+                                            onClick={() => handleCancelTask(task.id)}
+                                            className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors duration-200 text-sm font-medium"
+                                        >
+                                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                            {t('cancel')}
+                                        </button>
+                                    )}
+
+                                    {/* Resume button for resumable/timeout tasks */}
+                                    {((task.status === 'resumable') ||
+                                        (task.status === 'timeout')) && onResume && (
+                                        <button
+                                            onClick={() => onResume(task.id)}
+                                            className="inline-flex items-center px-3 py-1.5 border border-green-300 text-green-700 bg-white rounded-lg hover:bg-green-50 transition-colors duration-200 text-sm font-medium"
+                                        >
+                                            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                            {t('resume')}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Progress bar */}

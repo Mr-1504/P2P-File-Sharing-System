@@ -21,8 +21,8 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public void shareFileAsync(File file, String fileName, String progressId) {
-        peerModel.shareFileAsync(file, fileName, progressId);
+    public void shareFileAsync(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
+        peerModel.shareFileAsync(file, fileName, progressId, isReplace, oldFileInfo);
     }
 
     @Override
@@ -39,6 +39,11 @@ public class FileRepositoryImpl implements FileRepository {
                 .collect(Collectors.toList());
 
         peerModel.downloadFile(modelFileInfo, saveFile, modelPeers, progressId);
+    }
+
+    @Override
+    public void resumeDownload(String progressId) {
+        peerModel.resumeDownload(progressId);
     }
 
     @Override
@@ -91,8 +96,18 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public Map<String, FileInfo> getMySharedFiles() {
+    public Map<String, FileInfo> getPuclicSharedFiles() {
         Map<String, FileInfo> modelFiles = peerModel.getPublicSharedFiles();
+        return modelFiles.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        e -> convertToDomainFileInfo(e.getValue())
+                ));
+    }
+
+    @Override
+    public Map<String, FileInfo> getPrivateSharedFiles() {
+        Map<String, FileInfo> modelFiles = ((PeerModel) peerModel).getPrivateSharedFiles();
         return modelFiles.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
@@ -153,6 +168,11 @@ public class FileRepositoryImpl implements FileRepository {
         domainProgress.setProgressPercentage(modelProgress.getProgressPercentage());
         domainProgress.setBytesTransferred(modelProgress.getBytesTransferred());
         domainProgress.setTotalBytes(modelProgress.getTotalBytes());
+        domainProgress.setDownloadedChunks(modelProgress.getDownloadedChunks());
+        domainProgress.setFileHash(modelProgress.getFileHash());
+        domainProgress.setSavePath(modelProgress.getSavePath());
+        domainProgress.setLastProgressUpdateTime(modelProgress.getLastProgressUpdateTime());
+        domainProgress.setTimeoutThresholdMs(modelProgress.getTimeoutThresholdMs());
         return domainProgress;
     }
 
@@ -162,6 +182,11 @@ public class FileRepositoryImpl implements FileRepository {
         modelProgress.setProgressPercentage(domainProgress.getProgressPercentage());
         modelProgress.setBytesTransferred(domainProgress.getBytesTransferred());
         modelProgress.setTotalBytes(domainProgress.getTotalBytes());
+        modelProgress.setDownloadedChunks(domainProgress.getDownloadedChunks());
+        modelProgress.setFileHash(domainProgress.getFileHash());
+        modelProgress.setSavePath(domainProgress.getSavePath());
+        modelProgress.setLastProgressUpdateTime(domainProgress.getLastProgressUpdateTime());
+        modelProgress.setTimeoutThresholdMs(domainProgress.getTimeoutThresholdMs());
         return modelProgress;
     }
 }

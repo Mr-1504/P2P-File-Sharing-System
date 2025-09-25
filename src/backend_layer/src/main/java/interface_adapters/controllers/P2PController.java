@@ -8,8 +8,10 @@ import main.java.domain.repositories.PeerRepository;
 import main.java.api.IP2PApi;
 import main.java.usecases.DownloadFileUseCase;
 import main.java.usecases.ShareFileUseCase;
+import main.java.utils.AppPaths;
 import main.java.utils.LogTag;
 
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,6 +46,11 @@ public class P2PController {
     private void taskInitialization() {
         executor.submit(() -> {
             try {
+                String shareDirPath = AppPaths.getAppDataDirectory() + "/shared_files/";
+                File shareDir = new File(shareDirPath);
+                if (!shareDir.exists()) {
+                    shareDir.mkdir();
+                }
                 peerRepository.initializeServerSocket();
                 peerRepository.startServer();
                 peerRepository.startUDPServer();
@@ -86,8 +93,8 @@ public class P2PController {
         }
     }
 
-    public String shareFile(String filePath, int isReplace) {
-        return shareFileUseCase.execute(filePath, isReplace);
+    public String shareFile(String filePath, int isReplace, String fileName, String progressId) {
+        return shareFileUseCase.execute(filePath, isReplace, fileName, progressId);
     }
 
     public String downloadFile(FileInfo fileInfo, String savePath) {
@@ -119,6 +126,30 @@ public class P2PController {
                 }
                 fileRepository.cleanupProgress(List.of(progressId));
             });
+        }
+    }
+
+    public void resumeTask(String progressId) {
+        Map<String, ProgressInfo> progressMap = fileRepository.getProgress();
+        if (progressMap.containsKey(progressId)) {
+            ProgressInfo progress = progressMap.get(progressId);
+            if (progress.getStatus().equals(ProgressInfo.ProgressStatus.TIMEOUT) ||
+                progress.getStatus().equals(ProgressInfo.ProgressStatus.STALLED)) {
+                progress.setStatus(ProgressInfo.ProgressStatus.DOWNLOADING);
+                progress.updateProgressTime();
+            }
+        }
+    }
+
+    public void checkTimeouts() {
+        Map<String, ProgressInfo> progressMap = fileRepository.getProgress();
+        for (Map.Entry<String, ProgressInfo> entry : progressMap.entrySet()) {
+            ProgressInfo progress = entry.getValue();
+            if ((progress.getStatus().equals(ProgressInfo.ProgressStatus.DOWNLOADING) ||
+                 progress.getStatus().equals(ProgressInfo.ProgressStatus.STARTING)) &&
+                progress.isTimedOut()) {
+                progress.setStatus(ProgressInfo.ProgressStatus.TIMEOUT);
+            }
         }
     }
 
@@ -156,9 +187,26 @@ public class P2PController {
         api.setRouteForShareFile((filePath, isReplace, isCancelled) -> {
             if (!isConnected) {
                 retryConnectToTracker();
-                return "Not connected";
+                return LogTag.S_NOT_CONNECTION;
             }
-            return shareFile(filePath, isReplace);
+            File file = new File(filePath);
+            if (!file.exists()) {
+                return LogTag.S_NOT_FOUND;
+            }
+
+            String fileName = file.getName();
+            if (isReplace == 0) {
+                fileName = AppPaths.incrementFileName(file.getName());
+            }
+            String progressId = ProgressInfo.generateProgressId();
+            ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
+            fileRepository.setProgress(newProgress);
+            String finalFileName = fileName;
+            executor.submit(() -> {
+                shareFile(filePath, isReplace, finalFileName, progressId);
+            });
+
+            return progressId;
         });
 
         api.setRouteForRemoveFile((filename) -> {
@@ -190,9 +238,14 @@ public class P2PController {
 
         api.setRouteForCancelTask((progressId) -> cancelTask(progressId));
 
+        api.setRouteForResumeTask((progressId) -> resumeTask(progressId));
+
         api.setRouteForShareToPeers((fileHash, peerList) -> "Not implemented");
 
         api.setRouteForGetKnownPeers(() -> getKnownPeers());
+
+        // Start periodic timeout checker
+        startTimeoutChecker();
 
         // Update API with current files
         updateApiFiles();
@@ -225,6 +278,20 @@ public class P2PController {
                 new PeerInfo(modelFile.getPeerInfo().getIp(), modelFile.getPeerInfo().getPort()),
                 modelFile.isSharedByMe()
         );
+    }
+
+    private void startTimeoutChecker() {
+        executor.submit(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(30000); // Check every 30 seconds
+                    checkTimeouts();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
     }
 
     private FileInfo convertToModelFileInfo(FileInfo domainFile) {
