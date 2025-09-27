@@ -240,7 +240,30 @@ public class P2PController {
 
         api.setRouteForResumeTask((progressId) -> resumeTask(progressId));
 
-        api.setRouteForShareToPeers((fileHash, peerList) -> "Not implemented");
+        api.setRouteForShareToSelectivePeers((filePath, isReplace, peerList) -> {
+            if (!isConnected) {
+                retryConnectToTracker();
+                return LogTag.S_NOT_CONNECTION;
+            }
+            File file = new File(filePath);
+            if (!file.exists()) {
+                return LogTag.S_NOT_FOUND;
+            }
+
+            String fileName = file.getName();
+            if (isReplace == 0) {
+                fileName = AppPaths.incrementFileName(file.getName());
+            }
+            String progressId = ProgressInfo.generateProgressId();
+            ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
+            fileRepository.setProgress(newProgress);
+            String finalFileName = fileName;
+            executor.submit(() -> {
+                shareFileUseCase.excuteShareFileToSelectivePeer(filePath, isReplace, finalFileName, peerList, progressId);
+            });
+
+            return progressId;
+        } );
 
         api.setRouteForGetKnownPeers(() -> getKnownPeers());
 

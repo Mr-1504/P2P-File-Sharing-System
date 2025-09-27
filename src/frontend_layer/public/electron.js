@@ -1,3 +1,7 @@
+require('dotenv').config();
+// Normalize and fallback for API base URL in Electron main process
+const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
+function buildApiUrl(path = '') { return API_BASE_URL + (path.startsWith('/') ? path : '/' + path); }
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -321,7 +325,7 @@ app.whenReady().then(() => {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000);
-            const response = await fetch('http://localhost:8080/api/files', {
+            const response = await fetch(buildApiUrl('/api/files'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ filePath, isReplace }),
@@ -344,7 +348,7 @@ app.whenReady().then(() => {
         try {
             const controller = new AbortController();
             const response = await fetch(
-                `http://localhost:8080/api/files/download?fileName=${encodeURIComponent(fileName)}&peerInfo=${encodeURIComponent(peerInfo)}&savePath=${encodeURIComponent(savePath)}`,
+                buildApiUrl(`/api/files/download?fileName=${encodeURIComponent(fileName)}&peerInfo=${encodeURIComponent(peerInfo)}&savePath=${encodeURIComponent(savePath)}`),
                 {
                     method: 'GET',
                     signal: controller.signal,
@@ -364,7 +368,7 @@ app.whenReady().then(() => {
 
     ipcMain.handle('cancel-download', async () => {
         try {
-            const response = await fetch('http://localhost:8080/api/files/cancel', {
+            const response = await fetch(buildApiUrl('/api/files/cancel'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
             });

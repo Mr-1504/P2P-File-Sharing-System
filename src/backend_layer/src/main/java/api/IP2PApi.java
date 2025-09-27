@@ -30,7 +30,7 @@ public interface IP2PApi {
 
     void setRouteForResumeTask(Consumer<String> handler);
 
-    void setRouteForShareToPeers(BiFunction<String, List<String>, String> callable);
+    void setRouteForShareToSelectivePeers(TriFunction<String, Integer, List<String>, String> callable);
 
     void setRouteForGetKnownPeers(Callable<List<String>> callable);
 

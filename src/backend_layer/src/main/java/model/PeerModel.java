@@ -83,11 +83,11 @@ public class PeerModel implements IPeerModel {
 
             // Only check timeout for active downloads
             if ((status.equals(ProgressInfo.ProgressStatus.DOWNLOADING) ||
-                 status.equals(ProgressInfo.ProgressStatus.SHARING)) &&
-                progress.isTimedOut()) {
+                    status.equals(ProgressInfo.ProgressStatus.SHARING)) &&
+                    progress.isTimedOut()) {
 
                 Log.logInfo("Download timeout detected for progress ID: " + entry.getKey() +
-                           ", last update: " + (currentTime - progress.getLastProgressUpdateTime()) + "ms ago");
+                        ", last update: " + (currentTime - progress.getLastProgressUpdateTime()) + "ms ago");
 
                 synchronized (progress) {
                     if (status.equals(ProgressInfo.ProgressStatus.DOWNLOADING)) {
@@ -980,8 +980,13 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    public boolean shareFileToPeers(File file, String progressId, List<String> peerList) {
+    public boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+        if (isReplace == 1 && oldFileInfo != null) {
+            this.notifyTracker(oldFileInfo, false);
+        }
         String fileHash = this.hashFile(file, progressId);
+        String fileName = file.getName();
+        long fileSize = file.length();
         List<PeerInfo> peerInfos = new ArrayList<>();
         for (String peer : peerList) {
             String[] parts = peer.split(":");
@@ -997,7 +1002,11 @@ public class PeerModel implements IPeerModel {
 
         try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
             StringBuilder messageBuilder = new StringBuilder("SHARE_TO_PEERS|");
+            messageBuilder.append(fileName).append("|");
+            messageBuilder.append(fileSize).append("|");
             messageBuilder.append(fileHash).append("|");
+            messageBuilder.append(SERVER_HOST.getIp()).append("|");
+            messageBuilder.append(SERVER_HOST.getPort()).append("|");
             messageBuilder.append(peerList.size()).append("|");
 
             for (String peer : peerList) {
@@ -1011,7 +1020,6 @@ public class PeerModel implements IPeerModel {
             messageBuilder.append("\n");
             String message = messageBuilder.toString();
             socket.getOutputStream().write(message.getBytes());
-            String fileName = file.getName();
             privateSharedFiles.put(new FileInfo(fileName, file.length(), fileHash, this.SERVER_HOST, true), peerInfos);
             this.selectiveSharedFiles.put(fileHash, new HashSet<>(peerList));
             Log.logInfo("Sharing file " + fileName + " (hash: " + fileHash + ") to specific peers: " + peerList + ", message: " + message);
@@ -1591,7 +1599,7 @@ public class PeerModel implements IPeerModel {
                                 String fileHash = f[2];
                                 PeerInfo peerInfo = new PeerInfo(f[3], Integer.parseInt(f[4]));
                                 // Check if this file is shared by us
-                                boolean isSharedByMe = this.publicSharedFiles.containsKey(fileName);
+                                boolean isSharedByMe = this.publicSharedFiles.containsKey(fileName) || this.privateSharedFiles.contains(fileName);
                                 this.sharedFileNames.add(new FileInfo(fileName, fileSize, fileHash, peerInfo, isSharedByMe));
                             }
                         }
@@ -1621,6 +1629,7 @@ public class PeerModel implements IPeerModel {
     public Map<String, FileInfo> getPublicSharedFiles() {
         return this.publicSharedFiles;
     }
+
     public Map<String, FileInfo> getPrivateSharedFiles() {
         Map<String, FileInfo> privateFiles = new HashMap<>();
         for (FileInfo fileInfo : this.privateSharedFiles.keySet()) {
@@ -1672,7 +1681,6 @@ public class PeerModel implements IPeerModel {
                 }
             }
         }
-
     }
 
     public Map<String, ProgressInfo> getProgress() {

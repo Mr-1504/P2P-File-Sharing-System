@@ -29,7 +29,7 @@ public interface IPeerModel {
 
     List<PeerInfo> getPeersWithFile(String fileHash);
 
-    boolean shareFileToPeers(File file, String progressId, List<String> peerList);
+    boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
 
     List<String> getSelectivePeers(String fileHash);
 
@@ -44,6 +44,7 @@ public interface IPeerModel {
     void setSharedFileNames(Set<FileInfo> sharedFileNames);
 
     Map<String, FileInfo> getPublicSharedFiles();
+
     Map<String, FileInfo> getPrivateSharedFiles();
 
     int stopSharingFile(String fileName);

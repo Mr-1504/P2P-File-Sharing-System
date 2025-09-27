@@ -410,7 +410,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForShareToPeers(BiFunction<String, List<String>, String> callable) {
+    public void setRouteForShareToSelectivePeers(TriFunction<String, Integer, List<String>, String> callable) {
         server.createContext("/api/files/share-to-peers", exchange -> {
             addCorsHeaders(exchange);
             try {
@@ -437,7 +437,7 @@ public class P2PApi implements IP2PApi {
                             return;
                         }
 
-                        String result = callable.apply(filePath + "|" + isReplace, peerList);
+                        String result = callable.apply(filePath, isReplace, peerList);
                         logInfo("Share to peers result: " + result);
 
                         switch (result) {

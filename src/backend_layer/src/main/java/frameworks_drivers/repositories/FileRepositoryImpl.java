@@ -55,18 +55,18 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public boolean shareFileToPeers(File file, String progressId, List<String> peerList) {
-        return ((PeerModel) peerModel).shareFileToPeers(file, progressId, peerList);
+    public boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+        return peerModel.shareFileToPeers(file, oldFileInfo, isReplace, progressId, peerList);
     }
 
     @Override
     public List<String> getSelectivePeers(String fileHash) {
-        return ((PeerModel) peerModel).getSelectivePeers(fileHash);
+        return peerModel.getSelectivePeers(fileHash);
     }
 
     @Override
     public List<String> getKnownPeers() {
-        return ((PeerModel) peerModel).getKnownPeers();
+        return peerModel.getKnownPeers();
     }
 
     @Override
@@ -107,7 +107,7 @@ public class FileRepositoryImpl implements FileRepository {
 
     @Override
     public Map<String, FileInfo> getPrivateSharedFiles() {
-        Map<String, FileInfo> modelFiles = ((PeerModel) peerModel).getPrivateSharedFiles();
+        Map<String, FileInfo> modelFiles = peerModel.getPrivateSharedFiles();
         return modelFiles.entrySet().stream()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
@@ -145,13 +145,13 @@ public class FileRepositoryImpl implements FileRepository {
     private FileInfo convertToDomainFileInfo(FileInfo modelFile) {
         PeerInfo peerInfo = convertToDomainPeerInfo(modelFile.getPeerInfo());
         return new FileInfo(modelFile.getFileName(), modelFile.getFileSize(),
-                          modelFile.getFileHash(), peerInfo, modelFile.isSharedByMe());
+                modelFile.getFileHash(), peerInfo, modelFile.isSharedByMe());
     }
 
     private FileInfo convertToModelFileInfo(FileInfo domainFile) {
         PeerInfo peerInfo = convertToModelPeerInfo(domainFile.getPeerInfo());
         return new FileInfo(domainFile.getFileName(), domainFile.getFileSize(),
-                                           domainFile.getFileHash(), peerInfo, domainFile.isSharedByMe());
+                domainFile.getFileHash(), peerInfo, domainFile.isSharedByMe());
     }
 
     private PeerInfo convertToDomainPeerInfo(PeerInfo modelPeer) {
@@ -164,7 +164,7 @@ public class FileRepositoryImpl implements FileRepository {
 
     private ProgressInfo convertToDomainProgressInfo(ProgressInfo modelProgress) {
         ProgressInfo domainProgress = new ProgressInfo(modelProgress.getId(), modelProgress.getStatus(),
-                              modelProgress.getFileName());
+                modelProgress.getFileName());
         domainProgress.setProgressPercentage(modelProgress.getProgressPercentage());
         domainProgress.setBytesTransferred(modelProgress.getBytesTransferred());
         domainProgress.setTotalBytes(modelProgress.getTotalBytes());
@@ -178,7 +178,7 @@ public class FileRepositoryImpl implements FileRepository {
 
     private ProgressInfo convertToModelProgressInfo(ProgressInfo domainProgress) {
         ProgressInfo modelProgress = new ProgressInfo(domainProgress.getId(), domainProgress.getStatus(),
-                                               domainProgress.getFileName());
+                domainProgress.getFileName());
         modelProgress.setProgressPercentage(domainProgress.getProgressPercentage());
         modelProgress.setBytesTransferred(domainProgress.getBytesTransferred());
         modelProgress.setTotalBytes(domainProgress.getTotalBytes());

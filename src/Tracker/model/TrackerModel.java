@@ -262,7 +262,7 @@ public class TrackerModel {
         String peerPort = parts[5];
         String peerInfor = peerIp + "|" + peerPort;
 
-        publicSharedFiles.removeIf(file -> file.getFileHash().equals(fileHash) && file.getPeerInfor().toString().equals(peerInfor));
+        publicSharedFiles.removeIf(file -> file.getFileName().equals(fileName) && file.getPeerInfor().toString().equals(peerInfor));
         Set<String> peers = publicFileToPeers.get(fileName);
         peers.remove(peerInfor);
 

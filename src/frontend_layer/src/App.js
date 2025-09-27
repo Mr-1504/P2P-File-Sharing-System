@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { buildApiUrl } from './config';
 import FileTable from './components/FileTable';
 import Notification from './components/Notification';
 import ConfirmDialog from './components/ConfirmDialog';
@@ -57,14 +58,19 @@ function App() {
     const fetchFiles = async () => {
         setIsLoading(true);
         try {
-            const response = await fetch('http://localhost:8080/api/files/refresh', {
+            const response = await fetch(buildApiUrl('/api/files/refresh'), {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' }
             });
             if (response.ok) {
-                const data = await response.json();
-                setFiles(data);
-                addNotification('Đã tải danh sách tệp', false);
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    setFiles(data);
+                    addNotification('Đã tải danh sách tệp', false);
+                } else {
+                    throw new Error('Server trả về dữ liệu không phải JSON');
+                }
             } else {
                 throw new Error(`Lỗi khi tải danh sách tệp: ${response.status}`);
             }
@@ -95,7 +101,7 @@ function App() {
         if (!(completedTaskCount === taskMap.size)) {
             console.log('Task map size:', taskMap.size);
             try {
-                const response = await fetch("http://localhost:8080/api/progress");
+                const response = await fetch(buildApiUrl('/api/progress'));
                 if (response.ok) {
                     const data = await response.json();
 
@@ -177,7 +183,7 @@ function App() {
 
                         if (completedTasks.length > 0) {
                             try {
-                                await fetch("http://localhost:8080/api/progress/cleanup", {
+                                await fetch(buildApiUrl('/api/progress/cleanup'), {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ taskIds: completedTasks })
@@ -227,7 +233,7 @@ function App() {
             }
 
             const fileName = filePath.split(/[\\/]/).pop();
-            const existResponse = await fetch(`http://localhost:8080/api/files/exists?fileName=${encodeURIComponent(fileName)}`);
+            const existResponse = await fetch(buildApiUrl(`/api/files/exists?fileName=${encodeURIComponent(fileName)}`));
             if (existResponse.ok) {
                 const { exists } = await existResponse.json();
                 if (exists) {
@@ -238,11 +244,11 @@ function App() {
                 }
             }
 
-            // Create a file object for sharing
             const fileForSharing = {
                 filePath,
                 fileName,
-                fileHash: '' // Will be computed by backend
+                fileHash: '',
+                isReplace: 1
             };
 
             setSelectedFileForSharing(fileForSharing);
@@ -257,7 +263,8 @@ function App() {
 
     const handleDialogClose = async (action) => {
         setDialogOpen(false);
-        if (action === -1 || !action) {
+        console.log('Dialog action:', action);
+        if (action === -1) {
             addNotification(t('cancel_sharing_file'), false);
             setPendingFile(null);
             return;
@@ -321,7 +328,7 @@ function App() {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
-            const response = await fetch('http://localhost:8080/api/files/remove', {
+            const response = await fetch(buildApiUrl('/api/files/remove'), {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fileName: file.fileName }),
@@ -329,7 +336,7 @@ function App() {
             });
             clearTimeout(timeoutId);
             if (response.ok) {
-                fetchFiles();
+                fetchFiles();   
                 addNotification(t('cancel_sharing_file', { fileName: file.fileName }), false);
             } else {
                 const errorData = await response.json();
@@ -378,7 +385,7 @@ function App() {
 
         setIsLoading(true);
         try {
-            const response = await fetch('http://localhost:8080/api/files/share-to-peers', {
+            const response = await fetch(buildApiUrl('/api/files/share-to-peers'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -402,7 +409,9 @@ function App() {
     const handleShareAll = async (file) => {
         setIsLoading(true);
         try {
-            const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace || 0);
+            console.log('Sharing file to all peers:', file);
+            console.log('Replace option:', file.isReplace);
+            const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace);
             console.log('Progress ID:', progressId);
             taskMap.set(progressId, { fileName: file.fileName, status: 'starting' });
             addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
@@ -417,12 +426,15 @@ function App() {
     const handleShareSelective = async (file, selectedPeers) => {
         setIsLoading(true);
         try {
-            const response = await fetch('http://localhost:8080/api/files/share-to-peers', {
+            console.log('Sharing file to all peers:', file);
+            console.log('Replace option:', file.isReplace);
+            console.log('Replace option:', file.isReplace || 1);
+            const response = await fetch(buildApiUrl('/api/files/share-to-peers'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     filePath: file.filePath,
-                    isReplace: file.isReplace || 1,
+                    isReplace: file.isReplace,
                     peers: selectedPeers
                 })
             });
@@ -444,7 +456,7 @@ function App() {
 
     const handleResume = async (taskId) => {
         try {
-            const response = await fetch(`http://localhost:8080/api/resume?taskId=${taskId}`, {
+            const response = await fetch(buildApiUrl(`/api/resume?taskId=${taskId}`), {
                 method: 'POST'
             });
 
