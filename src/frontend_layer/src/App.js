@@ -1,49 +1,21 @@
-import { useEffect, useState, useRef } from 'react';
-import { buildApiUrl } from './config';
-import FileTable from './components/FileTable';
-import Notification from './components/Notification';
-import ConfirmDialog from './components/ConfirmDialog';
-import ShareModal from './components/ShareModal';
-import Chat from './components/Chat';
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import FilesPage from './pages/FilesPage';
+import ChatPage from './pages/ChatPage';
 import Tasks from './components/Tasks';
-import { useTranslation } from "react-i18next";
+import Notification from './components/Notification';
+import { useNotifications } from './hooks/useNotifications';
+import { useTasks } from './hooks/useTasks';
 import './App.css';
 
 function App() {
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [pendingFile, setPendingFile] = useState(null);
-    const { t, i18n } = useTranslation();
-
-    const changeLanguage = (lng) => {
-        i18n.changeLanguage(lng === "Tiếng Việt" ? "vi" : "en");
-        setLanguage(lng);
-    };
-    const [taskMap] = useState(new Map());
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState('files');
-    const [files, setFiles] = useState([]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [language, setLanguage] = useState('Tiếng Việt');
-    const [notifications, setNotifications] = useState([]);
-    const [tasks, setTasks] = useState([]);
-    const [taskTimeouts, setTaskTimeouts] = useState({});
-    const [peers, setPeers] = useState([
-        { id: 1, name: 'Peer 1', ip: '192.168.1.1', status: 'Online' },
-        { id: 2, name: 'Peer 2', ip: '192.168.1.2', status: 'Offline' }
-    ]);
-    const [messages, setMessages] = useState({
-        1: [
-            { sender: 'You', text: 'Xin chào!', timestamp: '10:00 AM' },
-            { sender: 'Peer 1', text: 'Chào bạn!', timestamp: '10:01 AM' }
-        ],
-        2: [{ sender: 'You', text: 'Bạn có tệp nào không?', timestamp: '09:00 AM' }]
-    });
-    const [selectedPeer, setSelectedPeer] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [showSplash, setShowSplash] = useState(true);
-    const [shareModalOpen, setShareModalOpen] = useState(false);
-    const [selectedFileForSharing, setSelectedFileForSharing] = useState(null);
-    const prevTasksLength = useRef(0);
-    const [isNewTask, setIsNewTask] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [showSplash, setShowSplash] = useState(false);
+    
+    const { notifications, addNotification, removeNotification } = useNotifications();
+    const { tasks, setTasks, taskMap, isNewTask, handleResume } = useTasks(addNotification);
 
     const addNotification = (message, isError) => {
         const id = Date.now();
@@ -91,6 +63,7 @@ function App() {
 
     const queryProgress = async () => {
         if (taskMap.size === 0) return;
+        
         let completedTaskCount = 0;
         taskMap.forEach((info, id) => {
             if (['completed', 'failed', 'canceled', 'timeout'].includes(info.status)) {
@@ -99,42 +72,47 @@ function App() {
         });
 
         if (!(completedTaskCount === taskMap.size)) {
-            console.log('Task map size:', taskMap.size);
             try {
                 const response = await fetch(buildApiUrl('/api/progress'));
                 if (response.ok) {
                     const data = await response.json();
+                    
+                    if (data) {
+                        let completedTasks = [];
+                        const now = Date.now();
+                        const timeoutThreshold = 2 * 60 * 1000; // 2 minutes
 
-                        if (data) {
-                            let completedTasks = [];
-                            const now = Date.now();
-                            const timeoutThreshold = 2 * 60 * 1000; // 2 minutes
+                        setTasks(prev => {
+                            let updated = [...prev];
 
-                            setTasks(prev => {
-                                let updated = [...prev];
+                            Object.entries(data).forEach(([id, info]) => {
+                                const taskId = String(id);
+                                const taskIndex = updated.findIndex(t => t.id === taskId);
+                                
+                                // ✅ Lấy taskType từ taskMap
+                                const taskMapInfo = taskMap.get(taskId);
+                                const taskType = taskMapInfo?.taskType || 'download'; // default là download
 
-                                Object.entries(data).forEach(([id, info]) => {
-                                    const taskId = String(id);
+                                if (taskIndex === -1) {
+                                    // Task mới - thêm vào
+                                    updated.push({
+                                        id: taskId,
+                                        taskName: info.fileName || "Unknown Task",
+                                        progress: info.progressPercentage || 0,
+                                        bytesTransferred: info.bytesTransferred || 0,
+                                        totalBytes: info.totalBytes || 1,
+                                        status: info.status,
+                                        taskType: taskType // ✅ Thêm taskType
+                                    });
+                                } else {
+                                    // Task đã tồn tại - cập nhật
+                                    const currentTask = updated[taskIndex];
+                                    let newStatus = (currentTask.status === 'canceled')
+                                        ? currentTask.status
+                                        : info.status;
 
-                                    const taskExists = updated.find(t => t.id === taskId);
-
-                                    if (!taskExists) {
-                                        updated.push({
-                                            id: taskId,
-                                            taskName: info.fileName || "Unknown Task",
-                                            progress: info.progressPercentage || 0,
-                                            bytesTransferred: info.bytesTransferred || 0,
-                                            totalBytes: info.totalBytes || 1,
-                                            status: info.status
-                                        });
-                                    } else {
-                                        // Don't override cancelled status with progress updates
-                                        const currentTask = updated.find(t => t.id === taskId);
-                                        let newStatus = (currentTask.status === 'canceled')
-                                            ? currentTask.status
-                                            : info.status;
-
-                                        // Check for timeout/stalled downloads
+                                    // Check for timeout/stalled downloads (chỉ áp dụng cho download)
+                                    if (taskType === 'download') {
                                         const lastUpdate = taskTimeouts[taskId] || now;
                                         const timeSinceLastUpdate = now - lastUpdate;
 
@@ -142,45 +120,47 @@ function App() {
                                             if (timeSinceLastUpdate >= timeoutThreshold) {
                                                 newStatus = 'timeout';
                                                 addNotification(`Tải xuống ${currentTask.taskName} đã bị timeout`, true);
-                                            } else if (timeSinceLastUpdate >= 30 * 1000) { // 30 seconds for stalled
+                                            } else if (timeSinceLastUpdate >= 30 * 1000) {
                                                 newStatus = 'stalled';
                                             }
                                         }
-
-                                        // Only reset timeout if actual progress was made
-                                        if (currentTask.progress !== info.progressPercentage ||
-                                            currentTask.bytesTransferred !== info.bytesTransferred) {
-                                            setTaskTimeouts(prev => ({
-                                                ...prev,
-                                                [taskId]: now
-                                            }));
-                                        } else {
-                                            setTaskTimeouts(prev => ({
-                                                ...prev,
-                                                [taskId]: lastUpdate
-                                            }));
-                                        }
-
-                                        const updatedTask = {
-                                            ...t,
-                                            taskName: info.fileName || "Unknown Task",
-                                            progress: info.progressPercentage,
-                                            bytesTransferred: info.bytesTransferred,
-                                            totalBytes: info.totalBytes,
-                                            status: newStatus
-                                        };
-
-                                        if (['completed', 'failed', 'canceled', 'timeout'].includes(newStatus)) {
-                                            completedTasks.push(taskId);
-                                        }
-
-                                        return updatedTask;
                                     }
-                                });
 
-                                return updated;
+                                    // Update timeout tracking
+                                    if (currentTask.progress !== info.progressPercentage ||
+                                        currentTask.bytesTransferred !== info.bytesTransferred) {
+                                        setTaskTimeouts(prev => ({
+                                            ...prev,
+                                            [taskId]: now
+                                        }));
+                                    } else {
+                                        setTaskTimeouts(prev => ({
+                                            ...prev,
+                                            [taskId]: lastUpdate
+                                        }));
+                                    }
+
+                                    // Cập nhật task trong mảng
+                                    updated[taskIndex] = {
+                                        ...currentTask,
+                                        taskName: info.fileName || "Unknown Task",
+                                        progress: info.progressPercentage,
+                                        bytesTransferred: info.bytesTransferred,
+                                        totalBytes: info.totalBytes,
+                                        status: newStatus,
+                                        taskType: taskType // ✅ Giữ nguyên taskType
+                                    };
+
+                                    if (['completed', 'failed', 'canceled', 'timeout'].includes(newStatus)) {
+                                        completedTasks.push(taskId);
+                                    }
+                                }
                             });
 
+                            return updated;
+                        });
+
+                        // Cleanup completed tasks
                         if (completedTasks.length > 0) {
                             try {
                                 await fetch(buildApiUrl('/api/progress/cleanup'), {
@@ -194,8 +174,6 @@ function App() {
                             }
                         }
                     }
-                } else {
-                    console.error("Lỗi khi truy vấn tiến trình:", response.status);
                 }
             } catch (error) {
                 console.error("Lỗi khi truy vấn tiến trình:", error);
@@ -314,7 +292,12 @@ function App() {
                 savePath
             });
             console.log('Progress ID:', progressId);
-            taskMap.set(progressId, { fileName: file.fileName.trim(), status: 'starting' });
+            // ✅ Thêm taskType: 'download'
+            taskMap.set(progressId, { 
+                fileName: file.fileName.trim(), 
+                status: 'starting',
+                taskType: 'download'
+            });
         } catch (error) {
             addNotification(t('error_downloading_file', { error: error.message }), true);
             console.error('Error in handleDownload:', error);
@@ -413,7 +396,12 @@ function App() {
             console.log('Replace option:', file.isReplace);
             const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace);
             console.log('Progress ID:', progressId);
-            taskMap.set(progressId, { fileName: file.fileName, status: 'starting' });
+            // ✅ Thêm taskType: 'share'
+            taskMap.set(progressId, { 
+                fileName: file.fileName, 
+                status: 'starting',
+                taskType: 'share'
+            });
             addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
         } catch (error) {
             addNotification(t('error_sharing_file', { error: error.message }), true);
@@ -426,9 +414,8 @@ function App() {
     const handleShareSelective = async (file, selectedPeers) => {
         setIsLoading(true);
         try {
-            console.log('Sharing file to all peers:', file);
+            console.log('Sharing file to selected peers:', file);
             console.log('Replace option:', file.isReplace);
-            console.log('Replace option:', file.isReplace || 1);
             const response = await fetch(buildApiUrl('/api/files/share-to-peers'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -441,7 +428,12 @@ function App() {
 
             if (response.ok) {
                 const progressId = await response.json();
-                taskMap.set(progressId, { fileName: file.fileName, status: 'starting' });
+                // ✅ Thêm taskType: 'share'
+                taskMap.set(progressId, { 
+                    fileName: file.fileName, 
+                    status: 'starting',
+                    taskType: 'share'
+                });
                 fetchFiles();
             } else {
                 const errorData = await response.json();
