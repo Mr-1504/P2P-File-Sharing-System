@@ -299,7 +299,7 @@ public class P2PApi implements IP2PApi {
                         }
                     default:
                         sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
-                                jsonError("Method not allowed"));
+                                jsonError("Method not allowed: " + exchange.getRequestMethod()));
                 }
             } catch (Exception e) {
                 sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,

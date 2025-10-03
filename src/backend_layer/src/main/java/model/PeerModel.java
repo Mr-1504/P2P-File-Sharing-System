@@ -29,7 +29,6 @@ public class PeerModel implements IPeerModel {
     private ConcurrentHashMap<String, FileInfo> publicSharedFiles;
     private ConcurrentHashMap<FileInfo, List<PeerInfo>> privateSharedFiles;
     private Set<FileInfo> sharedFileNames;
-    private final ConcurrentHashMap<String, Set<String>> selectiveSharedFiles;
     private final ExecutorService executor;
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<SocketChannel>> openChannels;
     private final ConcurrentHashMap<String, List<Future<Boolean>>> futures;
@@ -47,7 +46,6 @@ public class PeerModel implements IPeerModel {
         this.fileLock = new ReentrantLock();
         this.publicSharedFiles = new ConcurrentHashMap<>();
         this.privateSharedFiles = new ConcurrentHashMap<>();
-        this.selectiveSharedFiles = new ConcurrentHashMap<>();
         loadData();
         this.sharedFileNames = new HashSet<>();
         this.executor = Executors.newFixedThreadPool(8);
@@ -317,7 +315,13 @@ public class PeerModel implements IPeerModel {
     private void sendFileInfor(SocketChannel clientChannel, String fileName) {
         try {
             FileInfo fileInfo = this.publicSharedFiles.get(fileName);
-            String response = getResponse(fileName, fileInfo);
+            String response;
+            if (fileInfo != null) {
+                response = "FILE_INFO|" + fileName + "|" + fileInfo.getFileSize() + "|" + fileInfo.getPeerInfo().getIp()
+                        + "|" + fileInfo.getPeerInfo().getPort() + "|" + fileInfo.getFileHash() + "\n";
+            } else {
+                response = "FILE_NOT_FOUND|" + fileName + "\n";
+            }
             ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
             int totalBytesWritten = 0;
 
@@ -333,20 +337,8 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private static String getResponse(String fileName, FileInfo file) {
-        String response;
-        if (file != null) {
-            String var10000 = file.getFileName();
-            response = "FILE_INFO|" + var10000 + "|" + file.getFileSize() + "|" + file.getPeerInfo().getIp() + "|" + file.getPeerInfo().getPort() + "|" + file.getFileHash() + "\n";
-        } else {
-            response = "FILE_NOT_FOUND|" + fileName + "\n";
-        }
-
-        return response;
-    }
-
-    private void acceptConnection(SelectionKey var1) throws IOException {
-        ServerSocketChannel serverSocketChannel = (ServerSocketChannel) var1.channel();
+    private void acceptConnection(SelectionKey key) throws IOException {
+        ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
         SocketChannel socketChannel = serverSocketChannel.accept();
         Log.logInfo("Accepted connection from: " + socketChannel.getRemoteAddress());
         socketChannel.configureBlocking(false);
@@ -417,6 +409,8 @@ public class PeerModel implements IPeerModel {
             try {
                 if (isReplace == 1 && oldFileInfo != null) {
                     this.notifyTracker(oldFileInfo, false);
+                    publicSharedFiles.remove(oldFileInfo);
+                    privateSharedFiles.remove(oldFileInfo);
                 }
 
                 String fileHash = this.hashFile(file, progressId);
@@ -460,8 +454,6 @@ public class PeerModel implements IPeerModel {
                 return null;
             } else {
                 progressInfo.setStatus(ProgressInfo.ProgressStatus.SHARING);
-                progressInfo.setTotalBytes(fileSize);
-                progressInfo.setBytesTransferred(readbyte);
 
                 int readedByteCount;
                 while ((readedByteCount = fileInputStream.read(bytes)) != -1) {
@@ -471,17 +463,15 @@ public class PeerModel implements IPeerModel {
 
                     messageDigest.update(bytes, 0, readedByteCount);
                     readbyte += readedByteCount;
-                    int percentage = (int) ((double) readbyte * (double) 100.0F / (double) fileSize);
+                    int percentage = (int) ((double) readbyte * (double) 25.0F / (double) fileSize) + 70;
                     synchronized (progressInfo) {
                         progressInfo.setProgressPercentage(percentage);
-                        progressInfo.setBytesTransferred(readbyte);
                     }
                 }
 
-                String fullFileHash = this.bytesToHex(messageDigest.digest());
-                return fullFileHash;
+                return this.bytesToHex(messageDigest.digest());
             }
-        } catch (NoSuchAlgorithmException | IOException var16) {
+        } catch (NoSuchAlgorithmException | IOException e) {
             this.processes.get(progressId).setStatus(ProgressInfo.ProgressStatus.FAILED);
             return null;
         }
@@ -518,8 +508,8 @@ public class PeerModel implements IPeerModel {
         HashSet<FileInfo> publicSet = new HashSet<>();
 
         for (Map.Entry<String, FileInfo> s : this.publicSharedFiles.entrySet()) {
-            FileInfo var4 = s.getValue();
-            publicSet.add(var4);
+            FileInfo file = s.getValue();
+            publicSet.add(file);
         }
 
         return publicSet;
@@ -527,16 +517,15 @@ public class PeerModel implements IPeerModel {
 
     private int notifyTracker(FileInfo fileInfo, boolean isShared) {
         try {
-            byte var5;
-            try (Socket var3 = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-                String var4 = (isShared ? "SHARE" : "UNSHARED_FILE") + "|" + fileInfo.getFileName() + "|" + fileInfo.getFileSize() + "|" + fileInfo.getFileHash() + "|" + this.SERVER_HOST.getIp() + "|" + this.SERVER_HOST.getPort();
-                var3.getOutputStream().write(var4.getBytes());
-                String var10000 = fileInfo.getFileName();
-                Log.logInfo("Notified tracker about shared file: " + var10000 + ", message: " + var4);
-                var5 = 1;
+            byte res;
+            try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
+                String query = (isShared ? "SHARE" : "UNSHARED_FILE") + "|" + fileInfo.getFileName() + "|" + fileInfo.getFileSize() + "|" + fileInfo.getFileHash() + "|" + this.SERVER_HOST.getIp() + "|" + this.SERVER_HOST.getPort();
+                socket.getOutputStream().write(query.getBytes());
+                Log.logInfo("Notified tracker about shared file: " + fileInfo.getFileName() + ", message: " + query);
+                res = 1;
             }
 
-            return var5;
+            return res;
         } catch (IOException e) {
             Log.logError("Error notifying tracker about shared file: " + fileInfo.getFileName(), e);
             return 0;
@@ -546,8 +535,8 @@ public class PeerModel implements IPeerModel {
     private String bytesToHex(byte[] bytes) {
         StringBuilder hex = new StringBuilder();
 
-        for (byte var6 : bytes) {
-            hex.append(String.format("%02x", var6));
+        for (byte b : bytes) {
+            hex.append(String.format("%02x", b));
         }
 
         return hex.toString();
@@ -817,7 +806,7 @@ public class PeerModel implements IPeerModel {
             try {
                 Log.logInfo("Retrying to download chunk " + chunkIndex + " from peer " + peerInfo.getIp() + ":" + peerInfo.getPort() + " (attempt " + (i + 1) + ")");
                 peerInfo.addTaskForDownload();
-                peerOfChunk.computeIfAbsent(chunkIndex, (var0) -> new ArrayList<>()).add(peerInfo);
+                peerOfChunk.computeIfAbsent(chunkIndex, (v) -> new ArrayList<>()).add(peerInfo);
                 Future<Boolean> future = this.executor.submit(() -> {
                     this.fileLock.lock();
 
@@ -863,7 +852,7 @@ public class PeerModel implements IPeerModel {
             try {
                 Log.logInfo("Retrying to download chunk " + chunkIndex + " from peer " + peerInfo.getIp() + ":" + peerInfo.getPort() + " (attempt " + (i + 1) + ")");
                 peerInfo.addTaskForDownload();
-                peerOfChunk.computeIfAbsent(chunkIndex, (var0) -> new ArrayList<>()).add(peerInfo);
+                peerOfChunk.computeIfAbsent(chunkIndex, (v) -> new ArrayList<>()).add(peerInfo);
                 Future<Boolean> future = this.executor.submit(() -> {
                     this.fileLock.lock();
 
@@ -906,7 +895,7 @@ public class PeerModel implements IPeerModel {
             }
 
             PeerInfo peerInfo = peerInfos.stream().filter(
-                            (var1x) -> !usedPeers.contains(var1x) && var1x.isAvailableForDownload())
+                            (peer) -> !usedPeers.contains(peer) && peer.isAvailableForDownload())
                     .min(Comparator.comparingInt(PeerInfo::getTaskForDownload))
                     .orElse(null);
             if (peerInfo != null) {
@@ -983,10 +972,14 @@ public class PeerModel implements IPeerModel {
     public boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
         if (isReplace == 1 && oldFileInfo != null) {
             this.notifyTracker(oldFileInfo, false);
+            publicSharedFiles.remove(oldFileInfo);
+            privateSharedFiles.remove(oldFileInfo);
         }
         String fileHash = this.hashFile(file, progressId);
         String fileName = file.getName();
         long fileSize = file.length();
+        FileInfo sharedFile = new FileInfo(fileName, file.length(), fileHash, this.SERVER_HOST, true);
+
         List<PeerInfo> peerInfos = new ArrayList<>();
         for (String peer : peerList) {
             String[] parts = peer.split(":");
@@ -1020,8 +1013,7 @@ public class PeerModel implements IPeerModel {
             messageBuilder.append("\n");
             String message = messageBuilder.toString();
             socket.getOutputStream().write(message.getBytes());
-            privateSharedFiles.put(new FileInfo(fileName, file.length(), fileHash, this.SERVER_HOST, true), peerInfos);
-            this.selectiveSharedFiles.put(fileHash, new HashSet<>(peerList));
+            privateSharedFiles.put(sharedFile, peerInfos);
             Log.logInfo("Sharing file " + fileName + " (hash: " + fileHash + ") to specific peers: " + peerList + ", message: " + message);
             BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String response = buff.readLine();
@@ -1488,8 +1480,8 @@ public class PeerModel implements IPeerModel {
             }
 
             Log.logInfo("Access denied response sent to client");
-        } catch (IOException var4) {
-            Log.logError("Error sending access denied response: " + var4.getMessage(), var4);
+        } catch (IOException e) {
+            Log.logError("Error sending access denied response: " + e.getMessage(), e);
         }
 
     }
@@ -1645,7 +1637,7 @@ public class PeerModel implements IPeerModel {
         } else {
             FileInfo fileInfo = this.publicSharedFiles.get(fileName);
             this.publicSharedFiles.remove(fileName);
-            this.sharedFileNames.removeIf((var1x) -> var1x.getFileName().equals(fileName));
+            this.sharedFileNames.removeIf((file) -> file.getFileName().equals(fileName));
             String appPath = AppPaths.getAppDataDirectory();
             String filePath = appPath + "/shared_files/" + fileName;
             File file = new File(filePath);

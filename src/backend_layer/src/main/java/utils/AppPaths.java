@@ -41,11 +41,19 @@ public class AppPaths {
     }
 
     public static boolean copyFileToShare(File sourceFile, String newfileName, ProgressInfo progressInfor) {
+        // lấy thời gian bắt đầu
+        long start = System.currentTimeMillis();
         File destFile = new File(getSharedFile(newfileName));
         try (
                 InputStream in = new FileInputStream(sourceFile);
                 OutputStream out = new FileOutputStream(destFile)
         ) {
+            synchronized (progressInfor) {
+                progressInfor.setBytesTransferred(0);
+                progressInfor.setTotalBytes(sourceFile.length());
+                progressInfor.setStatus(ProgressInfo.ProgressStatus.SHARING);
+                progressInfor.setProgressPercentage(0);
+            }
             byte[] buffer = new byte[4096];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
@@ -56,7 +64,13 @@ public class AppPaths {
                     return false;
                 }
                 out.write(buffer, 0, bytesRead);
+                synchronized (progressInfor) {
+                    progressInfor.addBytesTransferred(bytesRead);
+                    int progress = (int) ((progressInfor.getBytesTransferred() * 70) / progressInfor.getTotalBytes());
+                    progressInfor.setProgressPercentage(progress);
+                }
             }
+            System.out.println("Total time: " + (System.currentTimeMillis() - start) + " ms");
             return true;
         } catch (IOException e) {
             e.printStackTrace();
