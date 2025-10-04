@@ -11,7 +11,7 @@ This project is a peer-to-peer (P2P) file-sharing application built using Java a
 -   **Graphical User Interface:** An intuitive and responsive UI built with JavaFX allows for easy interaction, including sharing, searching, and downloading files.
 -   **File Discovery:** Users can search for files across the network based on keywords.
 -   **Real-time Logging:** The application provides a log view to monitor system activities, connection status, and transfer progress.
--   **Dynamic File Management:** Users can add new files to share or stop sharing existing files at any time.
+-   **Dynamic File Management:** Users can add new files to share or stop sharing existing files at any time
 
 ## System Architecture
 
