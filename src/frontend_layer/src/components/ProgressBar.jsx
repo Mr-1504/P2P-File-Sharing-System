@@ -217,27 +217,27 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
     const getStatusText = (status, taskType) => {
         if (taskType === 'sharing') {
             switch (status) {
-                case 'starting': return 'Đang chuẩn bị chia sẻ';
-                case 'sharing': 
+                case 'starting': return t('preparing_share');
+                case 'sharing':
                 case 'downloading': // Backend có thể trả về 'downloading' cho share task
-                case 'uploading': 
-                    return 'Đang chia sẻ';
-                case 'completed': return 'Chia sẻ hoàn thành';
-                case 'failed': return 'Chia sẻ thất bại';
-                case 'canceled': return 'Đã hủy chia sẻ';
-                default: return `Chia sẻ: ${status}`;
+                case 'uploading':
+                    return t('sharing');
+                case 'completed': return t('share_completed');
+                case 'failed': return t('share_failed');
+                case 'canceled': return t('share_canceled');
+                default: return `${t('sharing')}: ${status}`;
             }
         } else {
             switch (status) {
-                case 'starting': return 'Đang chuẩn bị tải xuống';
-                case 'downloading': return 'Đang tải xuống';
-                case 'completed': return 'Tải xuống hoàn thành';
-                case 'failed': return 'Tải xuống thất bại';
-                case 'canceled': return 'Đã hủy tải xuống';
-                case 'timeout': return 'Tải xuống timeout';
-                case 'stalled': return 'Tải xuống bị treo';
-                case 'resumable': return 'Có thể tiếp tục';
-                default: return `Tải xuống: ${status}`;
+                case 'starting': return t('preparing_download');
+                case 'downloading': return t('downloading');
+                case 'completed': return t('download_completed');
+                case 'failed': return t('download_failed');
+                case 'canceled': return t('download_canceled');
+                case 'timeout': return t('download_timeout');
+                case 'stalled': return t('download_stalled');
+                case 'resumable': return t('resumable');
+                default: return `${t('downloading')}: ${status}`;
             }
         }
     };
@@ -262,7 +262,7 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                                     <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                                     </svg>
-                                    Chia sẻ tệp
+                                    {t('sharing_files')}
                                 </h3>
                                 <div className="space-y-4">
                                     {sharingTasks.map(task => {
@@ -332,10 +332,10 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                                                         <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
                                                         </svg>
-                                                        Chia sẻ tệp
+                                                        {t('sharing_files')}
                                                     </div>
                                                     <div className="text-3xl font-bold text-blue-700">{task.progress}%</div>
-                                                    <div className="text-blue-500 text-xs mt-1">Hoàn thành</div>
+                                                    <div className="text-blue-500 text-xs mt-1">{t('completed')}</div>
                                                 </div>
                                             </div>
                                         );
@@ -354,7 +354,7 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                                     <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                                     </svg>
-                                    Tải xuống tệp
+                                    {t('downloading_files')}
                                 </h3>
                                 <div className="space-y-4">
                                     {downloadingTasks.map(task => {

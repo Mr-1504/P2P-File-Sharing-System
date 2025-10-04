@@ -190,9 +190,8 @@ function App() {
                     />
                 )}
                 {activeTab === 'chat' && (
-                    <ChatPage 
+                    <ChatPage
                         addNotification={addNotification}
-                        peers={peers}
                         messages={messages}
                         onSendMessage={handleSendMessage}
                         selectedPeer={selectedPeer}

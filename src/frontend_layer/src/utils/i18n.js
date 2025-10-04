@@ -61,7 +61,22 @@ i18n.use(initReactI18next).init({
         new_task_started: "Có tiến trình mới bắt đầu",
         files_loaded: "Đã tải danh sách tệp",
         error_loading_files: "Lỗi khi tải danh sách tệp",
-        invalid_json_response: "Server trả về dữ liệu không phải JSON"
+        invalid_json_response: "Server trả về dữ liệu không phải JSON",
+        sharing_files: "Chia sẻ tệp",
+        downloading_files: "Tải xuống tệp",
+        preparing_share: "Đang chuẩn bị chia sẻ",
+        sharing: "Đang chia sẻ",
+        share_completed: "Chia sẻ hoàn thành",
+        share_failed: "Chia sẻ thất bại",
+        share_canceled: "Đã hủy chia sẻ",
+        preparing_download: "Đang chuẩn bị tải xuống",
+        downloading: "Đang tải xuống",
+        download_completed: "Tải xuống hoàn thành",
+        download_failed: "Tải xuống thất bại",
+        download_canceled: "Đã hủy tải xuống",
+        download_timeout: "Tải xuống timeout",
+        download_stalled: "Tải xuống bị treo",
+        resumable: "Có thể tiếp tục"
       }
     },
     en: {
@@ -122,7 +137,22 @@ i18n.use(initReactI18next).init({
         new_task_started: "A new task has started",
         files_loaded: "Files loaded",
         error_loading_files: "Error loading files",
-        invalid_json_response: "Server returned invalid JSON response"
+        invalid_json_response: "Server returned invalid JSON response",
+        sharing_files: "Sharing Files",
+        downloading_files: "Downloading Files",
+        preparing_share: "Preparing to share",
+        sharing: "Sharing",
+        share_completed: "Share completed",
+        share_failed: "Share failed",
+        share_canceled: "Share canceled",
+        preparing_download: "Preparing download",
+        downloading: "Downloading",
+        download_completed: "Download completed",
+        download_failed: "Download failed",
+        download_canceled: "Download canceled",
+        download_timeout: "Download timeout",
+        download_stalled: "Download stalled",
+        resumable: "Resumable"
       }
     }
   },

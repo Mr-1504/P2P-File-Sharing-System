@@ -5,7 +5,8 @@ export const useNotifications = () => {
 
     const addNotification = (message, isError = false) => {
         const id = Date.now();
-        setNotifications(prev => [...prev, { message, isError, id }]);
+        // Xóa tất cả thông báo cũ trước khi thêm thông báo mới
+        setNotifications([{ message, isError, id }]);
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== id));
         }, 3000);
