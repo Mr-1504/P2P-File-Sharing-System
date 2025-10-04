@@ -22,7 +22,7 @@ public interface FileRepository {
     int refreshSharedFileNames();
     Set<FileInfo> getSharedFileNames();
     void setSharedFileNames(Set<FileInfo> sharedFileNames);
-    Map<String, FileInfo> getPuclicSharedFiles();
+    Map<String, FileInfo> getPublicSharedFiles();
     Map<String, FileInfo> getPrivateSharedFiles();
     int stopSharingFile(String fileName);
     Map<String, ProgressInfo> getProgress();

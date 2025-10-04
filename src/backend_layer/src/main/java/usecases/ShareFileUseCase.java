@@ -1,7 +1,6 @@
 package main.java.usecases;
 
 import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.PeerInfo;
 import main.java.domain.entities.ProgressInfo;
 import main.java.domain.repositories.FileRepository;
 import main.java.utils.AppPaths;
@@ -30,7 +29,7 @@ public class ShareFileUseCase {
                 return LogTag.S_ERROR;
             }
 
-            FileInfo oldFileInfo = fileRepository.getPuclicSharedFiles().get(file.getName());
+            FileInfo oldFileInfo = fileRepository.getPublicSharedFiles().get(file.getName());
             if (oldFileInfo == null) {
                 oldFileInfo = fileRepository.getPrivateSharedFiles().get(file.getName());
             }
@@ -41,7 +40,7 @@ public class ShareFileUseCase {
         }
     }
 
-    public String excuteShareFileToSelectivePeer
+    public String executeShareFileToSelectivePeer
             (String filePath, int isReplace, String fileName, List<String> peersList, String progressId){
         File file = new File(filePath);
             ProgressInfo progressInfo = fileRepository.getProgress().get(progressId);
@@ -53,7 +52,7 @@ public class ShareFileUseCase {
                 return LogTag.S_ERROR;
             }
 
-             FileInfo oldFileInfo = fileRepository.getPuclicSharedFiles().get(file.getName());
+             FileInfo oldFileInfo = fileRepository.getPublicSharedFiles().get(file.getName());
             if (oldFileInfo == null) {
                 oldFileInfo = fileRepository.getPrivateSharedFiles().get(file.getName());
             }

@@ -96,7 +96,7 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public Map<String, FileInfo> getPuclicSharedFiles() {
+    public Map<String, FileInfo> getPublicSharedFiles() {
         Map<String, FileInfo> modelFiles = peerModel.getPublicSharedFiles();
         return modelFiles.entrySet().stream()
                 .collect(Collectors.toMap(

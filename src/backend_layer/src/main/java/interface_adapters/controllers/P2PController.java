@@ -259,7 +259,7 @@ public class P2PController {
             fileRepository.setProgress(newProgress);
             String finalFileName = fileName;
             executor.submit(() -> {
-                shareFileUseCase.excuteShareFileToSelectivePeer(filePath, isReplace, finalFileName, peerList, progressId);
+                shareFileUseCase.executeShareFileToSelectivePeer(filePath, isReplace, finalFileName, peerList, progressId);
             });
 
             return progressId;
