@@ -54,7 +54,14 @@ i18n.use(initReactI18next).init({
         transferred: "Đã chuyển",
         total: "Tổng cộng",
         speed: "Tốc độ",
-        no_active_transfers: "Không có hoạt động chuyển tiếp nào"
+        no_active_transfers: "Không có hoạt động chuyển tiếp nào",
+        download_timeout: "Tải xuống {{taskName}} đã bị timeout",
+        resume_download_success: "Đã tiếp tục tải xuống",
+        resume_download_error: "Lỗi khi tiếp tục tải xuống",
+        new_task_started: "Có tiến trình mới bắt đầu",
+        files_loaded: "Đã tải danh sách tệp",
+        error_loading_files: "Lỗi khi tải danh sách tệp",
+        invalid_json_response: "Server trả về dữ liệu không phải JSON"
       }
     },
     en: {
@@ -108,7 +115,14 @@ i18n.use(initReactI18next).init({
         transferred: "Transferred",
         total: "Total",
         speed: "Speed",
-        no_active_transfers: "No active transfers"
+        no_active_transfers: "No active transfers",
+        download_timeout: "Download {{taskName}} has timed out",
+        resume_download_success: "Download resumed successfully",
+        resume_download_error: "Error resuming download",
+        new_task_started: "A new task has started",
+        files_loaded: "Files loaded",
+        error_loading_files: "Error loading files",
+        invalid_json_response: "Server returned invalid JSON response"
       }
     }
   },

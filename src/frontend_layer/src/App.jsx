@@ -11,8 +11,7 @@ import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
 import './styles/App.css';
 
-// Giả định hàm buildApiUrl nếu chưa có
-const buildApiUrl = (path) => `http://localhost:3000${path}`; // Thay đổi base URL nếu cần
+import { buildApiUrl } from './utils/config';
 
 function App() {
     const { t } = useTranslation();
@@ -22,24 +21,18 @@ function App() {
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [language, setLanguage] = useState('vi');
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [pendingFile, setPendingFile] = useState(null);
-    const [shareModalOpen, setShareModalOpen] = useState(false);
-    const [selectedFileForSharing, setSelectedFileForSharing] = useState(null);
     const [messages, setMessages] = useState({});
     const [selectedPeer, setSelectedPeer] = useState(null);
-    const [peers, setPeers] = useState([]);
-    const [taskTimeouts, setTaskTimeouts] = useState({});
     const [isNewTask, setIsNewTask] = useState(false);
 
     const { notifications, addNotification, removeNotification } = useNotifications();
-    const { tasks, setTasks, taskMap } = useTasks(addNotification);
+    const { tasks, setTasks, taskMap, handleResume } = useTasks(addNotification);
 
     const prevTasksLength = useRef(0);
 
     useEffect(() => {
         if (tasks.length > prevTasksLength.current) {
-            addNotification('Có tiến trình mới bắt đầu', false);
+            addNotification(t('new_task_started'), false);
             setIsNewTask(true);
             setTimeout(() => setIsNewTask(false), 2000);
         }
@@ -63,7 +56,7 @@ function App() {
                 if (contentType && contentType.includes('application/json')) {
                     const data = await response.json();
                     setFiles(data);
-                    addNotification('Đã tải danh sách tệp', false);
+                    addNotification(t('files_loaded'), false);
                 } else {
                     throw new Error('Server trả về dữ liệu không phải JSON');
                 }
@@ -71,7 +64,7 @@ function App() {
                 throw new Error(`Lỗi khi tải danh sách tệp: ${response.status}`);
             }
         } catch (error) {
-            addNotification('Lỗi khi tải danh sách tệp', true);
+            addNotification(t('error_loading_files'), true);
             console.error(error);
         } finally {
             setIsLoading(false);
@@ -85,150 +78,7 @@ function App() {
         return () => clearTimeout(timer);
     }, []);
 
-    useEffect(() => {
-        if (tasks.length > prevTasksLength.current) {
-            addNotification('Có tiến trình mới bắt đầu', false);
-            setIsNewTask(true);
-            setTimeout(() => setIsNewTask(false), 2000); // Reset animation after 2 seconds
-        }
-        prevTasksLength.current = tasks.length;
-    }, [tasks.length]);
 
-    // const handleFileUpload = async () => {
-    //     if (!window.electronAPI || !window.electronAPI.selectFile) {
-    //         addNotification(t('cannot_load_electronAPI'), true);
-    //         return;
-    //     }
-
-    //     setIsLoading(true);
-    //     try {
-    //         const filePath = await window.electronAPI.selectFile();
-    //         if (!filePath) {
-    //             addNotification(t('no_file_selected'), true);
-    //             return;
-    //         }
-
-    //         const fileName = filePath.split(/[\\/]/).pop();
-    //         const existResponse = await fetch(buildApiUrl(`/api/files/exists?fileName=${encodeURIComponent(fileName)}`));
-    //         if (existResponse.ok) {
-    //             const { exists } = await existResponse.json();
-    //             if (exists) {
-    //                 setPendingFile({ filePath, fileName });
-    //                 setDialogOpen(true);
-    //                 setIsLoading(false);
-    //                 return;
-    //             }
-    //         }
-
-    //         const fileForSharing = {
-    //             filePath,
-    //             fileName,
-    //             fileHash: '',
-    //             isReplace: 1
-    //         };
-
-    //         setSelectedFileForSharing(fileForSharing);
-    //         setShareModalOpen(true);
-    //     } catch (error) {
-    //         addNotification(t('error_sharing_file', { error: error.message }), true);
-    //         console.error('Error in handleFileUpload:', error);
-    //     } finally {
-    //         setIsLoading(false);
-    //     }
-    // };
-
-    // const handleDialogClose = async (action) => {
-    //     setDialogOpen(false);
-    //     console.log('Dialog action:', action);
-    //     if (action === -1) {
-    //         addNotification(t('cancel_sharing_file'), false);
-    //         setPendingFile(null);
-    //         return;
-    //     }
-
-    //     if (!pendingFile) return;
-
-    //     setIsLoading(true);
-    //     try {
-    //         const isReplace = action === 1 ? 1 : 0;
-
-    //         const fileForSharing = {
-    //             filePath: pendingFile.filePath,
-    //             fileName: pendingFile.fileName,
-    //             isReplace: isReplace
-    //         };
-
-    //         setSelectedFileForSharing(fileForSharing);
-    //         setShareModalOpen(true);
-    //     } catch (error) {
-    //         addNotification(t('error_sharing_file', { error: error.message }), true);
-    //         console.error('Error in handleDialogClose:', error);
-    //     } finally {
-    //         setPendingFile(null);
-    //         setIsLoading(false);
-    //     }
-    // };
-
-    // const handleDownload = async (file) => {
-    //     if (!window.electronAPI) {
-    //         addNotification(t('cannot_load_electronAPI'), true);
-    //         return;
-    //     }
-
-    //     setIsLoading(true);
-    //     try {
-    //         const savePath = await window.electronAPI.saveFile(file.fileName);
-    //         if (!savePath) {
-    //             addNotification(t('no_file_selected'), true);
-    //             return;
-    //         }
-
-    //         addNotification(t('start_download_file', { fileName: file.fileName }), false);
-    //         const progressId = await window.electronAPI.downloadFile({
-    //             fileName: file.fileName.trim(),
-    //             peerInfo: `${file.peerInfo.ip}:${file.peerInfo.port}`,
-    //             savePath
-    //         });
-    //         console.log('Progress ID:', progressId);
-    //         // Thêm taskType: 'download'
-    //         taskMap.set(progressId, { 
-    //             fileName: file.fileName.trim(), 
-    //             status: 'starting',
-    //             taskType: 'download'
-    //         });
-    //     } catch (error) {
-    //         addNotification(t('error_downloading_file', { error: error.message }), true);
-    //         console.error('Error in handleDownload:', error);
-    //     } finally {
-    //         setIsLoading(false);
-    //     }
-    // };
-
-    // const handleStopSharing = async (file) => {
-    //     setIsLoading(true);
-    //     try {
-    //         const controller = new AbortController();
-    //         const timeoutId = setTimeout(() => controller.abort(), 10000);
-    //         const response = await fetch(buildApiUrl('/api/files/remove'), {
-    //             method: 'DELETE',
-    //             headers: { 'Content-Type': 'application/json' },
-    //             body: JSON.stringify({ fileName: file.fileName }),
-    //             signal: controller.signal
-    //         });
-    //         clearTimeout(timeoutId);
-    //         if (response.ok) {
-    //             fetchFiles();   
-    //             addNotification(t('cancel_sharing_file', { fileName: file.fileName }), false);
-    //         } else {
-    //             const errorData = await response.json();
-    //             throw new Error(t('error_cancel_sharing_file', { error: errorData.error || response.status }));
-    //         }
-    //     } catch (error) {
-    //         addNotification(t('error_cancel_sharing_file', { error: error.message }), true);
-    //     } finally {
-    //         setIsLoading(false);
-    //     }
-    // };
 
     const handleSearch = async () => {
         addNotification(t('search', { searchTerm }), false);
@@ -253,132 +103,7 @@ function App() {
         fetchFiles();
     };
 
-//     const handleShareToPeers = async (file, isReplace) => {
-//         // For simplicity, we'll use a prompt to get peer IPs
-//         const peerInput = prompt('Nhập danh sách IP peer (cách nhau bằng dấu phẩy):', '192.168.1.1:8080,192.168.1.2:8080');
-//         if (!peerInput) return;
 
-//         const peerList = peerInput.split(',').map(peer => peer.trim()).filter(peer => peer);
-//         if (peerList.length === 0) {
-//             addNotification('Không có peer nào được chọn', true);
-//             return;
-//         }
-
-//         setIsLoading(true);
-//         try {
-//             const response = await fetch(buildApiUrl('/api/files/share-to-peers'), {
-//                 method: 'POST',
-//                 headers: { 'Content-Type': 'application/json' },
-//                 body: JSON.stringify({
-//                     filePath: file.filePath,
-//                     isReplace: isReplace,
-//                     peers: peerList
-//                 })
-//             });
-
-//             console.log('progressId:', response.body);
-//             taskMap.set(response.body, { fileName: file.fileName, status: 'starting' });
-//             fetchFiles();
-
-//         } catch (error) {
-//             addNotification(`Lỗi khi chia sẻ file: ${error.message}`, true);
-//         } finally {
-//             setIsLoading(false);
-//         }
-//     };
-
-//     const handleShareAll = async (file) => {
-//     setIsLoading(true);
-//     try {
-//         console.log('handleShareAll started'); // Log đầu tiên để confirm hàm chạy
-//         console.log('file:', file);
-//         console.log('window.electronAPI exists?', !!window.electronAPI); // Check API
-
-//         if (!window.electronAPI) {
-//             throw new Error('electronAPI not available - running in browser?');
-//         }
-
-//         const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace);
-//         console.log('progressId received:', progressId); // Log ngay sau await
-
-//         // Thêm taskType: 'share'
-//         taskMap.set(progressId, { 
-//             fileName: file.fileName, 
-//             status: 'starting',
-//             taskType: 'share'
-//         });
-        
-//         console.log('task:', taskMap.get(progressId));
-//         console.log('taskMap:', taskMap);
-//         console.log('taskMap size:', taskMap.size);
-//         console.log('tasktype:', taskMap.get(progressId)?.taskType);
-//         console.log('taskMap entries:', Array.from(taskMap.entries())); // Fix: Log entries đúng cách
-
-//         addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
-//     } catch (error) {
-//         console.error('Error in handleShareAll:', error); // Đã có
-//         addNotification(t('error_sharing_file', { error: error.message }), true);
-//     } finally {
-//         setIsLoading(false);
-//     }
-// };
-
-//     const handleShareSelective = async (file, selectedPeers) => {
-//         setIsLoading(true);
-//         try {
-//             console.log('Sharing file to selected peers:', file);
-//             console.log('Replace option:', file.isReplace);
-//             const response = await fetch(buildApiUrl('/api/files/share-to-peers'), {
-//                 method: 'POST',
-//                 headers: { 'Content-Type': 'application/json' },
-//                 body: JSON.stringify({
-//                     filePath: file.filePath,
-//                     isReplace: file.isReplace,
-//                     peers: selectedPeers
-//                 })
-//             });
-
-//             if (response.ok) {
-//                 const progressId = await response.json();
-//                 // Thêm taskType: 'share'
-//                 taskMap.set(progressId, { 
-//                     fileName: file.fileName, 
-//                     status: 'starting',
-//                     taskType: 'share'
-//                 });
-//                 fetchFiles();
-//             } else {
-//                 const errorData = await response.json();
-//                 throw new Error(errorData.error || `Lỗi: ${response.status}`);
-//             }
-//         } catch (error) {
-//             addNotification(`Lỗi khi chia sẻ file: ${error.message}`, true);
-//         } finally {
-//             setIsLoading(false);
-//         }
-//     };
-
-    const handleResume = async (taskId) => {
-        try {
-            const response = await fetch(buildApiUrl(`/api/resume?taskId=${taskId}`), {
-                method: 'POST'
-            });
-
-            if (response.ok) {
-                setTasks(prev =>
-                    prev.map(t =>
-                        t.id === taskId ? { ...t, status: 'downloading' } : t
-                    )
-                );
-                addNotification('Đã tiếp tục tải xuống', false);
-            } else {
-                addNotification('Lỗi khi tiếp tục tải xuống', true);
-            }
-        } catch (err) {
-            console.error('Lỗi khi resume task:', err);
-            addNotification('Lỗi khi tiếp tục tải xuống', true);
-        }
-    };
 
     const handleSendMessage = (peerId, text) => {
         const newMessage = { sender: 'You', text, timestamp: new Date().toLocaleTimeString() };
@@ -493,15 +218,6 @@ function App() {
                     />
                 ))}
             </div>
-            {/* Các modal khác nếu cần
-            <ConfirmDialog open={dialogOpen} onClose={FilesPage.handleDialogClose} />
-            <ShareModal
-                isOpen={shareModalOpen}
-                onClose={() => setShareModalOpen(false)}
-                onShareAll={handleShareAll}
-                onShareSelective={handleShareSelective}
-                file={selectedFileForSharing}
-            /> */}
         </>
     );
 }

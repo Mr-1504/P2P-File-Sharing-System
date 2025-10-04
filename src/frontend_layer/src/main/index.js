@@ -17,6 +17,7 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1500,
         height: 700,
+        icon: path.join(__dirname, '../src/assets/newlogo.svg'), // Sử dụng logo từ assets
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,

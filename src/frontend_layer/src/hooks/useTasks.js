@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { buildApiUrl } from '../utils/config';
 
 export const useTasks = (addNotification) => {
+    const { t } = useTranslation();
     const [tasks, setTasks] = useState([]);
     const [taskTimeouts, setTaskTimeouts] = useState({});
     const [taskMap] = useState(new Map());
@@ -65,7 +67,7 @@ export const useTasks = (addNotification) => {
                                     if (newStatus === 'downloading' || newStatus === 'starting') {
                                         if (timeSinceLastUpdate >= timeoutThreshold) {
                                             newStatus = 'timeout';
-                                            addNotification(`Tải xuống ${currentTask.taskName} đã bị timeout`, true);
+                                            addNotification(t('download_timeout', { taskName: currentTask.taskName }), true);
                                         } else if (timeSinceLastUpdate >= 30 * 1000) {
                                             newStatus = 'stalled';
                                         }
@@ -148,13 +150,13 @@ export const useTasks = (addNotification) => {
                         t.id === taskId ? { ...t, status: 'downloading' } : t
                     )
                 );
-                addNotification('Đã tiếp tục tải xuống', false);
+                addNotification(t('resume_download_success'), false);
             } else {
                 throw new Error('Lỗi khi tiếp tục tải xuống');
             }
         } catch (err) {
             console.error('Lỗi khi resume task:', err);
-            addNotification('Lỗi khi tiếp tục tải xuống', true);
+            addNotification(t('resume_download_error'), true);
         }
     };
 

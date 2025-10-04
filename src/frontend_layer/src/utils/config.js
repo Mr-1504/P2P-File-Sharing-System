@@ -20,3 +20,6 @@ export function buildApiUrl(path = '') {
   if (!path.startsWith('/')) path = '/' + path;
   return API_BASE_URL + path;
 }
+
+// Legacy export for backward compatibility
+export default buildApiUrl;
