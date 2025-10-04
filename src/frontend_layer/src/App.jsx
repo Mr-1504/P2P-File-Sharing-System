@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import i18n from './i18n'; // Giả định file i18n.js tồn tại
+import i18n from './utils/i18n'; // Giả định file i18n.js tồn tại
 import FilesPage from './pages/FilesPage';
 import ChatPage from './pages/ChatPage';
 import Tasks from './components/Tasks';
@@ -9,7 +9,7 @@ import ConfirmDialog from './components/ConfirmDialog'; // Giả định import
 import ShareModal from './components/ShareModal'; // Giả định import
 import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
-import './App.css';
+import './styles/App.css';
 
 // Giả định hàm buildApiUrl nếu chưa có
 const buildApiUrl = (path) => `http://localhost:3000${path}`; // Thay đổi base URL nếu cần
@@ -79,132 +79,11 @@ function App() {
         }
     };
 
-    // const queryProgress = async () => {
-    //     if (taskMap.size === 0) return;
-    //     let completedTaskCount = 0;
-    //     taskMap.forEach((info, id) => {
-    //         if (['completed', 'failed', 'canceled', 'timeout'].includes(info.status)) {
-    //             completedTaskCount++;
-    //         }
-    //     });
-
-    //     if (!(completedTaskCount === taskMap.size)) {
-    //         try {
-    //             const response = await fetch(buildApiUrl('/api/progress'));
-    //             if (response.ok) {
-    //                 const data = await response.json();
-    //                 if (data) {
-    //                     let completedTasks = [];
-    //                     const now = Date.now();
-    //                     const timeoutThreshold = 2 * 60 * 1000; // 2 minutes
-
-    //                     setTasks(prev => {
-    //                         let updated = [...prev];
-    //                         Object.entries(data).forEach(([id, info]) => {
-    //                             const taskId = String(id);
-    //                             const taskIndex = updated.findIndex(t => t.id === taskId);
-    //                             // Lấy taskType từ taskMap
-    //                             const taskMapInfo = taskMap.get(taskId);
-    //                             const taskType = taskMapInfo?.taskType || 'download'; // default là download
-
-    //                             if (taskIndex === -1) {
-    //                                 // Task mới - thêm vào
-    //                                 updated.push({
-    //                                     id: taskId,
-    //                                     taskName: info.fileName || "Unknown Task",
-    //                                     progress: info.progressPercentage || 0,
-    //                                     bytesTransferred: info.bytesTransferred || 0,
-    //                                     totalBytes: info.totalBytes || 1,
-    //                                     status: info.status,
-    //                                     taskType: taskType // Thêm taskType
-    //                                 });
-    //                             } else {
-    //                                 // Task đã tồn tại - cập nhật
-    //                                 const currentTask = updated[taskIndex];
-    //                                 let newStatus = (currentTask.status === 'canceled')
-    //                                     ? currentTask.status
-    //                                     : info.status;
-
-    //                                 // Check for timeout/stalled downloads (chỉ áp dụng cho download)
-    //                                 if (taskType === 'download') {
-    //                                     const lastUpdate = taskTimeouts[taskId] || now;
-    //                                     const timeSinceLastUpdate = now - lastUpdate;
-
-    //                                     if (newStatus === 'downloading' || newStatus === 'starting') {
-    //                                         if (timeSinceLastUpdate >= timeoutThreshold) {
-    //                                             newStatus = 'timeout';
-    //                                             addNotification(`Tải xuống ${currentTask.taskName} đã bị timeout`, true);
-    //                                         } else if (timeSinceLastUpdate >= 30 * 1000) {
-    //                                             newStatus = 'stalled';
-    //                                         }
-    //                                     }
-    //                                 }
-
-    //                                 // Update timeout tracking
-    //                                 if (currentTask.progress !== info.progressPercentage ||
-    //                                     currentTask.bytesTransferred !== info.bytesTransferred) {
-    //                                     setTaskTimeouts(prev => ({
-    //                                         ...prev,
-    //                                         [taskId]: now
-    //                                     }));
-    //                                 } else {
-    //                                     setTaskTimeouts(prev => ({
-    //                                         ...prev,
-    //                                         [taskId]: taskTimeouts[taskId] || now
-    //                                     }));
-    //                                 }
-
-    //                                 // Cập nhật task trong mảng
-    //                                 updated[taskIndex] = {
-    //                                     ...currentTask,
-    //                                     taskName: info.fileName || "Unknown Task",
-    //                                     progress: info.progressPercentage,
-    //                                     bytesTransferred: info.bytesTransferred,
-    //                                     totalBytes: info.totalBytes,
-    //                                     status: newStatus,
-    //                                     taskType: taskType // Giữ nguyên taskType
-    //                                 };
-
-    //                                 if (['completed', 'failed', 'canceled', 'timeout'].includes(newStatus)) {
-    //                                     completedTasks.push(taskId);
-    //                                 }
-    //                             }
-    //                         });
-
-    //                         return updated;
-    //                     });
-
-    //                     // Cleanup completed tasks
-    //                     if (completedTasks.length > 0) {
-    //                         try {
-    //                             await fetch(buildApiUrl('/api/progress/cleanup'), {
-    //                                 method: "POST",
-    //                                 headers: { "Content-Type": "application/json" },
-    //                                 body: JSON.stringify({ taskIds: completedTasks })
-    //                             });
-    //                             console.log("Đã báo backend cleanup:", completedTasks);
-    //                         } catch (err) {
-    //                             console.error("Lỗi khi cleanup backend:", err);
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         } catch (error) {
-    //             console.error("Lỗi khi truy vấn tiến trình:", error);
-    //         }
-    //     }
-    // };
-
     useEffect(() => {
         const timer = setTimeout(() => setShowSplash(false), 10000);
         fetchFiles();
         return () => clearTimeout(timer);
     }, []);
-
-    // useEffect(() => {
-    //     const interval = setInterval(queryProgress, 2000);
-    //     return () => clearInterval(interval);
-    // }, [taskMap]); // Dependency trên taskMap thay vì []
 
     useEffect(() => {
         if (tasks.length > prevTasksLength.current) {

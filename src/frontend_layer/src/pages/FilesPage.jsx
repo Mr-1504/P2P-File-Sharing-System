@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import FileTable from '../components/FileTable';
 import ShareModal from '../components/ShareModal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { buildApiUrl } from '../config';
+import { buildApiUrl } from '../utils/config';
 
 const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
     const { t, i18n } = useTranslation();
