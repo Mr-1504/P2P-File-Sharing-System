@@ -27,3 +27,10 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+*.class
+*.cer
+*.jks
+.env
+/shared_files
+lib/linux/lib/libjfxwebkit.so
