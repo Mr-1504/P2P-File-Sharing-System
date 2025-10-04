@@ -1,11 +1,14 @@
 package main.java.model;
 
+import main.java.domain.entities.FileInfo;
+import main.java.domain.entities.PeerInfo;
+import main.java.domain.entities.ProgressInfo;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
 
 public interface IPeerModel {
     void initializeServerSocket() throws IOException;
@@ -16,29 +19,39 @@ public interface IPeerModel {
 
     int registerWithTracker();
 
-    void shareFileAsync(File file, String fileName, String progressId);
+    void shareFileAsync(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo);
 
     void shareFileList();
 
-    void downloadFile(FileInfor fileInfor, File saveFile, List<PeerInfor> peers, String progressId);
+    void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId);
 
-    List<PeerInfor> getPeersWithFile(String fileHash);
+    void resumeDownload(String progressId);
+
+    List<PeerInfo> getPeersWithFile(String fileHash);
+
+    boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
+
+    List<String> getSelectivePeers(String fileHash);
+
+    List<String> getKnownPeers();
 
     void loadSharedFiles();
 
     int refreshSharedFileNames();
 
-    Set<FileInfor> getSharedFileNames();
+    Set<FileInfo> getSharedFileNames();
 
-    void setSharedFileNames(Set<FileInfor> sharedFileNames);
+    void setSharedFileNames(Set<FileInfo> sharedFileNames);
 
-    Map<String, FileInfor> getMySharedFiles();
+    Map<String, FileInfo> getPublicSharedFiles();
+
+    Map<String, FileInfo> getPrivateSharedFiles();
 
     int stopSharingFile(String fileName);
 
-    Map<String, ProgressInfor> getProgress();
+    Map<String, ProgressInfo> getProgress();
 
-    void setProgress(ProgressInfor progressInfor);
+    void setProgress(ProgressInfo progressInfo);
 
     void cleanupProgress(List<String> progressIds);
 }

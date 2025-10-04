@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer }) => {
     const [messageInput, setMessageInput] = useState('');
+    const { t } = useTranslation();
 
     const handleSend = () => {
         if (messageInput.trim() && selectedPeer) {
@@ -13,7 +15,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
     return (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="md:col-span-1 bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-                <h3 className="text-xl font-bold mb-4 text-gray-800">Danh sách Peer</h3>
+                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('peerList')}</h3>
                 <ul className="space-y-3">
                     {peers.map(peer => (
                         <li
@@ -32,7 +34,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
             <div className="md:col-span-3 bg-white rounded-xl shadow-lg border border-gray-100 p-6 flex flex-col">
                 {selectedPeer ? (
                     <>
-                        <h3 className="text-xl font-bold mb-4 text-gray-800">Chat với {selectedPeer.name}</h3>
+                        <h3 className="text-xl font-bold mb-4 text-gray-800">{t('chat_with')} {selectedPeer.name}</h3>
                         <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-lg space-y-4 max-h-[400px]">
                             {(messages[selectedPeer.id] || []).map((msg, index) => (
                                 <div key={index} className={`flex ${msg.sender === 'You' ? 'justify-end' : 'justify-start'}`}>
@@ -56,12 +58,12 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                                 onClick={handleSend}
                                 className="px-6 py-3 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition-colors duration-200"
                             >
-                                Gửi
+                                {t('send')}
                             </button>
                         </div>
                     </>
                 ) : (
-                    <p className="text-center text-gray-500 flex-1 flex items-center justify-center text-lg">Chọn một peer để bắt đầu chat</p>
+                    <p className="text-center text-gray-500 flex-1 flex items-center justify-center text-lg">{t('select_peer')}</p>
                 )}
             </div>
         </div>

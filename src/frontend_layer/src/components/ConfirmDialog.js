@@ -1,68 +1,61 @@
-// import React from "react";
-
-// export default function ConfirmDialog({ open, onClose }) {
-//   if (!open) return null;
-
-//   return (
-//     <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-//       <div className="bg-white p-6 rounded-2xl shadow-xl">
-//         <p className="text-lg font-semibold mb-4">
-//           Tệp đã tồn tại, bạn muốn làm gì?
-//         </p>
-//         <div className="flex gap-3">
-//           <button
-//             className="px-4 py-2 bg-gray-500 text-white rounded-lg"
-//             onClick={() => onClose(-1)}
-//           >
-//             Hủy
-//           </button>
-//           <button
-//             className="px-4 py-2 bg-yellow-500 text-white rounded-lg"
-//             onClick={() => onClose(0)}
-//           >
-//             Tiếp tục
-//           </button>
-//           <button
-//             className="px-4 py-2 bg-green-600 text-white rounded-lg"
-//             onClick={() => onClose(1)}
-//           >
-//             Thay thế
-//           </button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-
 import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from 'react-i18next';
+  
 
-export default function ConfirmDialog({ 
-  open, 
-  title = "Xác nhận", 
-  message, 
-  buttons = [], 
-  onClose 
-}) {
-  if (!open) return null;
+
+export default function ConfirmDialog({ open, onClose }) {
+  const { t } = useTranslation();
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-      <div className="bg-white p-6 rounded-2xl shadow-xl min-w-[300px]">
-        <p className="text-lg font-semibold mb-4">{title}</p>
-        {message && <p className="mb-4">{message}</p>}
-        <div className="flex gap-3 justify-end">
-          {buttons.map((btn, idx) => (
-            <button
-              key={idx}
-              className={`px-4 py-2 rounded-lg ${btn.className}`}
-              onClick={() => onClose(btn.value)}
-            >
-              {btn.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <motion.div
+            className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full mx-4"
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.7, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          >
+            <p className="text-xl font-semibold text-gray-800 mb-6 text-center">
+              {t('file_exists')}
+            </p>
+            <div className="flex justify-center gap-4">
+              <motion.button
+                className="px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                onClick={() => onClose(-1)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {t('cancel')}
+              </motion.button>
+              <motion.button
+                className="px-6 py-2.5 bg-yellow-500 text-white rounded-lg font-medium hover:bg-yellow-600 transition-colors"
+                onClick={() => onClose(0)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {t('continue')}
+              </motion.button>
+              <motion.button
+                className="px-6 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                onClick={() => onClose(1)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {t('replace')}
+              </motion.button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
