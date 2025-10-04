@@ -279,26 +279,26 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
 
     return (
         <div>
-            <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-100">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-6 space-y-4 md:space-y-0 md:space-x-4">
-                    <div className="flex items-center space-x-4 w-full md:w-auto">
+            <div className="modern-card p-8 mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-center mb-8 space-y-6 md:space-y-0">
+                    <div className="flex items-center space-x-4">
                         <button
                             onClick={handleFileUpload}
-                            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors duration-200 disabled:opacity-50"
+                            className="modern-button flex items-center px-6 py-3"
                             disabled={isLoading}
                         >
-                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                             </svg>
-                            {t('selectFile')}
+                            <span className="font-semibold">{t('selectFile')}</span>
                         </button>
                     </div>
-                    <div className="flex items-center space-x-4 w-full md:w-auto">
-                        <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">{t('language')}:</label>
+                    <div className="flex items-center space-x-4">
+                        <label className="text-sm font-semibold text-gray-700">{t('language')}:</label>
                         <select
                             value={language}
                             onChange={(e) => changeLanguage(e.target.value)}
-                            className="border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            className="modern-input px-4 py-2"
                             disabled={isLoading}
                         >
                             <option>Tiếng Việt</option>
@@ -306,65 +306,67 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
                         </select>
                     </div>
                 </div>
-                
-                <div className="flex items-center space-x-4 mb-6">
-                    <input
-                        type="text"
-                        placeholder="Tìm kiếm tệp..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                        className="border border-gray-200 rounded-lg px-4 py-3 flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        disabled={isLoading}
-                    />
+
+                <div className="flex flex-col md:flex-row items-center space-x-0 md:space-x-4 mb-8 space-y-4 md:space-y-0">
+                    <div className="flex-1 w-full md:w-auto">
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm tệp..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                            className="modern-input px-4 py-3 w-full"
+                            disabled={isLoading}
+                        />
+                    </div>
                     <button
                         onClick={handleSearch}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors duration-200 disabled:opacity-50"
+                        className="modern-button flex items-center px-6 py-3 whitespace-nowrap"
                         disabled={isLoading}
                     >
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
-                        {t('search')}
+                        <span className="font-semibold">{t('search')}</span>
                     </button>
                 </div>
-                
+
                 <div className="flex flex-wrap gap-4">
                     <button
                         onClick={handleMyFiles}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors duration-200 disabled:opacity-50"
+                        className="modern-button flex items-center px-6 py-3"
                         disabled={isLoading}
                     >
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
                         </svg>
-                        {t('myFiles')}
+                        <span className="font-semibold">{t('myFiles')}</span>
                     </button>
                     <button
                         onClick={handleAllFiles}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors duration-200 disabled:opacity-50"
+                        className="modern-button flex items-center px-6 py-3"
                         disabled={isLoading}
                     >
-                        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
                         </svg>
-                        {t('allFiles')}
+                        <span className="font-semibold">{t('allFiles')}</span>
                     </button>
                     <button
                         onClick={handleRefresh}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center transition-colors duration-200 disabled:opacity-50"
+                        className="modern-button flex items-center px-6 py-3"
                         disabled={isLoading}
                     >
                         {isLoading ? (
-                            <svg className="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 mr-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
                         ) : (
-                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                             </svg>
                         )}
-                        {t('refresh')}
+                        <span className="font-semibold">{t('refresh')}</span>
                     </button>
                 </div>
             </div>

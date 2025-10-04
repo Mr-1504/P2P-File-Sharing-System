@@ -14,16 +14,25 @@ function createWindow() {
         return;
     }
 
+    const iconPath = path.join(__dirname, '../../public/logo.ico');
     const win = new BrowserWindow({
-        width: 1500,
-        height: 700,
-        icon: path.join(__dirname, '../src/assets/newlogo.svg'), // Sử dụng logo từ assets
-        webPreferences: {
-            preload: preloadPath,
-            contextIsolation: true,
-            enableRemoteModule: false,
-        },
+    width: 1500,
+    height: 700,
+    icon: iconPath,
+    webPreferences: { preload: preloadPath }
     });
+
+
+    // const win = new BrowserWindow({
+    //     width: 1500,
+    //     height: 700,
+    //     ...(iconPath && { icon: iconPath }), // Chỉ set icon khi có path (production)
+    //     webPreferences: {
+    //         preload: preloadPath,
+    //         contextIsolation: true,
+    //         enableRemoteModule: false,
+    //     },
+    // });
 
     win.webContents.openDevTools();
 

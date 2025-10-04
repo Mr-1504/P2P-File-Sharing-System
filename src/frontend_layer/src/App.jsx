@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import i18n from './utils/i18n'; // Giả định file i18n.js tồn tại
+import i18n from './utils/i18n';
+import logo from './assets/logo.svg';
 import FilesPage from './pages/FilesPage';
 import ChatPage from './pages/ChatPage';
 import Tasks from './components/Tasks';
 import Notification from './components/Notification';
-import ConfirmDialog from './components/ConfirmDialog'; // Giả định import
-import ShareModal from './components/ShareModal'; // Giả định import
 import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
 import './styles/App.css';
@@ -124,47 +123,53 @@ function App() {
     return (
         <>
             {showSplash && (
-                <div className="fixed inset-0 bg-blue-600 bg-opacity-90 flex flex-col items-center justify-center z-50 animate-fade-in">
-                    <svg className="w-24 h-24 mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <h2 className="text-2xl font-bold text-white mb-4">{t('loading')}</h2>
-                    <div className="w-12 h-12 border-4 border-t-transparent border-white rounded-full animate-spin"></div>
+                <div className="fixed inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 bg-opacity-95 flex flex-col items-center justify-center z-50 animate-fade-in backdrop-blur-sm">
+                    <div className="relative">
+                        <svg className="w-24 h-24 mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30 animate-ping"></div>
+                    </div>
+                    <h2 className="text-3xl font-bold text-white mb-4 tracking-wider">{t('loading')}</h2>
+                    <div className="w-16 h-16 border-4 border-t-transparent border-white rounded-full animate-spin shadow-lg"></div>
                 </div>
             )}
-            <div className={`container mx-auto p-6 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}>
-                <div className="flex justify-between items-center mb-8">
-                    <h1 className="text-4xl font-extrabold text-blue-900 tracking-tight">{t('title')}</h1>
+            <div className={`container mx-auto p-8 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-700`}>
+                <div className="flex justify-between items-center mb-10">
+                    <div className="flex items-center space-x-4">
+                        <img src={logo} alt="P2P File Sharing Logo" className="w-12 h-12 rounded-xl shadow-lg" />
+                        <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">{t('title')}</h1>
+                    </div>
                     <button
                         onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
-                        className={`p-3 rounded-lg transition-all duration-200 relative ${activeTab === 'tasks' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 hover:bg-blue-50 shadow-lg border border-gray-100'} ${isNewTask ? 'animate-pulse bg-green-500' : ''}`}
+                        className={`p-4 rounded-xl transition-all duration-300 relative ${activeTab === 'tasks' ? 'modern-button' : 'bg-white hover:bg-blue-50 shadow-md border border-gray-200'} ${isNewTask ? 'animate-pulse' : ''}`}
                         title={t('tasks')}
                     >
-                        <svg className={`w-6 h-6 ${isNewTask ? 'animate-bounce' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-6 h-6 ${activeTab === 'tasks' ? 'text-white' : 'text-blue-600'} ${isNewTask ? 'animate-bounce' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
                         {tasks.length > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold shadow-md animate-pulse">
                                 {tasks.length}
                             </span>
                         )}
                     </button>
                 </div>
-                <div className="flex space-x-4 mb-6 bg-white rounded-xl shadow-lg p-2 border border-gray-100">
+                <div className="modern-tab flex space-x-2 mb-8 p-3">
                     <button
                         onClick={() => setActiveTab('files')}
-                        className={`flex-1 py-3 text-lg font-semibold rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 ${activeTab === 'files' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
+                        className={`modern-tab-button flex-1 py-4 text-lg font-semibold flex items-center justify-center space-x-3 ${activeTab === 'files' ? 'active' : 'text-gray-700 hover:text-blue-600'}`}
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-5 h-5 ${activeTab === 'files' ? 'text-white' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
                         <span>{t('files')}</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('chat')}
-                        className={`flex-1 py-3 text-lg font-semibold rounded-lg transition-all duration-200 flex items-center justify-center space-x-2 ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
+                        className={`modern-tab-button flex-1 py-4 text-lg font-semibold flex items-center justify-center space-x-3 ${activeTab === 'chat' ? 'active' : 'text-gray-700 hover:text-blue-600'}`}
                     >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className={`w-5 h-5 ${activeTab === 'chat' ? 'text-white' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
                         </svg>
                         <span>{t('chat')}</span>
