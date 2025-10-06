@@ -1,5 +1,5 @@
 # P2P-File-Sharing-System
-[![Ask DeepWiki](https://devin.ai/assets/askdeepwiki.png)](https://deepwiki.com/Mr-1504/P2P-File-Sharing-System)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Mr-1504/P2P-File-Sharing-System)
 
 This project is a peer-to-peer (P2P) file-sharing application built using Java and JavaFX. It allows users to share and download files directly from each other within a network. The system utilizes a central tracker to facilitate peer discovery and maintain an index of available files.
 
