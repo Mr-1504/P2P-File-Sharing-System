@@ -3,12 +3,12 @@ package model;
 import java.util.Objects;
 import java.io.Serializable;
 
-public class FileInfor extends FileBase implements Serializable {
+public class FileInfo extends FileBase implements Serializable {
     private static final long serialVersionUID = 1L;
     private String fileHash;
 
-    public FileInfor(String fileName, long fileSize, String fileHash, PeerInfor peerInfor) {
-        super(fileName, fileSize, peerInfor);
+    public FileInfo(String fileName, long fileSize, String fileHash, PeerInfo peerInfo) {
+        super(fileName, fileSize, peerInfo);
         this.fileHash = fileHash;
     }
 
@@ -21,8 +21,8 @@ public class FileInfor extends FileBase implements Serializable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false; // Kiểm tra equals của FileBase
-        FileInfor fileInfor = (FileInfor) o;
-        return Objects.equals(fileHash, fileInfor.fileHash);
+        FileInfo fileInfo = (FileInfo) o;
+        return Objects.equals(fileHash, fileInfo.fileHash);
     }
 
     @Override

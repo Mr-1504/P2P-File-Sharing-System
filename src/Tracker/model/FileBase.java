@@ -7,12 +7,12 @@ public class FileBase implements Serializable {
     private static final long serialVersionUID = 1L;
     private String fileName;
     private long fileSize;
-    private PeerInfor peerInfor;
+    private PeerInfo peerInfo;
 
-    public FileBase(String fileName, long fileSize, PeerInfor peerInfor) {
+    public FileBase(String fileName, long fileSize, PeerInfo peerInfo) {
         this.fileName = fileName;
         this.fileSize = fileSize;
-        this.peerInfor = peerInfor;
+        this.peerInfo = peerInfo;
     }
 
     public String getFileName() {
@@ -27,11 +27,11 @@ public class FileBase implements Serializable {
     public void setFileSize(long fileSize) {
         this.fileSize = fileSize;
     }
-    public PeerInfor getPeerInfor() {
-        return peerInfor;
+    public PeerInfo getPeerInfor() {
+        return peerInfo;
     }
-    public void setPeerInfor(PeerInfor peerInfor) {
-        this.peerInfor = peerInfor;
+    public void setPeerInfor(PeerInfo peerInfo) {
+        this.peerInfo = peerInfo;
     }
 
     @Override
@@ -40,16 +40,16 @@ public class FileBase implements Serializable {
         if (o == null || getClass() != o.getClass()) return false;
         FileBase fileBase = (FileBase) o;
         return fileName.equals(fileBase.fileName) &&
-                peerInfor.equals(fileBase.peerInfor);
+                peerInfo.equals(fileBase.peerInfo);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(fileName, peerInfor);
+        return Objects.hash(fileName, peerInfo);
     }
 
     @Override
     public String toString() {
-        return fileName + "'" + fileSize + "'" + peerInfor.getIp() + "'" + peerInfor.getPort();
+        return fileName + "'" + fileSize + "'" + peerInfo.getIp() + "'" + peerInfo.getPort();
     }
 }

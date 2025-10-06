@@ -1,7 +1,5 @@
 import java.io.IOException;
-import java.util.PriorityQueue;
 
-import model.PeerInfor;
 import model.TrackerModel;
 
 

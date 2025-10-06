@@ -8,6 +8,8 @@ import main.java.utils.Infor;
 import main.java.utils.Log;
 import main.java.utils.LogTag;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
@@ -21,13 +23,14 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
+
 public class PeerModel implements IPeerModel {
     private final int CHUNK_SIZE;
     private final PeerInfo SERVER_HOST;
     private final PeerInfo TRACKER_HOST;
     private final Selector selector;
     private ConcurrentHashMap<String, FileInfo> publicSharedFiles;
-    private ConcurrentHashMap<FileInfo, List<PeerInfo>> privateSharedFiles;
+    private ConcurrentHashMap<FileInfo, Set<PeerInfo>> privateSharedFiles;
     private Set<FileInfo> sharedFileNames;
     private final ExecutorService executor;
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<SocketChannel>> openChannels;
@@ -350,16 +353,15 @@ public class PeerModel implements IPeerModel {
 
         while (count < Infor.MAX_RETRIES) {
             try (Socket socket = this.createSocket(this.TRACKER_HOST)) {
-                // Serialize the data structures (simplified for now)
-                String publicFileToPeersJson = "{}"; // TODO: Implement proper serialization
-                String privateSharedFileJson = "{}";
-                String selectiveSharedFilesJson = "{}";
+                // Serialize the data
+                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                String publicFileToPeersJson = gson.toJson(publicSharedFiles);
+                String privateSharedFileJson = gson.toJson(privateSharedFiles);
 
                 StringBuilder registrationMessage = new StringBuilder("REGISTER|");
                 registrationMessage.append(this.SERVER_HOST.getIp()).append("|").append(this.SERVER_HOST.getPort())
                         .append("|").append(publicFileToPeersJson)
                         .append("|").append(privateSharedFileJson)
-                        .append("|").append(selectiveSharedFilesJson)
                         .append("\n");
 
                 String message = registrationMessage.toString();
@@ -1013,11 +1015,13 @@ public class PeerModel implements IPeerModel {
             messageBuilder.append("\n");
             String message = messageBuilder.toString();
             socket.getOutputStream().write(message.getBytes());
-            privateSharedFiles.put(sharedFile, peerInfos);
+            privateSharedFiles.put(sharedFile, new HashSet<>(peerInfos));
             Log.logInfo("Sharing file " + fileName + " (hash: " + fileHash + ") to specific peers: " + peerList + ", message: " + message);
             BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String response = buff.readLine();
             Log.logInfo("Response from tracker: " + response);
+            processes.get(progressId).setStatus(ProgressInfo.ProgressStatus.COMPLETED);
+            processes.get(progressId).setProgressPercentage(100);
             return response != null && response.contains("thành công");
         } catch (IOException e) {
             Log.logError("Error sharing file to peers: " + file.getName(), e);
@@ -1738,7 +1742,7 @@ public class PeerModel implements IPeerModel {
         File privateFile = new File(dataDirPath + File.separator + "privateSharedFiles.dat");
         if (privateFile.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(privateFile))) {
-                this.privateSharedFiles = (ConcurrentHashMap<FileInfo, List<PeerInfo>>) ois.readObject();
+                this.privateSharedFiles = (ConcurrentHashMap<FileInfo, Set<PeerInfo>>) ois.readObject();
                 Log.logInfo("Private shared files loaded successfully.");
             } catch (IOException | ClassNotFoundException e) {
                 Log.logError("Error loading private shared files: " + e.getMessage(), e);
