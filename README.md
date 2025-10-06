@@ -1,17 +1,29 @@
 # P2P-File-Sharing-System
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Mr-1504/P2P-File-Sharing-System)
 
-This project is a peer-to-peer (P2P) file-sharing application built using Java and JavaFX. It allows users to share and download files directly from each other within a network. The system utilizes a central tracker to facilitate peer discovery and maintain an index of available files.
+The P2P File Sharing System is a hybrid peer-to-peer file sharing application combining centralized peer discovery with distributed file transfers. Users can share files with other peers on the network, search for available files, and download files in parallel from multiple sources. The system maintains a centralized tracker for peer registry and file indexing while performing actual file transfers directly between peers.
 
 ## Features
 
 -   **Decentralized File Transfer:** Files are transferred directly between peers without passing through a central server.
 -   **Centralized Tracking:** A tracker server maintains a list of active peers and the metadata of the files they share.
 -   **Multi-source Downloading:** Files are broken down into chunks, which can be downloaded in parallel from multiple peers that have the file, speeding up the download process.
--   **Graphical User Interface:** An intuitive and responsive UI built with JavaFX allows for easy interaction, including sharing, searching, and downloading files.
+-   **Modern Desktop Interface:** Electron-based desktop application with React UI components allows for easy interaction, including sharing, searching, and downloading files.
+-  **Selective Sharing:** Support for both public sharing (all peers) and selective sharing (specific peers).
 -   **File Discovery:** Users can search for files across the network based on keywords.
 -   **Real-time Logging:** The application provides a log view to monitor system activities, connection status, and transfer progress.
 -   **Dynamic File Management:** Users can add new files to share or stop sharing existing files at any time.
+-   **P2P Chat:** A built-in chat feature allows peers to communicate with each other directly.
+-   **Multi-language Support:** The application supports multiple languages, including Vietnamese and English.
+
+## Architecture Overview
+The system consists of three primary components that communicate via multiple protocols:
+
+1. **Electron Frontend:** Developed using React.js and Electron, this component provides the graphical user interface (GUI) for users to interact with the application. It handles file selection, displays file lists, and shows logs and progress updates. Communication with the Java backend is done via IPC (Inter-Process Communication) and HTTP requests.
+
+2. **Java Backend:** The backend is responsible for the core functionality of the application, including file sharing, downloading logic and communication with the tracker, P2P networking. It is built using Java HTTP server for handling requests from the Electron frontend, TCP sockets for peer-to-peer file transfers, and UDP for lightweight messaging. The backend also manages the local file system, breaking files into chunks for efficient transfer.
+
+3. **Tracker Server:** The tracker is a central server that maintains a list of active peers and the metadata of the files they share. It facilitates peer discovery and helps peers find each other for direct file transfers via TCP and UDP.
 
 ## System Architecture
 
@@ -42,7 +54,8 @@ The Tracker is a central server that coordinates the P2P network. Its primary re
 
 -   Java Development Kit (JDK) 11 or newer.
 -   An IDE like IntelliJ IDEA or Eclipse is recommended.
--   The required libraries (`gson`, `java-dotenv`, `openjfx`) are included in the `lib/` directory.
+-   The required libraries (`gson`, `java-dotenv`) are included in the `lib/` directory.
+-   REACT and Electron for the frontend (if applicable).
 
 ### Configuration
 
