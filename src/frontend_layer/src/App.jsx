@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from './utils/i18n';
-import logo from './assets/logo.svg';
+import logo from './assets/logo.png';
 import FilesPage from './pages/FilesPage';
 import ChatPage from './pages/ChatPage';
 import Tasks from './components/Tasks';
 import Notification from './components/Notification';
 import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
-import './styles/App.css';
+// import './styles/App.css';
 
 import { buildApiUrl } from './utils/config';
 

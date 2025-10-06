@@ -14,7 +14,7 @@ function createWindow() {
         return;
     }
 
-    const iconPath = path.join(__dirname, '../../public/logo.ico');
+    const iconPath = path.join(__dirname, '../../public/logo.png');
     const win = new BrowserWindow({
     width: 1500,
     height: 700,
