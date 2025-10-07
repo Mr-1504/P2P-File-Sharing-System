@@ -27,7 +27,7 @@ The system consists of three primary components that communicate via multiple pr
 
 ## System Architecture
 
-The system consists of two main components: the Peer and the Tracker.
+The system consists of two main objects: the Peer and the Tracker.
 
 ### Peer
 
