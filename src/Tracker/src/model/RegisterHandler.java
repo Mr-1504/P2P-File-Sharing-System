@@ -1,10 +1,9 @@
-package model;
+package src.model;
 
-import java.util.Set;
+import src.utils.LogTag;
+import src.utils.RequestInfor;
 
-import static utils.Log.*;
-import utils.LogTag;
-import utils.RequestInfor;
+import static src.utils.Log.logInfo;
 
 public class RegisterHandler implements RequestHandler {
     private final TrackerModel tracker;
@@ -29,7 +28,7 @@ public class RegisterHandler implements RequestHandler {
             logInfo("[TRACKER]: Invalid Port in REGISTER: " + parts[2] + " on " + tracker.getCurrentTime());
             return LogTag.S_INVALID;
         }
-        String peerInfor = peerIp + "|" + peerPort;
+        PeerInfo peerInfor = new PeerInfo(peerIp, Integer.parseInt(peerPort));
         tracker.addKnownPeer(peerInfor);
         logInfo("[TRACKER]: Peer registered: " + peerInfor + " on " + tracker.getCurrentTime());
 

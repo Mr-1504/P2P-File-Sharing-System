@@ -1,4 +1,4 @@
-package utils;
+package src.utils;
 
 public class GetDir {
     public static String getDir() {

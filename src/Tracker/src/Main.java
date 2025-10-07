@@ -1,6 +1,8 @@
+package src;
+
 import java.io.IOException;
 
-import model.TrackerModel;
+import src.model.TrackerModel;
 
 
 public class Main {

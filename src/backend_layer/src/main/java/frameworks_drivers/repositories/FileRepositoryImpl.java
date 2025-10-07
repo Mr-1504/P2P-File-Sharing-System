@@ -5,7 +5,6 @@ import main.java.domain.entities.PeerInfo;
 import main.java.domain.entities.ProgressInfo;
 import main.java.domain.repositories.FileRepository;
 import main.java.model.IPeerModel;
-import main.java.model.PeerModel;
 
 import java.io.File;
 import java.util.List;
@@ -22,23 +21,27 @@ public class FileRepositoryImpl implements FileRepository {
 
     @Override
     public void shareFileAsync(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
-        peerModel.shareFileAsync(file, fileName, progressId, isReplace, oldFileInfo);
+        peerModel.sharePublicFile(file, fileName, progressId, isReplace, oldFileInfo);
     }
 
     @Override
     public void shareFileList() {
-        peerModel.shareFileList();
+        peerModel.shareFileList(peerModel.getPublicFiles(), peerModel.getPrivateSharedFiles());
     }
 
     @Override
     public void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId) {
-        // Convert domain entities to model entities
         FileInfo modelFileInfo = convertToModelFileInfo(fileInfo);
         List<PeerInfo> modelPeers = peers.stream()
                 .map(this::convertToModelPeerInfo)
                 .collect(Collectors.toList());
 
         peerModel.downloadFile(modelFileInfo, saveFile, modelPeers, progressId);
+    }
+
+    @Override
+    public List<String> getKnownPeers() {
+        return peerModel.getKnownPeers();
     }
 
     @Override
@@ -60,16 +63,6 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public List<String> getSelectivePeers(String fileHash) {
-        return peerModel.getSelectivePeers(fileHash);
-    }
-
-    @Override
-    public List<String> getKnownPeers() {
-        return peerModel.getKnownPeers();
-    }
-
-    @Override
     public void loadSharedFiles() {
         peerModel.loadSharedFiles();
     }
@@ -88,14 +81,6 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public void setSharedFileNames(Set<FileInfo> sharedFileNames) {
-        Set<FileInfo> modelFiles = sharedFileNames.stream()
-                .map(this::convertToModelFileInfo)
-                .collect(Collectors.toSet());
-        peerModel.setSharedFileNames(modelFiles);
-    }
-
-    @Override
     public Map<String, FileInfo> getPublicSharedFiles() {
         Map<String, FileInfo> modelFiles = peerModel.getPublicSharedFiles();
         return modelFiles.entrySet().stream()
@@ -106,13 +91,8 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public Map<String, FileInfo> getPrivateSharedFiles() {
-        Map<String, FileInfo> modelFiles = peerModel.getPrivateSharedFiles();
-        return modelFiles.entrySet().stream()
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        e -> convertToDomainFileInfo(e.getValue())
-                ));
+    public Map<FileInfo, Set<PeerInfo>> getPrivateSharedFiles() {
+        return peerModel.getPrivateSharedFiles();
     }
 
     @Override

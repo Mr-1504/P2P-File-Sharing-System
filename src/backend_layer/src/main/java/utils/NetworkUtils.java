@@ -1,10 +1,6 @@
-package utils;
+package main.java.utils;
 
-import java.net.DatagramSocket;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
+import java.net.*;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -12,7 +8,7 @@ import java.util.List;
 /**
  * Utility to obtain a LAN (site-local) IPv4 even when there is no Internet access.
  */
-public class GetLocalIP {
+public class NetworkUtils {
 
     /**
      * Get a LAN IPv4 by scanning network interfaces (no external connectivity required).
@@ -88,6 +84,33 @@ public class GetLocalIP {
         return getLanIpWithFallback();
     }
 
-    private GetLocalIP() {
+    public static String getBroadcastIp() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+
+                String nameLower = ni.getName().toLowerCase();
+                if (nameLower.startsWith("vmnet") || nameLower.startsWith("vbox")
+                        || nameLower.startsWith("docker") || nameLower.startsWith("br-")
+                        || nameLower.startsWith("wg") || nameLower.startsWith("zt")) {
+                    continue;
+                }
+
+                for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
+                    InetAddress addr = ia.getAddress();
+                    if (addr instanceof Inet4Address && addr.isSiteLocalAddress()) {
+                        InetAddress broadcast = ia.getBroadcast();
+                        if (broadcast != null) {
+                            return broadcast.getHostAddress();
+                        }
+                    }
+                }
+            }
+        } catch (SocketException ignored) {
+        }
+        return null;
     }
+
 }

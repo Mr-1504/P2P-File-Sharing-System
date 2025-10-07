@@ -31,7 +31,10 @@ public class ShareFileUseCase {
 
             FileInfo oldFileInfo = fileRepository.getPublicSharedFiles().get(file.getName());
             if (oldFileInfo == null) {
-                oldFileInfo = fileRepository.getPrivateSharedFiles().get(file.getName());
+                oldFileInfo = fileRepository.getPrivateSharedFiles().keySet().stream()
+                        .filter(f -> f.getFileName().equals(file.getName()))
+                        .findFirst()
+                        .orElse(null);
             }
             fileRepository.shareFileAsync(file, fileName, progressId, isReplace, oldFileInfo);
             return progressId;
@@ -41,24 +44,27 @@ public class ShareFileUseCase {
     }
 
     public String executeShareFileToSelectivePeer
-            (String filePath, int isReplace, String fileName, List<String> peersList, String progressId){
+            (String filePath, int isReplace, String fileName, List<String> peersList, String progressId) {
         File file = new File(filePath);
-            ProgressInfo progressInfo = fileRepository.getProgress().get(progressId);
+        ProgressInfo progressInfo = fileRepository.getProgress().get(progressId);
 
-            boolean result = AppPaths.copyFileToShare(file, fileName, progressInfo);
+        boolean result = AppPaths.copyFileToShare(file, fileName, progressInfo);
 
-            if (!result) {
-                progressInfo.setStatus(ProgressInfo.ProgressStatus.FAILED);
-                return LogTag.S_ERROR;
-            }
+        if (!result) {
+            progressInfo.setStatus(ProgressInfo.ProgressStatus.FAILED);
+            return LogTag.S_ERROR;
+        }
 
-             FileInfo oldFileInfo = fileRepository.getPublicSharedFiles().get(file.getName());
-            if (oldFileInfo == null) {
-                oldFileInfo = fileRepository.getPrivateSharedFiles().get(file.getName());
-            }
+        FileInfo oldFileInfo = fileRepository.getPublicSharedFiles().get(file.getName());
+        if (oldFileInfo == null) {
+            oldFileInfo = fileRepository.getPrivateSharedFiles().keySet().stream()
+                    .filter(f -> f.getFileName().equals(file.getName()))
+                    .findFirst()
+                    .orElse(null);
+        }
 
-            fileRepository.shareFileToPeers(file, oldFileInfo, isReplace, progressId, peersList);
-            return progressId;
+        fileRepository.shareFileToPeers(file, oldFileInfo, isReplace, progressId, peersList);
+        return progressId;
     }
 
     private String getUniqueFileName(String baseName, Set<String> existingNames) {

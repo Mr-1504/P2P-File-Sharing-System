@@ -120,4 +120,12 @@ public class AppPaths {
         fileName = name + " (" + (count + 1) + ")" + extension;
         return fileName;
     }
+
+    public static boolean removeSharedFile(String fileName) {
+        File file = new File(getSharedFile(fileName));
+        if (file.exists()) {
+            return file.delete();
+        }
+        return false;
+    }
 }

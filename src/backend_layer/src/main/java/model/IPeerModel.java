@@ -19,9 +19,11 @@ public interface IPeerModel {
 
     int registerWithTracker();
 
-    void shareFileAsync(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo);
+    List<String> getKnownPeers();
 
-    void shareFileList();
+    boolean sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo);
+
+    boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles);
 
     void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId);
 
@@ -31,9 +33,7 @@ public interface IPeerModel {
 
     boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
 
-    List<String> getSelectivePeers(String fileHash);
-
-    List<String> getKnownPeers();
+    List<PeerInfo> getSelectivePeers(String fileHash);
 
     void loadSharedFiles();
 
@@ -45,7 +45,7 @@ public interface IPeerModel {
 
     Map<String, FileInfo> getPublicSharedFiles();
 
-    Map<String, FileInfo> getPrivateSharedFiles();
+    Map<FileInfo, Set<PeerInfo>> getPrivateSharedFiles();
 
     int stopSharingFile(String fileName);
 
@@ -54,4 +54,6 @@ public interface IPeerModel {
     void setProgress(ProgressInfo progressInfo);
 
     void cleanupProgress(List<String> progressIds);
+
+    List<FileInfo> getPublicFiles();
 }
