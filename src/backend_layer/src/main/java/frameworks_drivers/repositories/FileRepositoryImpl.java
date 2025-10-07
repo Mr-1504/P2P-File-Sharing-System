@@ -62,10 +62,10 @@ public class FileRepositoryImpl implements FileRepository {
         return peerModel.shareFileToPeers(file, oldFileInfo, isReplace, progressId, peerList);
     }
 
-    @Override
-    public void loadSharedFiles() {
-        peerModel.loadSharedFiles();
-    }
+//    @Override
+//    public void loadSharedFiles() {
+//        peerModel.loadSharedFiles();
+//    }
 
     @Override
     public int refreshSharedFileNames() {

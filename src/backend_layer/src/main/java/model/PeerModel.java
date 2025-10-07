@@ -511,19 +511,11 @@ public class PeerModel implements IPeerModel {
             }.getType();
             String privateSharedFileJson = gson.toJson(privateFiles, mapType);
 
-            messageBuilder.append(publicFileToPeersJson).
-
-                    append("|")
-                            .
-
-                    append(privateSharedFileJson).
-
-                    append("\n");
+            messageBuilder.append(publicFileToPeersJson).append("|")
+                    .append(privateSharedFileJson).append("\n");
 
             String message = messageBuilder.toString();
-            socket.getOutputStream().
-
-                    write(message.getBytes());
+            socket.getOutputStream().write(message.getBytes());
             // response
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             String response = reader.readLine();
@@ -535,50 +527,48 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-     public List<String> getKnownPeers() {
-         try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-             String request = "GET_KNOWN_PEERS\n";
-             socket.getOutputStream().write(request.getBytes());
-             Log.logInfo("Requesting known peers from tracker, message: " + request);
-             BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-             String response = buff.readLine();
-             if (response == null || response.isEmpty()) {
-                 Log.logInfo("No response from tracker for known peers");
-                 return Collections.emptyList();
-             } else {
-                 String[] parts = response.split("\\|");
-                 if (parts.length != 3 || !parts[0].equals("GET_KNOWN_PEERS")) {
-                     Log.logInfo("Invalid response format from tracker: " + response);
-                     return Collections.emptyList();
-                 } else {
-                     int peerCount = Integer.parseInt(parts[1]);
-                     if (peerCount == 0) {
-                         Log.logInfo("No known peers found");
-                         return Collections.emptyList();
-                     } else {
-                         String[] peerParts = parts[2].split(",");
-                         ArrayList<String> peerInfos = new ArrayList<>();
-
-                         Collections.addAll(peerInfos, peerParts);
-
-                         if (peerInfos.isEmpty()) {
-                             Log.logInfo("No valid known peers found");
-                             return Collections.emptyList();
-                         } else if (peerCount != peerInfos.size()) {
-                             Log.logInfo("Known peer count mismatch: expected " + peerCount + ", found " + peerInfos.size());
-                             return Collections.emptyList();
-                         } else {
-                             Log.logInfo("Received known peers from tracker: " + response);
-                             return peerInfos;
-                         }
-                     }
-                 }
-             }
-         } catch (IOException e) {
+    public List<String> getKnownPeers() {
+        try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
+            String request = "GET_KNOWN_PEERS\n";
+            socket.getOutputStream().write(request.getBytes());
+            Log.logInfo("Requesting known peers from tracker, message: " + request);
+            BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String response = buff.readLine();
+            if (response == null || response.isEmpty()) {
+                Log.logInfo("No response from tracker for known peers");
+                return Collections.emptyList();
+            } else {
+                String[] parts = response.split("\\|");
+                if (parts.length != 3 || !parts[0].equals("GET_KNOWN_PEERS")) {
+                    Log.logInfo("Invalid response format from tracker: " + response);
+                    return Collections.emptyList();
+                } else {
+                    int peerCount = Integer.parseInt(parts[1]);
+                    if (peerCount == 0) {
+                        Log.logInfo("No known peers found");
+                        return Collections.emptyList();
+                    } else {
+                        String[] peerParts = parts[2].split(",");
+                        ArrayList<String> peerInfos = new ArrayList<>();
+                        Collections.addAll(peerInfos, peerParts);
+                        if (peerInfos.isEmpty()) {
+                            Log.logInfo("No valid known peers found");
+                            return Collections.emptyList();
+                        } else if (peerCount != peerInfos.size()) {
+                            Log.logInfo("Known peer count mismatch: expected " + peerCount + ", found " + peerInfos.size());
+                            return Collections.emptyList();
+                        } else {
+                            Log.logInfo("Received known peers from tracker: " + response);
+                            return peerInfos;
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
             Log.logError("Error getting known peers from tracker", e);
             return Collections.emptyList();
         }
-     }
+    }
 
     @Override
     public List<FileInfo> getPublicFiles() {
@@ -1508,38 +1498,38 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    public void loadSharedFiles() {
-        String sharedFolderPath = AppPaths.getAppDataDirectory() + "/shared_files/";
-        File file = new File(sharedFolderPath);
-        if (file.exists() && file.isDirectory()) {
-            File[] files = file.listFiles();
-            if (files != null && files.length != 0) {
-                Log.logInfo("List of shared files in directory: " + file.getAbsolutePath());
-
-                for (File f : files) {
-                    if (f.isFile()) {
-                        String fileName = f.getName();
-                        long fileSize = f.length();
-                        Log.logInfo(" - " + fileName + " (" + fileSize + " bytes)");
-                        String fileHash = this.computeFileHash(f);
-                        if (fileHash.equals("ERROR")) {
-                            Log.logInfo("Error computing hash for file: " + fileName);
-                        } else {
-                            FileInfo fileInfo = new FileInfo(fileName, fileSize, fileHash, this.SERVER_HOST, true);
-                            this.publicSharedFiles.put(fileName, fileInfo);
-                            this.sharedFileNames.add(fileInfo); // Add to sharedFileNames so it's included in API responses
-                        }
-                    }
-                }
-
-            } else {
-                Log.logInfo("No shared files found in directory: " + file.getAbsolutePath());
-            }
-        } else {
-            Log.logInfo("Shared directory does not exist or is not a directory: " + sharedFolderPath);
-            file.mkdir();
-        }
-    }
+//    public void loadSharedFiles() {
+//        String sharedFolderPath = AppPaths.getAppDataDirectory() + "/shared_files/";
+//        File file = new File(sharedFolderPath);
+//        if (file.exists() && file.isDirectory()) {
+//            File[] files = file.listFiles();
+//            if (files != null && files.length != 0) {
+//                Log.logInfo("List of shared files in directory: " + file.getAbsolutePath());
+//
+//                for (File f : files) {
+//                    if (f.isFile()) {
+//                        String fileName = f.getName();
+//                        long fileSize = f.length();
+//                        Log.logInfo(" - " + fileName + " (" + fileSize + " bytes)");
+//                        String fileHash = this.computeFileHash(f);
+//                        if (fileHash.equals("ERROR")) {
+//                            Log.logInfo("Error computing hash for file: " + fileName);
+//                        } else {
+//                            FileInfo fileInfo = new FileInfo(fileName, fileSize, fileHash, this.SERVER_HOST, true);
+//                            this.publicSharedFiles.put(fileName, fileInfo);
+//                            this.sharedFileNames.add(fileInfo); // Add to sharedFileNames so it's included in API responses
+//                        }
+//                    }
+//                }
+//
+//            } else {
+//                Log.logInfo("No shared files found in directory: " + file.getAbsolutePath());
+//            }
+//        } else {
+//            Log.logInfo("Shared directory does not exist or is not a directory: " + sharedFolderPath);
+//            file.mkdir();
+//        }
+//    }
 
     public int refreshSharedFileNames() {
         try (Socket socket = new Socket()) {

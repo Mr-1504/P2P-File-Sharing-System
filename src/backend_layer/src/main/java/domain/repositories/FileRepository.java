@@ -22,7 +22,7 @@ public interface FileRepository {
 
     boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
 
-    void loadSharedFiles();
+//    void loadSharedFiles();
 
     int refreshSharedFileNames();
 
