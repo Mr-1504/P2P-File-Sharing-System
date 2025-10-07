@@ -1,4 +1,4 @@
-package model;
+package src.model;
 
 import java.util.Objects;
 import java.io.Serializable;
@@ -27,7 +27,7 @@ public class FileBase implements Serializable {
     public void setFileSize(long fileSize) {
         this.fileSize = fileSize;
     }
-    public PeerInfo getPeerInfor() {
+    public PeerInfo getPeerInfo() {
         return peerInfo;
     }
     public void setPeerInfor(PeerInfo peerInfo) {

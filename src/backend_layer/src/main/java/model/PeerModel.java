@@ -1,5 +1,7 @@
 package main.java.model;
 
+import com.google.gson.reflect.TypeToken;
+import main.java.domain.adapter.FileInfoAdapter;
 import main.java.domain.entities.FileInfo;
 import main.java.domain.entities.PeerInfo;
 import main.java.domain.entities.ProgressInfo;
@@ -10,7 +12,9 @@ import main.java.utils.LogTag;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+
 import java.io.*;
+import java.lang.reflect.Type;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
@@ -263,7 +267,7 @@ public class PeerModel implements IPeerModel {
             Log.logInfo("Final request: [" + completeRequest + "]");
             if (!completeRequest.isEmpty()) {
                 String clientIP = clientChannel.getRemoteAddress().toString().split(":")[0].replace("/", "");
-                String clientIdentifier = clientIP + "|" + this.SERVER_HOST.getPort();
+                PeerInfo clientIdentifier = new PeerInfo(clientIP, SERVER_HOST.getPort());
                 if (completeRequest.startsWith("SEARCH")) {
                     String fileName = completeRequest.split("\\|")[1];
                     Log.logInfo("Processing SEARCH for file: " + fileName);
@@ -353,10 +357,14 @@ public class PeerModel implements IPeerModel {
 
         while (count < Infor.MAX_RETRIES) {
             try (Socket socket = this.createSocket(this.TRACKER_HOST)) {
-                // Serialize the data
-                Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                String publicFileToPeersJson = gson.toJson(publicSharedFiles);
-                String privateSharedFileJson = gson.toJson(privateSharedFiles);
+                Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
+                        .enableComplexMapKeySerialization().setPrettyPrinting().create();
+                Type publicFileType = new TypeToken<Map<String, FileInfo>>() {
+                }.getType();
+                String publicFileToPeersJson = gson.toJson(publicSharedFiles, publicFileType);
+                Type privateFileType = new TypeToken<Map<FileInfo, Set<PeerInfo>>>() {
+                }.getType();
+                String privateSharedFileJson = gson.toJson(privateSharedFiles, privateFileType);
 
                 StringBuilder registrationMessage = new StringBuilder("REGISTER|");
                 registrationMessage.append(this.SERVER_HOST.getIp()).append("|").append(this.SERVER_HOST.getPort())
@@ -406,43 +414,51 @@ public class PeerModel implements IPeerModel {
         return 0;
     }
 
-    public void shareFileAsync(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
-        this.executor.submit(() -> {
-            try {
-                if (isReplace == 1 && oldFileInfo != null) {
-                    this.notifyTracker(oldFileInfo, false);
-                    publicSharedFiles.remove(oldFileInfo);
-                    privateSharedFiles.remove(oldFileInfo);
-                }
+    public boolean sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
+        try {
+            if (isReplace == 1 && oldFileInfo != null) {
+                this.unshareFile(oldFileInfo);
+                publicSharedFiles.remove(oldFileInfo.getFileName());
+                privateSharedFiles.remove(oldFileInfo);
+            }
 
-                String fileHash = this.hashFile(file, progressId);
-                if (fileHash == null) {
-                    return Boolean.FALSE;
-                }
+            String fileHash = this.hashFile(file, progressId);
+            if (fileHash == null) {
+                return false;
+            }
 
-                FileInfo newFileInfo = new FileInfo(fileName, file.length(), fileHash, this.SERVER_HOST, true);
-                this.publicSharedFiles.put(fileName, newFileInfo);
-                this.sharedFileNames.add(newFileInfo);
+            FileInfo newFileInfo = new FileInfo(fileName, file.length(), fileHash, this.SERVER_HOST, true);
+            List<FileInfo> fileInfos = new ArrayList<>();
+            fileInfos.add(newFileInfo);
+            ProgressInfo progress = this.processes.get(progressId);
 
-                this.notifyTracker(newFileInfo, true);
-
-                ProgressInfo progress = this.processes.get(progressId);
-                if (progress != null) {
-                    synchronized (progress) {
-                        progress.setProgressPercentage(100);
-                        progress.setStatus(ProgressInfo.ProgressStatus.COMPLETED);
-                    }
-                }
-                return Boolean.TRUE;
-            } catch (Exception e) {
-                Log.logError("Error in shareFileAsync: " + e.getMessage(), e);
-                ProgressInfo progress = this.processes.get(progressId);
+            boolean result = shareFileList(fileInfos, new HashMap<>());
+            if (!result) {
                 if (progress != null) {
                     progress.setStatus(ProgressInfo.ProgressStatus.FAILED);
                 }
-                return Boolean.FALSE;
+                executor.submit(() -> AppPaths.removeSharedFile(fileName));
+                return false;
             }
-        });
+            this.publicSharedFiles.put(fileName, newFileInfo);
+            this.sharedFileNames.add(newFileInfo);
+
+
+            if (progress != null) {
+                synchronized (progress) {
+                    progress.setProgressPercentage(100);
+                    progress.setStatus(ProgressInfo.ProgressStatus.COMPLETED);
+                }
+            }
+            return true;
+        } catch (Exception e) {
+            Log.logError("Error in shareFileAsync: " + e.getMessage(), e);
+            ProgressInfo progress = this.processes.get(progressId);
+            if (progress != null) {
+                progress.setStatus(ProgressInfo.ProgressStatus.FAILED);
+            }
+            return false;
+        }
     }
 
     private String hashFile(File file, String progressId) {
@@ -479,49 +495,102 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    public void shareFileList() {
-        Set<FileInfo> publicFileSet = this.getPublicFileSet();
+    @Override
+    public boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles) {
+        try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
+            StringBuilder messageBuilder = new StringBuilder("SHARE|");
+            messageBuilder.append(publicFiles.size()).append("|")
+                    .append(privateFiles.size()).append("|");
 
-        try {
-            try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-                StringBuilder messageBuilder = new StringBuilder("SHARED_LIST|");
-                messageBuilder.append(publicFileSet.size()).append("|");
+            Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
+                    .enableComplexMapKeySerialization().setPrettyPrinting().create();
+            Type listType = new TypeToken<List<FileInfo>>() {
+            }.getType();
+            String publicFileToPeersJson = gson.toJson(publicFiles, listType);
+            Type mapType = new TypeToken<Map<FileInfo, Set<PeerInfo>>>() {
+            }.getType();
+            String privateSharedFileJson = gson.toJson(privateFiles, mapType);
 
-                for (FileInfo fileInfo : publicFileSet) {
-                    messageBuilder.append(fileInfo.getFileName()).append("'").append(fileInfo.getFileSize()).append("'").append(fileInfo.getFileHash()).append(",");
-                }
+            messageBuilder.append(publicFileToPeersJson).
 
-                if (messageBuilder.charAt(messageBuilder.length() - 1) == ',') {
-                    messageBuilder.deleteCharAt(messageBuilder.length() - 1);
-                }
+                    append("|")
+                            .
 
-                messageBuilder.append("|").append(this.SERVER_HOST.getIp()).append("|").append(this.SERVER_HOST.getPort()).append("\n");
-                String message = messageBuilder.toString();
-                socket.getOutputStream().write(message.getBytes());
-                Log.logInfo("Shared file list with tracker: " + message);
-            }
+                    append(privateSharedFileJson).
 
+                    append("\n");
+
+            String message = messageBuilder.toString();
+            socket.getOutputStream().
+
+                    write(message.getBytes());
+            // response
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String response = reader.readLine();
+            Log.logInfo("Shared file list with tracker, response: " + response);
+            return response.startsWith(LogTag.S_SUCCESS);
         } catch (IOException e) {
             Log.logError("Error sharing file list with tracker: " + e.getMessage(), e);
+            return false;
         }
     }
 
-    private Set<FileInfo> getPublicFileSet() {
-        HashSet<FileInfo> publicSet = new HashSet<>();
+     public List<String> getKnownPeers() {
+         try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
+             String request = "GET_KNOWN_PEERS\n";
+             socket.getOutputStream().write(request.getBytes());
+             Log.logInfo("Requesting known peers from tracker, message: " + request);
+             BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+             String response = buff.readLine();
+             if (response == null || response.isEmpty()) {
+                 Log.logInfo("No response from tracker for known peers");
+                 return Collections.emptyList();
+             } else {
+                 String[] parts = response.split("\\|");
+                 if (parts.length != 3 || !parts[0].equals("GET_KNOWN_PEERS")) {
+                     Log.logInfo("Invalid response format from tracker: " + response);
+                     return Collections.emptyList();
+                 } else {
+                     int peerCount = Integer.parseInt(parts[1]);
+                     if (peerCount == 0) {
+                         Log.logInfo("No known peers found");
+                         return Collections.emptyList();
+                     } else {
+                         String[] peerParts = parts[2].split(",");
+                         ArrayList<String> peerInfos = new ArrayList<>();
 
-        for (Map.Entry<String, FileInfo> s : this.publicSharedFiles.entrySet()) {
-            FileInfo file = s.getValue();
-            publicSet.add(file);
+                         Collections.addAll(peerInfos, peerParts);
+
+                         if (peerInfos.isEmpty()) {
+                             Log.logInfo("No valid known peers found");
+                             return Collections.emptyList();
+                         } else if (peerCount != peerInfos.size()) {
+                             Log.logInfo("Known peer count mismatch: expected " + peerCount + ", found " + peerInfos.size());
+                             return Collections.emptyList();
+                         } else {
+                             Log.logInfo("Received known peers from tracker: " + response);
+                             return peerInfos;
+                         }
+                     }
+                 }
+             }
+         } catch (IOException e) {
+            Log.logError("Error getting known peers from tracker", e);
+            return Collections.emptyList();
         }
+     }
 
-        return publicSet;
+    @Override
+    public List<FileInfo> getPublicFiles() {
+        List<FileInfo> fileInfos = new ArrayList<>(publicSharedFiles.values());
+        return fileInfos;
     }
 
-    private int notifyTracker(FileInfo fileInfo, boolean isShared) {
+    private int unshareFile(FileInfo fileInfo) {
         try {
             byte res;
             try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-                String query = (isShared ? "SHARE" : "UNSHARED_FILE") + "|" + fileInfo.getFileName() + "|" + fileInfo.getFileSize() + "|" + fileInfo.getFileHash() + "|" + this.SERVER_HOST.getIp() + "|" + this.SERVER_HOST.getPort();
+                String query = "UNSHARED_FILE" + "|" + fileInfo.getFileName() + "|" + fileInfo.getFileSize() + "|" + fileInfo.getFileHash() + "|" + this.SERVER_HOST.getIp() + "|" + this.SERVER_HOST.getPort();
                 socket.getOutputStream().write(query.getBytes());
                 Log.logInfo("Notified tracker about shared file: " + fileInfo.getFileName() + ", message: " + query);
                 res = 1;
@@ -582,7 +651,8 @@ public class PeerModel implements IPeerModel {
         this.executor.submit(() -> this.processResumeDownload(fileInfo, saveFile, progressId, peerInfos));
     }
 
-    private Integer processResumeDownload(FileInfo fileInfo, File file, String progressId, List<PeerInfo> peerInfos) {
+    private Integer processResumeDownload(FileInfo fileInfo, File file, String
+            progressId, List<PeerInfo> peerInfos) {
         this.futures.put(progressId, new ArrayList<>());
         this.openChannels.put(progressId, new CopyOnWriteArrayList<>());
         AtomicInteger chunkCount = new AtomicInteger(0);
@@ -688,8 +758,10 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private Integer downloadAllChunks(FileInfo file, List<PeerInfo> peerInfos, String progressId, AtomicInteger chunkCount,
-                                      RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws InterruptedException {
+    private Integer downloadAllChunks(FileInfo file, List<PeerInfo> peerInfos, String progressId, AtomicInteger
+                                              chunkCount,
+                                      RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws
+            InterruptedException {
         int totalChunk = (int) Math.ceil((double) file.getFileSize() / (double) this.CHUNK_SIZE);
         ArrayList<Integer> failedChunks = new ArrayList<>();
         ProgressInfo progressInfo = this.processes.get(progressId);
@@ -738,8 +810,10 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private Integer downloadAllChunksResume(FileInfo file, List<PeerInfo> peerInfos, String progressId, AtomicInteger chunkCount,
-                                            RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws InterruptedException {
+    private Integer downloadAllChunksResume(FileInfo file, List<PeerInfo> peerInfos, String
+                                                    progressId, AtomicInteger chunkCount,
+                                            RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws
+            InterruptedException {
         int totalChunk = (int) Math.ceil((double) file.getFileSize() / (double) this.CHUNK_SIZE);
         ArrayList<Integer> failedChunks = new ArrayList<>();
         ProgressInfo progressInfo = this.processes.get(progressId);
@@ -795,7 +869,9 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private boolean downloadChunkWithRetry(int chunkIndex, List<PeerInfo> peerInfos, RandomAccessFile raf, FileInfo file, String progressId, AtomicInteger chunkCount, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws InterruptedException {
+    private boolean downloadChunkWithRetry(int chunkIndex, List<PeerInfo> peerInfos, RandomAccessFile
+            raf, FileInfo file, String progressId, AtomicInteger
+                                                   chunkCount, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws InterruptedException {
         int maxRetries = 3;
 
         for (int i = 0; i < maxRetries; ++i) {
@@ -841,7 +917,9 @@ public class PeerModel implements IPeerModel {
         return false;
     }
 
-    private boolean downloadChunkWithRetryResume(int chunkIndex, List<PeerInfo> peerInfos, RandomAccessFile raf, FileInfo file, String progressId, AtomicInteger chunkCount, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws InterruptedException {
+    private boolean downloadChunkWithRetryResume(int chunkIndex, List<PeerInfo> peerInfos, RandomAccessFile
+            raf, FileInfo file, String progressId, AtomicInteger
+                                                         chunkCount, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws InterruptedException {
         int maxRetries = 3;
 
         for (int i = 0; i < maxRetries; ++i) {
@@ -887,7 +965,8 @@ public class PeerModel implements IPeerModel {
         return false;
     }
 
-    private PeerInfo selectAvailablePeer(String progressId, List<PeerInfo> peerInfos, int chunkIndex, List<PeerInfo> usedPeers) throws InterruptedException {
+    private PeerInfo selectAvailablePeer(String progressId, List<PeerInfo> peerInfos, int chunkIndex, List<
+            PeerInfo> usedPeers) throws InterruptedException {
         int retryCount = 0;
         final int MAX_RETRY = 20;
 
@@ -919,7 +998,7 @@ public class PeerModel implements IPeerModel {
 
     public List<PeerInfo> getPeersWithFile(String fileHash) {
         try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-            String request = "GET_PEERS|" + fileHash + "\n";
+            String request = "GET_PEERS|" + fileHash + "|" + SERVER_HOST.getIp() + "|" + SERVER_HOST.getPort() + "\n";
             socket.getOutputStream().write(request.getBytes());
             Log.logInfo("Requesting peers with file hash: " + fileHash + ", message: " + request);
             BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -971,18 +1050,19 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    public boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+    public boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String
+            progressId, List<String> peerList) {
         if (isReplace == 1 && oldFileInfo != null) {
-            this.notifyTracker(oldFileInfo, false);
-            publicSharedFiles.remove(oldFileInfo);
+            this.unshareFile(oldFileInfo);
+            publicSharedFiles.remove(oldFileInfo.getFileName(), oldFileInfo);
             privateSharedFiles.remove(oldFileInfo);
         }
         String fileHash = this.hashFile(file, progressId);
         String fileName = file.getName();
         long fileSize = file.length();
-        FileInfo sharedFile = new FileInfo(fileName, file.length(), fileHash, this.SERVER_HOST, true);
+        FileInfo sharedFile = new FileInfo(fileName, fileSize, fileHash, this.SERVER_HOST, true);
 
-        List<PeerInfo> peerInfos = new ArrayList<>();
+        Set<PeerInfo> peerInfos = new HashSet<>();
         for (String peer : peerList) {
             String[] parts = peer.split(":");
             if (parts.length == 2) {
@@ -994,129 +1074,33 @@ public class PeerModel implements IPeerModel {
                 return false;
             }
         }
+        boolean result = shareFileList(new ArrayList<>(), Map.of(sharedFile, peerInfos));
 
-        try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-            StringBuilder messageBuilder = new StringBuilder("SHARE_TO_PEERS|");
-            messageBuilder.append(fileName).append("|");
-            messageBuilder.append(fileSize).append("|");
-            messageBuilder.append(fileHash).append("|");
-            messageBuilder.append(SERVER_HOST.getIp()).append("|");
-            messageBuilder.append(SERVER_HOST.getPort()).append("|");
-            messageBuilder.append(peerList.size()).append("|");
-
-            for (String peer : peerList) {
-                messageBuilder.append(peer).append("|");
-            }
-
-            if (messageBuilder.charAt(messageBuilder.length() - 1) == '|') {
-                messageBuilder.deleteCharAt(messageBuilder.length() - 1);
-            }
-
-            messageBuilder.append("\n");
-            String message = messageBuilder.toString();
-            socket.getOutputStream().write(message.getBytes());
-            privateSharedFiles.put(sharedFile, new HashSet<>(peerInfos));
-            Log.logInfo("Sharing file " + fileName + " (hash: " + fileHash + ") to specific peers: " + peerList + ", message: " + message);
-            BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            String response = buff.readLine();
-            Log.logInfo("Response from tracker: " + response);
-            processes.get(progressId).setStatus(ProgressInfo.ProgressStatus.COMPLETED);
-            processes.get(progressId).setProgressPercentage(100);
-            return response != null && response.contains("thành công");
-        } catch (IOException e) {
-            Log.logError("Error sharing file to peers: " + file.getName(), e);
+        if (!result) {
+            Log.logInfo("Failed to share file " + fileName + " to specific peers: " + peerList);
+            executor.submit(() -> AppPaths.removeSharedFile(fileName));
+            processes.get(progressId).setStatus(ProgressInfo.ProgressStatus.FAILED);
             return false;
         }
+
+        privateSharedFiles.put(sharedFile, new HashSet<>(peerInfos));
+        Log.logInfo("Sharing file " + fileName + " (hash: " + fileHash + ") to specific peers: " + peerList);
+
+        processes.get(progressId).setStatus(ProgressInfo.ProgressStatus.COMPLETED);
+        processes.get(progressId).setProgressPercentage(100);
+        return result;
     }
 
-    public List<String> getSelectivePeers(String fileHash) {
-        try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-            String request = "GET_SHARED_PEERS|" + fileHash + "\n";
-            socket.getOutputStream().write(request.getBytes());
-            Log.logInfo("Requesting selective peers for file hash: " + fileHash + ", message: " + request);
-            BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            String response = buff.readLine();
-            if (response == null || response.isEmpty()) {
-                Log.logInfo("No response from tracker for selective peers of file hash: " + fileHash);
-                return Collections.emptyList();
-            } else {
-                String[] parts = response.split("\\|");
-                if (parts.length != 3 || !parts[0].equals("GET_SHARED_PEERS")) {
-                    Log.logInfo("Invalid response format from tracker: " + response);
-                    return Collections.emptyList();
-                } else {
-                    int peerCount = Integer.parseInt(parts[1]);
-                    if (peerCount == 0) {
-                        Log.logInfo("No selective peers found for file hash: " + fileHash);
-                        return Collections.emptyList();
-                    } else {
-                        String[] peerParts = parts[2].split(",");
-                        ArrayList<String> peerInfos = new ArrayList<>();
-
-                        Collections.addAll(peerInfos, peerParts);
-
-                        if (peerInfos.isEmpty()) {
-                            Log.logInfo("No valid selective peers found for file hash: " + fileHash);
-                            return Collections.emptyList();
-                        } else if (peerCount != peerInfos.size()) {
-                            Log.logInfo("Selective peer count mismatch: expected " + peerCount + ", found " + peerInfos.size());
-                            return Collections.emptyList();
-                        } else {
-                            Log.logInfo("Received selective peers from tracker: " + response);
-                            return peerInfos;
-                        }
-                    }
-                }
+    public List<PeerInfo> getSelectivePeers(String fileHash) {
+        List<PeerInfo> peers = new ArrayList<>();
+        for (Map.Entry<FileInfo, Set<PeerInfo>> entry : privateSharedFiles.entrySet()) {
+            FileInfo fileInfo = entry.getKey();
+            if (fileInfo.getFileHash().equals(fileHash)) {
+                peers.addAll(entry.getValue());
+                break;
             }
-        } catch (IOException e) {
-            Log.logError("Error getting selective peers for file hash: " + fileHash, e);
-            return Collections.emptyList();
         }
-    }
-
-    public List<String> getKnownPeers() {
-        try (Socket socket = new Socket(this.TRACKER_HOST.getIp(), this.TRACKER_HOST.getPort())) {
-            String request = "GET_KNOWN_PEERS\n";
-            socket.getOutputStream().write(request.getBytes());
-            Log.logInfo("Requesting known peers from tracker, message: " + request);
-            BufferedReader buff = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            String response = buff.readLine();
-            if (response == null || response.isEmpty()) {
-                Log.logInfo("No response from tracker for known peers");
-                return Collections.emptyList();
-            } else {
-                String[] parts = response.split("\\|");
-                if (parts.length != 3 || !parts[0].equals("GET_KNOWN_PEERS")) {
-                    Log.logInfo("Invalid response format from tracker: " + response);
-                    return Collections.emptyList();
-                } else {
-                    int peerCount = Integer.parseInt(parts[1]);
-                    if (peerCount == 0) {
-                        Log.logInfo("No known peers found");
-                        return Collections.emptyList();
-                    } else {
-                        String[] peerParts = parts[2].split(",");
-                        ArrayList<String> peerInfos = new ArrayList<>();
-
-                        Collections.addAll(peerInfos, peerParts);
-
-                        if (peerInfos.isEmpty()) {
-                            Log.logInfo("No valid known peers found");
-                            return Collections.emptyList();
-                        } else if (peerCount != peerInfos.size()) {
-                            Log.logInfo("Known peer count mismatch: expected " + peerCount + ", found " + peerInfos.size());
-                            return Collections.emptyList();
-                        } else {
-                            Log.logInfo("Received known peers from tracker: " + response);
-                            return peerInfos;
-                        }
-                    }
-                }
-            }
-        } catch (IOException e) {
-            Log.logError("Error getting known peers from tracker", e);
-            return Collections.emptyList();
-        }
+        return peers;
     }
 
     private String computeFileHash(File file) {
@@ -1147,7 +1131,8 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private boolean downloadChunk(PeerInfo peerInfo, int chunkIndex, RandomAccessFile raf, FileInfo file, String progressId, AtomicInteger chunkCount) {
+    private boolean downloadChunk(PeerInfo peerInfo, int chunkIndex, RandomAccessFile raf, FileInfo file, String
+            progressId, AtomicInteger chunkCount) {
         int retryCount = 3;
         ProgressInfo progressInfo = this.processes.get(progressId);
         if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
@@ -1275,7 +1260,8 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private boolean downloadChunkResume(PeerInfo peerInfo, int chunkIndex, RandomAccessFile raf, FileInfo file, String progressId, AtomicInteger chunkCount) {
+    private boolean downloadChunkResume(PeerInfo peerInfo, int chunkIndex, RandomAccessFile raf, FileInfo
+            file, String progressId, AtomicInteger chunkCount) {
         int retryCount = 3;
         ProgressInfo progressInfo = this.processes.get(progressId);
         if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
@@ -1457,21 +1443,14 @@ public class PeerModel implements IPeerModel {
         }
     }
 
-    private boolean hasAccessToFile(String clientIdentify, String fileHash) {
+    private boolean hasAccessToFile(PeerInfo clientIdentify, String fileHash) {
         for (FileInfo file : this.publicSharedFiles.values()) {
             if (file.getFileHash().equals(fileHash)) {
-                // First check if file is publicly shared (no selective peers)
-                List<String> selectivePeers = this.getSelectivePeers(fileHash);
-                if (selectivePeers.isEmpty()) {
-                    return true; // Public file, anyone can access
-                }
-
-                // Check if requesting peer is in the allowed list
-                return selectivePeers.contains(clientIdentify);
+                return true;
             }
         }
-
-        return false; // File not found in our shared files
+        List<PeerInfo> selectivePeers = this.getSelectivePeers(fileHash);
+        return selectivePeers.contains(clientIdentify);
     }
 
     private void sendAccessDenied(SocketChannel client) {
@@ -1626,12 +1605,8 @@ public class PeerModel implements IPeerModel {
         return this.publicSharedFiles;
     }
 
-    public Map<String, FileInfo> getPrivateSharedFiles() {
-        Map<String, FileInfo> privateFiles = new HashMap<>();
-        for (FileInfo fileInfo : this.privateSharedFiles.keySet()) {
-            privateFiles.put(fileInfo.getFileName(), fileInfo);
-        }
-        return privateFiles;
+    public Map<FileInfo, Set<PeerInfo>> getPrivateSharedFiles() {
+        return privateSharedFiles;
     }
 
     public int stopSharingFile(String fileName) {
@@ -1652,7 +1627,7 @@ public class PeerModel implements IPeerModel {
             }
 
             Log.logInfo("Stopped sharing file: " + fileName);
-            return this.notifyTracker(fileInfo, false);
+            return this.unshareFile(fileInfo);
         }
     }
 
@@ -1732,7 +1707,7 @@ public class PeerModel implements IPeerModel {
         if (publicFile.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(publicFile))) {
                 this.publicSharedFiles = (ConcurrentHashMap<String, FileInfo>) ois.readObject();
-                Log.logInfo("Public shared files loaded successfully.");
+                Log.logInfo("Public shared files loaded successfully. " + this.publicSharedFiles.toString() + " files found.");
             } catch (IOException | ClassNotFoundException e) {
                 Log.logError("Error loading public shared files: " + e.getMessage(), e);
             }
@@ -1743,7 +1718,7 @@ public class PeerModel implements IPeerModel {
         if (privateFile.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(privateFile))) {
                 this.privateSharedFiles = (ConcurrentHashMap<FileInfo, Set<PeerInfo>>) ois.readObject();
-                Log.logInfo("Private shared files loaded successfully.");
+                Log.logInfo("Private shared files loaded successfully. " + this.privateSharedFiles.toString() + " files found.");
             } catch (IOException | ClassNotFoundException e) {
                 Log.logError("Error loading private shared files: " + e.getMessage(), e);
             }

@@ -81,7 +81,7 @@ public class P2PController {
         while (!isConnected) {
             int result = peerRepository.registerWithTracker();
             switch (result) {
-                case LogTag.I_SUCCESS, LogTag.I_NOT_FOUND  -> isConnected = true;
+                case LogTag.I_SUCCESS, LogTag.I_NOT_FOUND -> isConnected = true;
                 default -> {
                     try {
                         Thread.sleep(5000);
@@ -134,7 +134,7 @@ public class P2PController {
         if (progressMap.containsKey(progressId)) {
             ProgressInfo progress = progressMap.get(progressId);
             if (progress.getStatus().equals(ProgressInfo.ProgressStatus.TIMEOUT) ||
-                progress.getStatus().equals(ProgressInfo.ProgressStatus.STALLED)) {
+                    progress.getStatus().equals(ProgressInfo.ProgressStatus.STALLED)) {
                 progress.setStatus(ProgressInfo.ProgressStatus.DOWNLOADING);
                 progress.updateProgressTime();
             }
@@ -146,23 +146,11 @@ public class P2PController {
         for (Map.Entry<String, ProgressInfo> entry : progressMap.entrySet()) {
             ProgressInfo progress = entry.getValue();
             if ((progress.getStatus().equals(ProgressInfo.ProgressStatus.DOWNLOADING) ||
-                 progress.getStatus().equals(ProgressInfo.ProgressStatus.STARTING)) &&
-                progress.isTimedOut()) {
+                    progress.getStatus().equals(ProgressInfo.ProgressStatus.STARTING)) &&
+                    progress.isTimedOut()) {
                 progress.setStatus(ProgressInfo.ProgressStatus.TIMEOUT);
             }
         }
-    }
-
-    public Set<FileInfo> getSharedFiles() {
-        return fileRepository.getSharedFileNames();
-    }
-
-    public List<String> getKnownPeers() {
-        return fileRepository.getKnownPeers();
-    }
-
-    public boolean isConnected() {
-        return isConnected;
     }
 
     public void retryConnectToTracker() {
@@ -263,15 +251,18 @@ public class P2PController {
             });
 
             return progressId;
-        } );
+        });
 
-        api.setRouteForGetKnownPeers(() -> getKnownPeers());
-
+        api.setRouteForGetKnownPeers(this::getKnownPeers);
         // Start periodic timeout checker
         startTimeoutChecker();
 
         // Update API with current files
         updateApiFiles();
+    }
+
+    public List<String> getKnownPeers() {
+        return fileRepository.getKnownPeers();
     }
 
     private void refreshFileList() {

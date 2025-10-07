@@ -1,4 +1,4 @@
-package utils;
+package src.utils;
 
 public interface RequestInfor {
     String REGISTER = "REGISTER";
