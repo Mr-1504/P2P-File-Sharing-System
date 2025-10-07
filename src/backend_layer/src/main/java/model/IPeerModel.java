@@ -35,7 +35,7 @@ public interface IPeerModel {
 
     List<PeerInfo> getSelectivePeers(String fileHash);
 
-    void loadSharedFiles();
+//    void loadSharedFiles();
 
     int refreshSharedFileNames();
 

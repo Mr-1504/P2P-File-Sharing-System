@@ -54,7 +54,7 @@ public class P2PController {
                 peerRepository.initializeServerSocket();
                 peerRepository.startServer();
                 peerRepository.startUDPServer();
-                fileRepository.loadSharedFiles();
+//                fileRepository.loadSharedFiles();
                 isLoadSharedFiles = true;
                 fileRepository.shareFileList();
             } catch (Exception e) {
