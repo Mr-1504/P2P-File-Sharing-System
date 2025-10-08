@@ -5,3 +5,6 @@ src/Tracker/out/production/Tracker/.env
 *.class
 desktop.ini
 /certificates
+*.jks
+*.cer
+*.csr
