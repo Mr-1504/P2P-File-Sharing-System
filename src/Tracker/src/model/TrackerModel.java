@@ -1,25 +1,47 @@
 package src.model;
 
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.SecureRandom;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.Scanner;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.openssl.PEMParser;
+import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import src.adapter.FileInfoAdapter;
 import src.utils.Infor;
+import src.utils.SSLUtils;
+
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLSocket;
 
 import static src.utils.Log.*;
 
 import src.utils.LogTag;
 import src.utils.RequestInfor;
+
+import java.math.BigInteger;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<PeerInfo> knownPeers;
@@ -39,47 +61,74 @@ public class TrackerModel {
     }
 
     public void startTracker() {
-        try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
-            serverSocketChannel.bind(new InetSocketAddress(Infor.TRACKER_PORT));
-            serverSocketChannel.configureBlocking(false);
-            serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
-            logInfo("[TRACKER]: Tracker start on " + Infor.TRACKER_PORT + " - " + getCurrentTime());
-
-            while (true) {
-                selector.select();
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
-                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-
-                while (keyIterator.hasNext()) {
-                    SelectionKey key = keyIterator.next();
-                    keyIterator.remove();
-
-                    if (!key.isValid()) continue;
-
-                    if (key.isAcceptable()) {
-                        handleAccept(key);
-                    } else if (key.isReadable()) {
-                        handleRead(key);
-                    } else if (key.isWritable()) {
-                        handleWrite(key);
-                    } else {
-                        logError("[TRACKER]: Unknown Error: " + key + " on " + getCurrentTime(), null);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            logError("[TRACKER]: Tracker Error: " + e.getMessage() + " on " + getCurrentTime(), e);
+        try {
+            startSSLServer();
+        } catch (Exception e) {
+            logError("[TRACKER]: SSL Server error: " + e.getMessage() + " on " + getCurrentTime(), e);
+            throw new RuntimeException("Failed to start SSL Tracker server", e);
         } finally {
             pingExecutor.shutdown();
+        }
+    }
+
+    private void startSSLServer() throws Exception {
+        SSLServerSocket sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(SSLUtils.SSL_TRACKER_PORT);
+        sslServerSocket.setNeedClientAuth(true);
+        sslServerSocket.setUseClientMode(false);
+
+        logInfo("[TRACKER]: SSL Tracker started on " + SSLUtils.SSL_TRACKER_PORT + " - " + getCurrentTime());
+
+        while (true) {
             try {
-                selector.close();
+                SSLSocket clientSocket = (SSLSocket) sslServerSocket.accept();
+                clientSocket.setUseClientMode(false);
+                clientSocket.setNeedClientAuth(true);
+
+                logInfo("[TRACKER]: SSL connection accepted from: " + clientSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+
+                // Handle SSL connection in a separate thread
+                ExecutorService sslHandler = Executors.newSingleThreadExecutor();
+                sslHandler.submit(() -> handleSSLConnection(clientSocket));
+                sslHandler.shutdown();
+
             } catch (IOException e) {
-                logError("[TRACKER]: Close selector error: " + e.getMessage() + " on " + getCurrentTime(), e);
+                logError("[TRACKER]: SSL accept error: " + e.getMessage() + " on " + getCurrentTime(), e);
+            }
+        }
+    }
+
+    private void handleSSLConnection(SSLSocket sslSocket) {
+        try {
+            sslSocket.startHandshake();
+            logInfo("[TRACKER]: SSL handshake completed with " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+
+            // Basic SSL handling - treat as blocking I/O for simplicity
+            Scanner scanner = new Scanner(sslSocket.getInputStream());
+            PrintWriter writer = new PrintWriter(sslSocket.getOutputStream(), true);
+
+            while (scanner.hasNextLine()) {
+                String request = scanner.nextLine().trim();
+                logInfo("[TRACKER]: SSL Received request: " + request + " from " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+
+                String response = processRequest(request);
+                writer.println(response);
+                logInfo("[TRACKER]: SSL Sent response to " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+            }
+
+        } catch (Exception e) {
+            logError("[TRACKER]: SSL connection error: " + e.getMessage() + " on " + getCurrentTime(), e);
+        } finally {
+            try {
+                sslSocket.close();
+                logInfo("[TRACKER]: SSL connection closed: " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+            } catch (IOException e) {
+                logError("[TRACKER]: SSL socket close error: " + e.getMessage() + " on " + getCurrentTime(), e);
             }
         }
     }
 
     private void handleAccept(SelectionKey key) throws IOException {
+        logInfo("[TRACKER-PLAIN]: Handling new connection on " + getCurrentTime());
         SocketChannel client = null;
         ServerSocketChannel server = (ServerSocketChannel) key.channel();
         try {
@@ -176,6 +225,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Received empty request on " + getCurrentTime());
             return "Yêu cầu rỗng";
         }
+        logInfo("[TRACKER]: Request: " + request);
 
         String[] parts = request.split("\\|");
         if (request.startsWith(RequestInfor.REGISTER)) {
@@ -220,8 +270,14 @@ public class TrackerModel {
             }
             logInfo("[TRACKER]: Invalid GET_SHARED_PEERS request: " + request + " on " + getCurrentTime());
             return "Định dạng yêu cầu GET_SHARED_PEERS không hợp lệ. Sử dụng: GET_SHARED_PEERS|<fileHash>";
-        }else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
+        } else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
             return getKnownPeers();
+        } else if (request.startsWith("CERT_REQUEST")) {
+            if (parts.length == 2) {
+                return processCertificateRequest(parts[1]);
+            }
+            logInfo("[TRACKER]: Invalid CERT_REQUEST: " + request + " on " + getCurrentTime());
+            return "CERT_ERROR|Invalid certificate request format";
         }
         logInfo("[TRACKER]: Unkhown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
@@ -327,7 +383,7 @@ public class TrackerModel {
     private String shareFile(String[] parts) {
         int publicCount = Integer.parseInt(parts[1]);
         int privateCount = Integer.parseInt(parts[2]);
-        if (publicCount < 0 || privateCount < 0 || (publicCount == 0 && privateCount == 0)) {
+        if (publicCount < 0 || privateCount < 0) {
             logInfo("[TRACKER]: Invalid counts in SHARE: publicCount=" + publicCount + ", privateCount=" + privateCount + " on " + getCurrentTime());
             return "Số lượng chia sẻ không hợp lệ.";
         }
@@ -382,7 +438,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Received privateSharedFile: " + privateSharedFileJson + " on " + getCurrentTime());
 
             Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
-                    .enableComplexMapKeySerialization().setPrettyPrinting().create();
+                    .enableComplexMapKeySerialization().create();
 
             Type publicType = new TypeToken<Map<String, FileInfo>>() {
             }.getType();
@@ -476,7 +532,7 @@ public class TrackerModel {
         }
     }
 
-     private String getKnownPeers() {
+    private String getKnownPeers() {
         if (knownPeers.isEmpty()) {
             logInfo("[TRACKER]: No known peers found on " + getCurrentTime());
             return RequestInfor.NOT_FOUND + "|No known peers found";
@@ -528,6 +584,80 @@ public class TrackerModel {
 
     void addKnownPeer(PeerInfo peer) {
         knownPeers.add(peer);
+    }
+
+    /**
+     * Process certificate signing request from a peer
+     * Acts as the Intermediate Certificate Authority (CA)
+     */
+    private String processCertificateRequest(String csrPem) {
+        try {
+            logInfo("[TRACKER]: Processing certificate request on " + getCurrentTime());
+
+            // 1. Đọc CSR từ chuỗi PEM bằng Bouncy Castle
+            PKCS10CertificationRequest csr;
+            try (StringReader reader = new StringReader(csrPem); PEMParser pemParser = new PEMParser(reader)) {
+                Object parsedObj = pemParser.readObject();
+                if (parsedObj instanceof PKCS10CertificationRequest) {
+                    csr = (PKCS10CertificationRequest) parsedObj;
+                } else {
+                    throw new IllegalArgumentException("Provided string is not a valid PKCS#10 CSR");
+                }
+            }
+
+            // 2. Tải Keystore của CA (Intermediate CA)
+            File trackerKeystoreFile = new File("certificates/tracker-ca-keystore.jks");
+            if (!trackerKeystoreFile.exists()) {
+                logError("[TRACKER]: Intermediate CA keystore not found! Cannot sign certificates on " + getCurrentTime(), null);
+                return "CERT_ERROR|Intermediate CA keystore not available";
+            }
+
+            KeyStore caKeyStore = KeyStore.getInstance("JKS");
+            try (FileInputStream fis = new FileInputStream(trackerKeystoreFile)) {
+                caKeyStore.load(fis, "p2ppassword".toCharArray());
+            }
+
+            // 3. Lấy private key và chứng chỉ của Intermediate CA
+            PrivateKey caPrivateKey = (PrivateKey) caKeyStore.getKey("tracker-ca", "p2ppassword".toCharArray());
+            X509Certificate caCert = (X509Certificate) caKeyStore.getCertificate("tracker-ca");
+
+            // 4. Tạo chứng chỉ mới cho Peer bằng Bouncy Castle Builder
+            Instant now = Instant.now();
+            Date validityBeginDate = Date.from(now);
+            Date validityEndDate = Date.from(now.plus(365, ChronoUnit.DAYS)); // Hiệu lực 1 năm
+
+            JcaX509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
+                    X500Name.getInstance(caCert.getSubjectX500Principal().getEncoded()), // Issuer là Intermediate CA
+                    new BigInteger(128, new SecureRandom()), // Tạo số serial ngẫu nhiên
+                    validityBeginDate,
+                    validityEndDate,
+                    csr.getSubject(), // Subject lấy từ CSR
+                    csr.getSubjectPublicKeyInfo() // Public key lấy từ CSR
+            );
+
+            // 5. Ký chứng chỉ mới bằng private key của CA
+            ContentSigner contentSigner = new JcaContentSignerBuilder("SHA256WithRSA").build(caPrivateKey);
+            X509Certificate peerCert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(certBuilder.build(contentSigner));
+
+            // 6. Tạo chuỗi chứng chỉ PEM để gửi về cho Peer
+            Certificate rootCaCert = caKeyStore.getCertificate("ca"); // Lấy Root CA cert từ keystore
+
+            StringWriter stringWriter = new StringWriter();
+            try (JcaPEMWriter pemWriter = new JcaPEMWriter(stringWriter)) {
+                pemWriter.writeObject(peerCert);     // Chứng chỉ của Peer
+                pemWriter.writeObject(caCert);       // Chứng chỉ của Intermediate CA
+                pemWriter.writeObject(rootCaCert);   // Chứng chỉ của Root CA
+            }
+
+            String certificateChainPem = stringWriter.toString();
+            logInfo("[TRACKER]: Certificate chain generated successfully for peer on " + getCurrentTime());
+
+            return "CERT_RESPONSE|" + certificateChainPem;
+
+        } catch (Exception e) {
+            logError("[TRACKER]: Error processing certificate request: " + e.getMessage() + " on " + getCurrentTime(), e);
+            return "CERT_ERROR|Failed to sign certificate: " + e.getMessage();
+        }
     }
 
     String sendShareList(String peerIp, int peerPort, boolean isRefresh) {

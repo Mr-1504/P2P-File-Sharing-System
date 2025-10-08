@@ -13,7 +13,7 @@ public class PeerRepositoryImpl implements PeerRepository {
     }
 
     @Override
-    public void initializeServerSocket() throws IOException {
+    public void initializeServerSocket() throws Exception {
         peerModel.initializeServerSocket();
     }
 

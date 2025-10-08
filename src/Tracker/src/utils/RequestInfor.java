@@ -21,4 +21,7 @@ public interface RequestInfor {
     String SHARE_TO_PEERS = "SHARE_TO_PEERS";
     String GET_SHARED_PEERS = "GET_SHARED_PEERS";
     String GET_KNOWN_PEERS = "GET_KNOWN_PEERS";
+
+    // SSL/TLS Constants
+    int SSL_PORT_OFFSET = 1000;
 }
