@@ -4,3 +4,4 @@ src/Tracker/out/production/Tracker/model/TrackerModel.class
 src/Tracker/out/production/Tracker/.env
 *.class
 desktop.ini
+/certificates
