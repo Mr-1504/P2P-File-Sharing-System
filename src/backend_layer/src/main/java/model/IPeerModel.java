@@ -1,8 +1,8 @@
 package main.java.model;
 
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.PeerInfo;
-import main.java.domain.entities.ProgressInfo;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
+import main.java.domain.entity.ProgressInfo;
 
 import java.io.File;
 import java.io.IOException;

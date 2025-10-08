@@ -1,6 +1,6 @@
 package main.java.utils;
 
-import main.java.domain.entities.ProgressInfo;
+import main.java.domain.entity.ProgressInfo;
 
 import java.io.*;
 import java.nio.file.Paths;
@@ -41,7 +41,7 @@ public class AppPaths {
     }
 
     public static boolean copyFileToShare(File sourceFile, String newfileName, ProgressInfo progressInfor) {
-        // lấy thời gian bắt đầu
+        // Record start time
         long start = System.currentTimeMillis();
         File destFile = new File(getSharedFile(newfileName));
         try (

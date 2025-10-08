@@ -1,9 +1,9 @@
 package main.java.main;
 
 import main.java.api.P2PApi;
-import main.java.frameworks_drivers.repositories.FileRepositoryImpl;
-import main.java.frameworks_drivers.repositories.PeerRepositoryImpl;
-import main.java.interface_adapters.controllers.P2PController;
+import main.java.data.repository.FileRepositoryImpl;
+import main.java.data.repository.PeerRepositoryImpl;
+import main.java.api.controller.P2PController;
 import main.java.model.PeerModel;
 
 import java.io.IOException;

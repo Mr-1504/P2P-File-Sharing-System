@@ -4,10 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.PeerInfo;
-import main.java.domain.entities.ProgressInfo;
-import main.java.request.CleanupRequest;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
+import main.java.domain.entity.ProgressInfo;
+import main.java.api.dto.CleanupRequest;
 import main.java.utils.LogTag;
 
 import java.io.IOException;

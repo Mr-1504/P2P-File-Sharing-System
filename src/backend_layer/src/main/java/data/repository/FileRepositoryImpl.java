@@ -1,9 +1,9 @@
-package main.java.frameworks_drivers.repositories;
+package main.java.data.repository;
 
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.PeerInfo;
-import main.java.domain.entities.ProgressInfo;
-import main.java.domain.repositories.FileRepository;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
+import main.java.domain.entity.ProgressInfo;
+import main.java.domain.repository.FileRepository;
 import main.java.model.IPeerModel;
 
 import java.io.File;

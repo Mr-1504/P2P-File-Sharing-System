@@ -1,8 +1,8 @@
-package main.java.usecases;
+package main.java.service;
 
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.ProgressInfo;
-import main.java.domain.repositories.FileRepository;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.ProgressInfo;
+import main.java.domain.repository.FileRepository;
 import main.java.utils.AppPaths;
 import main.java.utils.LogTag;
 

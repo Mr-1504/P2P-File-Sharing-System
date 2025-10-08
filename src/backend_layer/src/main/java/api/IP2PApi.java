@@ -1,8 +1,8 @@
 package main.java.api;
 
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.ProgressInfo;
-import main.java.request.CleanupRequest;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.ProgressInfo;
+import main.java.api.dto.CleanupRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -16,11 +16,11 @@ public interface IP2PApi {
 
     void setRouteForRefresh(Callable<Integer> callable);
 
-    void setRouteForShareFile(P2PApi.TriFunction<String, Integer, AtomicBoolean, String> callable);
+    void setRouteForShareFile(TriFunction<String, Integer, AtomicBoolean, String> callable);
 
     void setRouteForRemoveFile(Function<String, Integer> callable);
 
-    void setRouteForDownloadFile(P2PApi.TriFunction<FileInfo, String, AtomicBoolean, String> callable);
+    void setRouteForDownloadFile(TriFunction<FileInfo, String, AtomicBoolean, String> callable);
 
     void setRouteForGetProgress(Callable<Map<String, ProgressInfo>> callable);
 

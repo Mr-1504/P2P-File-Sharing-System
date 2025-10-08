@@ -1,6 +1,6 @@
-package main.java.frameworks_drivers.repositories;
+package main.java.data.repository;
 
-import main.java.domain.repositories.PeerRepository;
+import main.java.domain.repository.PeerRepository;
 import main.java.model.IPeerModel;
 
 import java.io.IOException;

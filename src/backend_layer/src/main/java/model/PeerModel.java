@@ -2,9 +2,9 @@ package main.java.model;
 
 import com.google.gson.reflect.TypeToken;
 import main.java.domain.adapter.FileInfoAdapter;
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.PeerInfo;
-import main.java.domain.entities.ProgressInfo;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
+import main.java.domain.entity.ProgressInfo;
 import main.java.utils.AppPaths;
 import main.java.utils.Infor;
 import main.java.utils.Log;

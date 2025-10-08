@@ -1,13 +1,13 @@
-package main.java.interface_adapters.controllers;
+package main.java.api.controller;
 
-import main.java.domain.entities.FileInfo;
-import main.java.domain.entities.PeerInfo;
-import main.java.domain.entities.ProgressInfo;
-import main.java.domain.repositories.FileRepository;
-import main.java.domain.repositories.PeerRepository;
+import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
+import main.java.domain.entity.ProgressInfo;
+import main.java.domain.repository.FileRepository;
+import main.java.domain.repository.PeerRepository;
 import main.java.api.IP2PApi;
-import main.java.usecases.DownloadFileUseCase;
-import main.java.usecases.ShareFileUseCase;
+import main.java.service.DownloadFileUseCase;
+import main.java.service.ShareFileUseCase;
 import main.java.utils.AppPaths;
 import main.java.utils.LogTag;
 
