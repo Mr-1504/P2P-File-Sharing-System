@@ -9,3 +9,4 @@ desktop.ini
 *.cer
 *.csr
 *.env
+/src/Tracker/out
