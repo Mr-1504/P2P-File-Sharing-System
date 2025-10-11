@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SSLUtils {
-
+    public static final int SSL_TRACKER_ENROLL_PORT = Infor.TRACKER_ENROLL_PORT;
     public static final int SSL_TRACKER_PORT = Infor.TRACKER_PORT;
     public static final String KEYSTORE_PASSWORD = EnvConf.getEnv("KEYSTORE_PASSWORD", "p2ppassword");
     public static final String TRUSTSTORE_PASSWORD = EnvConf.getEnv("TRUSTSTORE_PASSWORD", "p2ppassword");
@@ -123,20 +123,31 @@ public class SSLUtils {
         // Use an SSL context with our certificates to connect to the Tracker
         // The pre-bundled truststore should contain the CA certificates
         SSLSocketFactory factory = createSSLSocketFactory();
-        try (SSLSocket socket = (SSLSocket) factory.createSocket(SERVER_IP, TRACKER_PORT_FOR_CSR)) {
+        try (SSLSocket socket = (SSLSocket) factory.createSocket(SERVER_IP, SSL_TRACKER_ENROLL_PORT)) {
             socket.setSoTimeout(15000); // 15s timeout
 
             // Send certificate signing request to Tracker
-            String request = "CERT_REQUEST|" + csrPem.replace("\n", "\\n") + "\n";
+            String request = "CERT_REQUEST|" + csrPem;
 
             try (PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                  BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                System.out.println("Sending CSR to tracker:\n" + csrPem);
 
                 out.println(request);
-                String response = in.readLine();
+                out.println("END_OF_REQUEST");
 
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = in.readLine()) != null) {
+                    if (line.equals("END_OF_RESPONSE")) break;
+                    sb.append(line).append("\n");
+                }
+
+                String response = sb.toString().trim();
+                Log.logInfo("Received response from tracker.");
+                Log.logInfo("Response: " + response);
                 if (response != null && response.startsWith("CERT_RESPONSE|")) {
-                    return response.substring("CERT_RESPONSE|".length()).replace("\\n", "\n");
+                    return response.substring("CERT_RESPONSE|".length());
                 }
             }
         }
