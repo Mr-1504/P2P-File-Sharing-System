@@ -1845,7 +1845,7 @@ public class PeerModel implements IPeerModel {
         SSLSocketFactory sslSocketFactory = SSLUtils.createSSLSocketFactory();
         SSLSocket sslSocket = (SSLSocket) sslSocketFactory.createSocket(peerInfo.getIp(), peerInfo.getPort());
         sslSocket.setUseClientMode(true);
-        sslSocket.setNeedClientAuth(false);
+        sslSocket.setNeedClientAuth(true);
         sslSocket.setSoTimeout(Infor.SOCKET_TIMEOUT_MS);
         sslSocket.startHandshake();
         return sslSocket;
