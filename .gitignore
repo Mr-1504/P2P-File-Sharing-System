@@ -8,3 +8,4 @@ desktop.ini
 *.jks
 *.cer
 *.csr
+src/Tracker/src/.env
