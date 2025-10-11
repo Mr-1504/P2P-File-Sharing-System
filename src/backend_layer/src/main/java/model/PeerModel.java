@@ -499,8 +499,6 @@ public class PeerModel implements IPeerModel {
     }
 
     private void processPendingHandshakes() {
-        // Process any pending SSL handshake operations
-        // Process any pending SSL handshake operations
         for (Map.Entry<SocketChannel, SSLEngine> entry : sslEngineMap.entrySet()) {
             SocketChannel channel = entry.getKey();
             SSLEngine engine = entry.getValue();
