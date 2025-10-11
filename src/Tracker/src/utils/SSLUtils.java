@@ -1,10 +1,23 @@
 package src.utils;
 
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+
 import javax.net.ssl.*;
 import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.FileOutputStream;
+import java.math.BigInteger;
 import java.security.*;
-import java.security.cert.CertificateException;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
+import java.util.UUID;
 
 /**
  * Utility class for SSL/TLS configuration
@@ -12,10 +25,14 @@ import java.security.cert.CertificateException;
 public class SSLUtils {
 
     public static final int SSL_TRACKER_PORT = Infor.TRACKER_PORT + RequestInfor.SSL_PORT_OFFSET; // 6001
-    public static final int SSL_PEER_PORT = Infor.PEER_PORT + RequestInfor.SSL_PORT_OFFSET;     // 6000
     public static final String KEYSTORE_PASSWORD = "p2ppassword";
     public static final String KEYSTORE_PATH = "D:\\code\\P2P-File-Sharing-System\\certificates\\tracker-keystore.jks";
     public static final String TRUSTSTORE_PATH = "D:\\code\\P2P-File-Sharing-System\\certificates\\tracker-truststore.jks";
+
+    static {
+        // Thêm Bouncy Castle provider một lần duy nhất
+        Security.addProvider(new BouncyCastleProvider());
+    }
 
     /**
      * Configure SSL context for the Tracker server
