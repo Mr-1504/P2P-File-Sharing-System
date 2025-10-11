@@ -12,5 +12,6 @@
     <orderEntry type="library" name="dotenv-java-3.2.0" level="project" />
     <orderEntry type="library" name="bcpkix-jdk18on-1.78.1" level="project" />
     <orderEntry type="library" name="bcprov-jdk18on-1.78.1" level="project" />
+    <orderEntry type="library" name="bcutil-jdk18on-1.78.1" level="project" />
   </component>
 </module>
