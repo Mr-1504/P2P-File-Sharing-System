@@ -5,6 +5,7 @@ package src.utils;
  * It includes the server port, tracker port, server IP address, and tracker IP address.
  */
 public interface Infor {
+    int TRACKER_ENROLLMENT_PORT = 9091;
     int TRACKER_PORT = 5001;
     int PEER_PORT = 5000;
     int SOCKET_TIMEOUT_MS = 5000;
