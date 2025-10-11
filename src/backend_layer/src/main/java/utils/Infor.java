@@ -6,6 +6,7 @@ package main.java.utils;
  */
 public interface Infor {
     int PEER_PORT = EnvConf.getEnvInt("PEER_PORT", 5000);
+    int TRACKER_ENROLL_PORT = EnvConf.getEnvInt("TRACKER_ENROLLMENT_PORT", 9091);
     int TRACKER_PORT = EnvConf.getEnvInt("SSL_TRACKER_PORT", 6001);
     String SERVER_IP = NetworkUtils.getCurrentIp();
     String TRACKER_IP = NetworkUtils.getCurrentIp();
