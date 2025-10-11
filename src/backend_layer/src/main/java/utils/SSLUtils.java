@@ -28,18 +28,18 @@ public class SSLUtils {
     public static final int SSL_TRACKER_PORT = Infor.TRACKER_PORT;
     public static final String KEYSTORE_PASSWORD = EnvConf.getEnv("KEYSTORE_PASSWORD", "p2ppassword");
     public static final String TRUSTSTORE_PASSWORD = EnvConf.getEnv("TRUSTSTORE_PASSWORD", "p2ppassword");
-    public static final Path CERT_DIRECTORY = Paths.get("src/certificates");
-    public static final String KEYSTORE_PATH = "peer-keystore.jks";
-    public static final String TRUSTSTORE_PATH = "peer-truststore.jks";
+    public static final Path CERT_DIRECTORY = AppPaths.getCertificatePath();
+    public static final String KEYSTORE_NAME = "peer-keystore.jks";
+    public static final String TRUSTSTORE_NAME = "peer-truststore.jks";
     public static final String KEY_ALIAS = EnvConf.getEnv("KEY_ALIAS", "peer-key");
     public static final String CERT_ALIAS = "peer-cert";
     public static final String CA_CERT_ALIAS = EnvConf.getEnv("CA_CERT_ALIAS", "tracker-ca-cert");
 
-    private static final String SERVER_IP = Infor.TRACKER_IP; // Nên là IP của Tracker
+    private static final String SERVER_IP = Infor.TRACKER_IP; // Should be the Tracker's IP
     private static final int TRACKER_PORT_FOR_CSR = SSL_TRACKER_PORT;
 
     static {
-        // Đăng ký Bouncy Castle provider một lần duy nhất
+        // Register Bouncy Castle provider once
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     }
 
@@ -49,8 +49,11 @@ public class SSLUtils {
                 throw new RuntimeException("Cannot get certificates dir");
             }
             File certDir = CERT_DIRECTORY.toFile();
+            if (!certDir.exists()) {
+                certDir.mkdirs();
+            }
 
-            File keystoreFile = Paths.get(certDir.getAbsolutePath(), KEYSTORE_PATH).toFile();
+            File keystoreFile = Paths.get(certDir.getAbsolutePath(), KEYSTORE_NAME).toFile();
             if (!keystoreFile.exists()) {
                 Log.logInfo("Keystore not found. Generating new key pair and requesting certificate...");
                 generateKeyPairAndRequestCertificate();
@@ -68,29 +71,32 @@ public class SSLUtils {
         keyPairGenerator.initialize(2048);
         KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
-        // Tạo CSR bằng Bouncy Castle
+        // Create CSR using Bouncy Castle
         String csrPem = generateCsrPem(keyPair);
         Log.logInfo("Generated CSR for peer certificate request.");
 
-        // Gửi CSR tới Tracker
+        // Send CSR to Tracker
         String signedCertPem = sendCsrToTracker(csrPem);
         if (signedCertPem == null || signedCertPem.isEmpty()) {
             throw new Exception("Failed to receive signed certificate from tracker");
         }
         Log.logInfo("Received signed certificate from tracker.");
 
-        // Tải chứng chỉ nhận được và chứng chỉ CA (nếu có)
+        // Load the received certificate and CA certificate (if any)
         Certificate[] chain = loadCertificatesFromPem(signedCertPem);
 
-        // Tạo và lưu Keystore
+        // Create and save the Keystore
         KeyStore keyStore = KeyStore.getInstance("JKS");
         keyStore.load(null, null);
         keyStore.setKeyEntry(KEY_ALIAS, keyPair.getPrivate(), KEYSTORE_PASSWORD.toCharArray(), chain);
-        try (FileOutputStream fos = new FileOutputStream(KEYSTORE_PATH)) {
+
+        File keystoreFile = Paths.get(CERT_DIRECTORY.toFile().getAbsolutePath(), KEYSTORE_NAME).toFile();
+        try (FileOutputStream fos = new FileOutputStream(keystoreFile)) {
             keyStore.store(fos, KEYSTORE_PASSWORD.toCharArray());
+            Log.logInfo("Keystore saved successfully to: " + keystoreFile.getAbsolutePath());
         }
 
-        // Truststore is pre-bundled with CA certificates, no need to create/modify
+        // Truststore is assumed to be pre-bundled with CA certificates
         Log.logInfo("Truststore should be pre-bundled with CA certificates.");
 
         Log.logInfo("SSL certificates initialized successfully.");
@@ -105,7 +111,7 @@ public class SSLUtils {
         ContentSigner signer = csBuilder.build(keyPair.getPrivate());
         PKCS10CertificationRequest csr = p10Builder.build(signer);
 
-        // Chuyển CSR sang định dạng PEM
+        // Convert CSR to PEM format
         StringWriter stringWriter = new StringWriter();
         try (JcaPEMWriter pemWriter = new JcaPEMWriter(stringWriter)) {
             pemWriter.writeObject(csr);
@@ -114,13 +120,13 @@ public class SSLUtils {
     }
 
     private static String sendCsrToTracker(String csrPem) throws Exception {
-        // Use SSL context with our certificates to connect to Tracker
+        // Use an SSL context with our certificates to connect to the Tracker
         // The pre-bundled truststore should contain the CA certificates
         SSLSocketFactory factory = createSSLSocketFactory();
         try (SSLSocket socket = (SSLSocket) factory.createSocket(SERVER_IP, TRACKER_PORT_FOR_CSR)) {
             socket.setSoTimeout(15000); // 15s timeout
 
-            // Gửi request ký chứng chỉ đến Tracker
+            // Send certificate signing request to Tracker
             String request = "CERT_REQUEST|" + csrPem.replace("\n", "\\n") + "\n";
 
             try (PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
@@ -158,18 +164,28 @@ public class SSLUtils {
     }
 
     public static SSLContext createSSLContext() throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("JKS");
-        try (FileInputStream fis = new FileInputStream(KEYSTORE_PATH)) {
-            keyStore.load(fis, KEYSTORE_PASSWORD.toCharArray());
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        File keyStoreFile = Paths.get(CERT_DIRECTORY.toFile().getAbsolutePath(), KEYSTORE_NAME).toFile();
+
+        if (keyStoreFile.exists()) {
+            KeyStore keyStore = KeyStore.getInstance("JKS");
+            try (FileInputStream fis = new FileInputStream(keyStoreFile)) {
+                keyStore.load(fis, KEYSTORE_PASSWORD.toCharArray());
+            }
+            kmf.init(keyStore, KEYSTORE_PASSWORD.toCharArray());
+        } else {
+            // Keystore does not exist, initialize KeyManagerFactory with null.
+            // This is acceptable if the client side does not need to present its own certificate,
+            // for example, when first requesting a certificate from a CA.
+            kmf.init(null, null);
+            Log.logInfo("Keystore not found. Initializing client with truststore only.");
         }
 
         KeyStore trustStore = KeyStore.getInstance("JKS");
-        try (FileInputStream fis = new FileInputStream(TRUSTSTORE_PATH)) {
+        File trustStoreFile = Paths.get(CERT_DIRECTORY.toFile().getAbsolutePath(), TRUSTSTORE_NAME).toFile();
+        try (FileInputStream fis = new FileInputStream(trustStoreFile)) {
             trustStore.load(fis, TRUSTSTORE_PASSWORD.toCharArray());
         }
-
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, KEYSTORE_PASSWORD.toCharArray());
 
         TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(trustStore);
@@ -192,8 +208,8 @@ public class SSLUtils {
         if (CERT_DIRECTORY == null) {
             return false;
         }
-        File key = CERT_DIRECTORY.resolve(KEYSTORE_PATH).toFile();
-        File trust = CERT_DIRECTORY.resolve(TRUSTSTORE_PATH).toFile();
+        File key = CERT_DIRECTORY.resolve(KEYSTORE_NAME).toFile();
+        File trust = CERT_DIRECTORY.resolve(TRUSTSTORE_NAME).toFile();
         return key.exists() && trust.exists();
     }
 }
