@@ -5,7 +5,9 @@ import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.cert.Certificate;
@@ -30,16 +32,12 @@ import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import src.adapter.FileInfoAdapter;
-import src.utils.Infor;
-import src.utils.SSLUtils;
+import src.utils.*;
 
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
 
 import static src.utils.Log.*;
-
-import src.utils.LogTag;
-import src.utils.RequestInfor;
 
 import java.math.BigInteger;
 
@@ -50,6 +48,7 @@ public class TrackerModel {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Selector selector;
     private final ScheduledExecutorService pingExecutor;
+    private final ExecutorService requestExecutor = Executors.newFixedThreadPool(10);
 
     public TrackerModel() throws IOException {
         publicFiles = new ConcurrentHashMap<>();
@@ -62,7 +61,10 @@ public class TrackerModel {
 
     public void startTracker() {
         try {
-            startSSLServer();
+
+            ExecutorService serverExecutor = Executors.newFixedThreadPool(2);
+            serverExecutor.submit(this::startSSLServer);      // Chạy server chính
+            serverExecutor.submit(this::startEnrollmentServer);
         } catch (Exception e) {
             logError("[TRACKER]: SSL Server error: " + e.getMessage() + " on " + getCurrentTime(), e);
             throw new RuntimeException("Failed to start SSL Tracker server", e);
@@ -71,8 +73,14 @@ public class TrackerModel {
         }
     }
 
-    private void startSSLServer() throws Exception {
-        SSLServerSocket sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(SSLUtils.SSL_TRACKER_PORT);
+    private void startSSLServer() {
+        SSLServerSocket sslServerSocket = null;
+        try {
+            sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(SSLUtils.SSL_TRACKER_PORT);
+        } catch (Exception e) {
+            logError("[TRACKER]: SSL Server socket creation error: " + e.getMessage() + " on " + getCurrentTime(), e);
+            throw new RuntimeException(e);
+        }
         sslServerSocket.setNeedClientAuth(true);
         sslServerSocket.setUseClientMode(false);
 
@@ -85,16 +93,81 @@ public class TrackerModel {
                 clientSocket.setNeedClientAuth(true);
 
                 logInfo("[TRACKER]: SSL connection accepted from: " + clientSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
-
-                // Handle SSL connection in a separate thread
-                ExecutorService sslHandler = Executors.newSingleThreadExecutor();
-                sslHandler.submit(() -> handleSSLConnection(clientSocket));
-                sslHandler.shutdown();
-
+                requestExecutor.submit(() -> handleSSLConnection(clientSocket));
             } catch (IOException e) {
                 logError("[TRACKER]: SSL accept error: " + e.getMessage() + " on " + getCurrentTime(), e);
             }
         }
+    }
+
+    private void startEnrollmentServer() {
+        try {
+            SSLServerSocket sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(Infor.TRACKER_ENROLLMENT_PORT);
+            sslServerSocket.setNeedClientAuth(false);
+            sslServerSocket.setUseClientMode(false);
+
+            logInfo("[TRACKER-ENROLL]: Enrollment SSL Server started on " + Infor.TRACKER_ENROLLMENT_PORT);
+
+            while (true) {
+                try {
+                    SSLSocket clientSocket = (SSLSocket) sslServerSocket.accept();
+                    logInfo("[TRACKER-ENROLL]: Enrollment connection accepted from: " + clientSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+                    requestExecutor.submit(() -> handleEnrollmentConnection(clientSocket));
+                } catch (IOException e) {
+                    logError("[TRACKER-ENROLL]: Enrollment accept error: " + e.getMessage(), e);
+                }
+            }
+        } catch (Exception e) {
+            logError("[TRACKER-ENROLL]: Enrollment Server error: " + e.getMessage(), e);
+        }
+    }
+
+
+    private void handleEnrollmentConnection(SSLSocket sslSocket) {
+        // Sử dụng try-with-resources cho cả socket để đảm bảo nó luôn được đóng
+        try (sslSocket;
+             Scanner scanner = new Scanner(sslSocket.getInputStream(), StandardCharsets.UTF_8);
+             PrintWriter writer = new PrintWriter(sslSocket.getOutputStream(), true)) {
+
+            StringBuilder sb = new StringBuilder();
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                if (line.equals("END_OF_REQUEST")) break;
+                sb.append(line).append("\n");
+            }
+
+            String rawRequest = sb.toString().trim();
+            logInfo("[TRACKER-ENROLL]: Received raw data length: " + rawRequest.length() + " on " + getCurrentTime());
+            logInfo("[TRACKER-ENROLL]: Raw request: " + rawRequest);
+
+            // 2. Xử lý request đã nhận
+            String response;
+            if (rawRequest.isEmpty()) {
+                response = "CERT_ERROR|Empty request received.";
+            } else if (rawRequest.startsWith("CERT_REQUEST|")) {
+                // Tách phần payload (CSR) ra khỏi command
+                String escapedCsrPem = rawRequest.substring("CERT_REQUEST|".length());
+
+                if (escapedCsrPem.isEmpty()) {
+                    response = "CERT_ERROR|Invalid CERT_REQUEST format. CSR is missing.";
+                } else {
+                    String csrPem = escapedCsrPem;
+                    response = processCertificateRequest(csrPem);
+                }
+            } else {
+                response = "CERT_ERROR|This port only accepts CERT_REQUEST commands.";
+            }
+
+            String finalResponse = response + "\nEND_OF_RESPONSE\n";
+            writer.write(finalResponse);
+            writer.flush();
+
+            logInfo("[TRACKER-ENROLL]: Sent response to " + sslSocket.getRemoteSocketAddress());
+
+        } catch (Exception e) {
+            logError("[TRACKER-ENROLL]: Connection error: " + e.getMessage(), e);
+        }
+        // Không cần khối finally để đóng socket vì nó đã nằm trong try-with-resources
     }
 
     private void handleSSLConnection(SSLSocket sslSocket) {
@@ -123,99 +196,6 @@ public class TrackerModel {
                 logInfo("[TRACKER]: SSL connection closed: " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
             } catch (IOException e) {
                 logError("[TRACKER]: SSL socket close error: " + e.getMessage() + " on " + getCurrentTime(), e);
-            }
-        }
-    }
-
-    private void handleAccept(SelectionKey key) throws IOException {
-        logInfo("[TRACKER-PLAIN]: Handling new connection on " + getCurrentTime());
-        SocketChannel client = null;
-        ServerSocketChannel server = (ServerSocketChannel) key.channel();
-        try {
-            client = server.accept();
-        } catch (IOException e) {
-            logError("[TRACKER]: Accept error: " + e.getMessage() + " on " + getCurrentTime(), e);
-            return;
-        }
-
-        if (client != null) {
-            client.configureBlocking(false);
-            String clientAddress = client.getRemoteAddress().toString();
-            client.register(selector, SelectionKey.OP_READ, new ClientState(clientAddress));
-            logInfo("[TRACKER]: New connection: " + clientAddress + " on " + getCurrentTime());
-        }
-    }
-
-    private void handleRead(SelectionKey key) throws IOException {
-        SelectableChannel channel = key.channel();
-        if (!(channel instanceof SocketChannel)) {
-            logError("[TRACKER]: Channel isn't SocketChannel in handleRead: " + channel + " on " + getCurrentTime(), null);
-            key.cancel();
-            return;
-        }
-
-        SocketChannel client = (SocketChannel) channel;
-        ClientState state = (ClientState) key.attachment();
-        ByteBuffer buffer = state.readBuffer;
-
-        int bytesRead;
-        try {
-            bytesRead = client.read(buffer);
-        } catch (IOException e) {
-            logError("[TRACKER]: Read error " + state.clientAddress + ": " + e.getMessage() + " on " + getCurrentTime(), e);
-            key.cancel();
-            client.close();
-            return;
-        }
-
-        if (bytesRead == -1) {
-            logInfo("[TRACKER]: Client disconnected: " + state.clientAddress + " on " + getCurrentTime());
-            key.cancel();
-            client.close();
-            return;
-        }
-
-        if (bytesRead > 0) {
-            buffer.flip();
-            String data = new String(buffer.array(), 0, bytesRead).trim();
-            state.request.append(data);
-
-            if (!data.isEmpty()) {
-                String request = state.request.toString().trim();
-                logInfo("[TRACKER]: Received request: " + request + " from " + state.clientAddress + " on " + getCurrentTime());
-                String response = processRequest(request);
-
-                state.writeBuffer = ByteBuffer.wrap((response + "\n").getBytes());
-                key.interestOps(SelectionKey.OP_WRITE);
-                state.request.setLength(0);
-            }
-            buffer.clear();
-        }
-    }
-
-    private void handleWrite(SelectionKey key) throws IOException {
-        SelectableChannel channel = key.channel();
-        if (!(channel instanceof SocketChannel client)) {
-            logError("[TRACKER]: Channel isn't SocketChannel in handleWrite: " + channel + " on " + getCurrentTime(), null);
-            key.cancel();
-            return;
-        }
-
-        ClientState state = (ClientState) key.attachment();
-        ByteBuffer buffer = state.writeBuffer;
-
-        if (buffer != null) {
-            try {
-                client.write(buffer);
-                if (!buffer.hasRemaining()) {
-                    state.writeBuffer = null;
-                    key.interestOps(SelectionKey.OP_READ);
-                    logInfo("[TRACKER]: Sent response to " + state.clientAddress + " on " + getCurrentTime());
-                }
-            } catch (IOException e) {
-                logError("[TRACKER]: Send response to client error" + state.clientAddress + ": " + e.getMessage() + " on " + getCurrentTime(), e);
-                key.cancel();
-                client.close();
             }
         }
     }
@@ -272,12 +252,6 @@ public class TrackerModel {
             return "Định dạng yêu cầu GET_SHARED_PEERS không hợp lệ. Sử dụng: GET_SHARED_PEERS|<fileHash>";
         } else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
             return getKnownPeers();
-        } else if (request.startsWith("CERT_REQUEST")) {
-            if (parts.length == 2) {
-                return processCertificateRequest(parts[1]);
-            }
-            logInfo("[TRACKER]: Invalid CERT_REQUEST: " + request + " on " + getCurrentTime());
-            return "CERT_ERROR|Invalid certificate request format";
         }
         logInfo("[TRACKER]: Unkhown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
@@ -592,7 +566,8 @@ public class TrackerModel {
      */
     private String processCertificateRequest(String csrPem) {
         try {
-            logInfo("[TRACKER]: Processing certificate request on " + getCurrentTime());
+            long startTime = System.currentTimeMillis();
+            logInfo("[TRACKER-ENROLL]: Processing certificate request on " + getCurrentTime());
 
             // 1. Đọc CSR từ chuỗi PEM bằng Bouncy Castle
             PKCS10CertificationRequest csr;
@@ -604,11 +579,14 @@ public class TrackerModel {
                     throw new IllegalArgumentException("Provided string is not a valid PKCS#10 CSR");
                 }
             }
+            long parseTime = System.currentTimeMillis();
+            logInfo("[TRACKER-ENROLL]: CSR parsing completed in " + (parseTime - startTime) + "ms on " + getCurrentTime());
 
             // 2. Tải Keystore của CA (Intermediate CA)
-            File trackerKeystoreFile = new File("certificates/tracker-ca-keystore.jks");
+            // get tracker-ca-keystore.jks from Resources
+            File trackerKeystoreFile = new File("D:\\code\\P2P-File-Sharing-System\\src\\Tracker\\resource\\tracker-ca-keystore.jks");
             if (!trackerKeystoreFile.exists()) {
-                logError("[TRACKER]: Intermediate CA keystore not found! Cannot sign certificates on " + getCurrentTime(), null);
+                logError("[TRACKER-ENROLL]: Intermediate CA keystore not found! Cannot sign certificates on " + getCurrentTime(), null);
                 return "CERT_ERROR|Intermediate CA keystore not available";
             }
 
@@ -650,12 +628,12 @@ public class TrackerModel {
             }
 
             String certificateChainPem = stringWriter.toString();
-            logInfo("[TRACKER]: Certificate chain generated successfully for peer on " + getCurrentTime());
+            logInfo("[TRACKER-ENROLL]: Certificate chain generated successfully for peer on " + getCurrentTime());
 
             return "CERT_RESPONSE|" + certificateChainPem;
 
         } catch (Exception e) {
-            logError("[TRACKER]: Error processing certificate request: " + e.getMessage() + " on " + getCurrentTime(), e);
+            logError("[TRACKER-ENROLL]: Error processing certificate request: " + e.getMessage() + " on " + getCurrentTime(), e);
             return "CERT_ERROR|Failed to sign certificate: " + e.getMessage();
         }
     }
