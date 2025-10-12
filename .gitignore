@@ -1,7 +1,8 @@
 *.class
-src/Tracker/out/production/Tracker/model/TrackerModel.class
-*.class
-src/Tracker/out/production/Tracker/.env
-*.class
 desktop.ini
-*.jar
+/certificates
+*.jks
+*.cer
+*.csr
+*.env
+/src/Tracker/out

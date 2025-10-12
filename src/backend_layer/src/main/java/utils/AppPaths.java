@@ -3,13 +3,53 @@ package main.java.utils;
 import main.java.domain.entity.ProgressInfo;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.regex.Pattern;
 
 import static main.java.utils.Log.logInfo;
 
 public class AppPaths {
-    public static String APP_NAME = "P2PFileSharing";
+    private static final String APP_NAME = EnvUtils.getEnv("APP_NAME", "p2p-file-sharing");
+    private static final String CERT_FOLDER = "certificates";
+    private static final DateTimeFormatter FILE_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final Path LOG_DIR = initLogDir();
+
+
+    private static Path initLogDir() {
+        String os = System.getProperty("os.name").toLowerCase();
+        String userHome = System.getProperty("user.home");
+        Path logDir;
+
+        if (os.contains("win")) {
+            logDir = Paths.get(System.getenv("LOCALAPPDATA"), APP_NAME, "logs");
+        } else if (os.contains("mac")) {
+            logDir = Paths.get(userHome, "Library", "Logs", APP_NAME);
+        } else {
+            logDir = Paths.get("/var/log", APP_NAME);
+            if (!Files.isWritable(Paths.get("/var/log"))) {
+                logDir = Paths.get(userHome, APP_NAME, "logs");
+            }
+        }
+
+        try {
+            Files.createDirectories(logDir);
+        } catch (IOException e) {
+            System.err.println("[ERROR] Cannot create log directory: " + e.getMessage());
+        }
+
+        return logDir;
+    }
+
+    public static Path getLogFilePath() {
+        String date = LocalDateTime.now().format(FILE_DATE_FORMAT);
+        String fileName = "application-" + date + ".log";
+        return LOG_DIR.resolve(fileName);
+    }
+
     public static String getAppDataDirectory() {
         String os = System.getProperty("os.name").toLowerCase();
         String userHome = System.getProperty("user.home");
@@ -25,19 +65,30 @@ public class AppPaths {
         }
 
         if (!appDir.exists()) {
-            appDir.mkdirs();
+            try {
+                Files.createDirectories(appDir.getAbsoluteFile().toPath());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         return appDir.getAbsolutePath();
     }
 
-    public static String getSharedFile(String fileName) {
-        return Paths.get(getAppDataDirectory(), "shared_files", fileName).toString();
+    public static Path getCertificatePath() {
+        Path certPath = Paths.get(getAppDataDirectory(), CERT_FOLDER);
+        if (!Files.exists(certPath)) {
+            try {
+                Files.createDirectories(certPath);
+            } catch (IOException e) {
+                return null;
+            }
+        }
+        return certPath;
     }
 
-    public static boolean isExistSharedFile(String fileName) {
-        File file = new File(getSharedFile(fileName));
-        return file.exists();
+    public static String getSharedFile(String fileName) {
+        return Paths.get(getAppDataDirectory(), "shared_files", fileName).toString();
     }
 
     public static boolean copyFileToShare(File sourceFile, String newfileName, ProgressInfo progressInfor) {
@@ -48,12 +99,10 @@ public class AppPaths {
                 InputStream in = new FileInputStream(sourceFile);
                 OutputStream out = new FileOutputStream(destFile)
         ) {
-            synchronized (progressInfor) {
-                progressInfor.setBytesTransferred(0);
-                progressInfor.setTotalBytes(sourceFile.length());
-                progressInfor.setStatus(ProgressInfo.ProgressStatus.SHARING);
-                progressInfor.setProgressPercentage(0);
-            }
+            progressInfor.setBytesTransferred(0);
+            progressInfor.setTotalBytes(sourceFile.length());
+            progressInfor.setStatus(ProgressInfo.ProgressStatus.SHARING);
+            progressInfor.setProgressPercentage(0);
             byte[] buffer = new byte[4096];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
@@ -64,11 +113,10 @@ public class AppPaths {
                     return false;
                 }
                 out.write(buffer, 0, bytesRead);
-                synchronized (progressInfor) {
-                    progressInfor.addBytesTransferred(bytesRead);
-                    int progress = (int) ((progressInfor.getBytesTransferred() * 70) / progressInfor.getTotalBytes());
-                    progressInfor.setProgressPercentage(progress);
-                }
+                progressInfor.addBytesTransferred(bytesRead);
+                int progress = (int) ((progressInfor.getBytesTransferred() * 70) / progressInfor.getTotalBytes());
+                progressInfor.setProgressPercentage(progress);
+
             }
             System.out.println("Total time: " + (System.currentTimeMillis() - start) + " ms");
             return true;

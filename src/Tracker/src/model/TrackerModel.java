@@ -1,25 +1,27 @@
 package src.model;
 
-import java.io.IOException;
+import java.io.*;
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.Scanner;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import src.adapter.FileInfoAdapter;
-import src.utils.Infor;
+import src.utils.*;
+
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLSocket;
 
 import static src.utils.Log.*;
-
-import src.utils.LogTag;
-import src.utils.RequestInfor;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<PeerInfo> knownPeers;
@@ -28,6 +30,7 @@ public class TrackerModel {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final Selector selector;
     private final ScheduledExecutorService pingExecutor;
+    private final ExecutorService requestExecutor = Executors.newFixedThreadPool(10);
 
     public TrackerModel() throws IOException {
         publicFiles = new ConcurrentHashMap<>();
@@ -39,134 +42,141 @@ public class TrackerModel {
     }
 
     public void startTracker() {
-        try (ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()) {
-            serverSocketChannel.bind(new InetSocketAddress(Infor.TRACKER_PORT));
-            serverSocketChannel.configureBlocking(false);
-            serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
-            logInfo("[TRACKER]: Tracker start on " + Infor.TRACKER_PORT + " - " + getCurrentTime());
+        try {
 
-            while (true) {
-                selector.select();
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
-                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-
-                while (keyIterator.hasNext()) {
-                    SelectionKey key = keyIterator.next();
-                    keyIterator.remove();
-
-                    if (!key.isValid()) continue;
-
-                    if (key.isAcceptable()) {
-                        handleAccept(key);
-                    } else if (key.isReadable()) {
-                        handleRead(key);
-                    } else if (key.isWritable()) {
-                        handleWrite(key);
-                    } else {
-                        logError("[TRACKER]: Unknown Error: " + key + " on " + getCurrentTime(), null);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            logError("[TRACKER]: Tracker Error: " + e.getMessage() + " on " + getCurrentTime(), e);
+            ExecutorService serverExecutor = Executors.newFixedThreadPool(2);
+            serverExecutor.submit(this::startSSLServer);      // Chạy server chính
+            serverExecutor.submit(this::startEnrollmentServer);
+        } catch (Exception e) {
+            logError("[TRACKER]: SSL Server error: " + e.getMessage() + " on " + getCurrentTime(), e);
+            throw new RuntimeException("Failed to start SSL Tracker server", e);
         } finally {
             pingExecutor.shutdown();
+        }
+    }
+
+    private void startSSLServer() {
+        SSLServerSocket sslServerSocket = null;
+        try {
+            sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(Config.SSL_TRACKER_PORT);
+        } catch (Exception e) {
+            logError("[TRACKER]: SSL Server socket creation error: " + e.getMessage() + " on " + getCurrentTime(), e);
+            throw new RuntimeException(e);
+        }
+        sslServerSocket.setNeedClientAuth(true);
+        sslServerSocket.setUseClientMode(false);
+
+        logInfo("[TRACKER]: SSL Tracker started on " + Config.SSL_TRACKER_PORT + " - " + getCurrentTime());
+
+        while (true) {
             try {
-                selector.close();
+                SSLSocket clientSocket = (SSLSocket) sslServerSocket.accept();
+                clientSocket.setUseClientMode(false);
+                clientSocket.setNeedClientAuth(true);
+
+                logInfo("[TRACKER]: SSL connection accepted from: " + clientSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+                requestExecutor.submit(() -> handleSSLConnection(clientSocket));
             } catch (IOException e) {
-                logError("[TRACKER]: Close selector error: " + e.getMessage() + " on " + getCurrentTime(), e);
+                logError("[TRACKER]: SSL accept error: " + e.getMessage() + " on " + getCurrentTime(), e);
             }
         }
     }
 
-    private void handleAccept(SelectionKey key) throws IOException {
-        SocketChannel client = null;
-        ServerSocketChannel server = (ServerSocketChannel) key.channel();
+    private void startEnrollmentServer() {
         try {
-            client = server.accept();
-        } catch (IOException e) {
-            logError("[TRACKER]: Accept error: " + e.getMessage() + " on " + getCurrentTime(), e);
-            return;
-        }
+            SSLServerSocket sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(Config.TRACKER_ENROLLMENT_PORT);
+            sslServerSocket.setNeedClientAuth(false);
+            sslServerSocket.setUseClientMode(false);
 
-        if (client != null) {
-            client.configureBlocking(false);
-            String clientAddress = client.getRemoteAddress().toString();
-            client.register(selector, SelectionKey.OP_READ, new ClientState(clientAddress));
-            logInfo("[TRACKER]: New connection: " + clientAddress + " on " + getCurrentTime());
-        }
-    }
+            logInfo("[TRACKER-ENROLL]: Enrollment SSL Server started on " + Config.TRACKER_ENROLLMENT_PORT);
 
-    private void handleRead(SelectionKey key) throws IOException {
-        SelectableChannel channel = key.channel();
-        if (!(channel instanceof SocketChannel)) {
-            logError("[TRACKER]: Channel isn't SocketChannel in handleRead: " + channel + " on " + getCurrentTime(), null);
-            key.cancel();
-            return;
-        }
-
-        SocketChannel client = (SocketChannel) channel;
-        ClientState state = (ClientState) key.attachment();
-        ByteBuffer buffer = state.readBuffer;
-
-        int bytesRead;
-        try {
-            bytesRead = client.read(buffer);
-        } catch (IOException e) {
-            logError("[TRACKER]: Read error " + state.clientAddress + ": " + e.getMessage() + " on " + getCurrentTime(), e);
-            key.cancel();
-            client.close();
-            return;
-        }
-
-        if (bytesRead == -1) {
-            logInfo("[TRACKER]: Client disconnected: " + state.clientAddress + " on " + getCurrentTime());
-            key.cancel();
-            client.close();
-            return;
-        }
-
-        if (bytesRead > 0) {
-            buffer.flip();
-            String data = new String(buffer.array(), 0, bytesRead).trim();
-            state.request.append(data);
-
-            if (!data.isEmpty()) {
-                String request = state.request.toString().trim();
-                logInfo("[TRACKER]: Received request: " + request + " from " + state.clientAddress + " on " + getCurrentTime());
-                String response = processRequest(request);
-
-                state.writeBuffer = ByteBuffer.wrap((response + "\n").getBytes());
-                key.interestOps(SelectionKey.OP_WRITE);
-                state.request.setLength(0);
-            }
-            buffer.clear();
-        }
-    }
-
-    private void handleWrite(SelectionKey key) throws IOException {
-        SelectableChannel channel = key.channel();
-        if (!(channel instanceof SocketChannel client)) {
-            logError("[TRACKER]: Channel isn't SocketChannel in handleWrite: " + channel + " on " + getCurrentTime(), null);
-            key.cancel();
-            return;
-        }
-
-        ClientState state = (ClientState) key.attachment();
-        ByteBuffer buffer = state.writeBuffer;
-
-        if (buffer != null) {
-            try {
-                client.write(buffer);
-                if (!buffer.hasRemaining()) {
-                    state.writeBuffer = null;
-                    key.interestOps(SelectionKey.OP_READ);
-                    logInfo("[TRACKER]: Sent response to " + state.clientAddress + " on " + getCurrentTime());
+            while (true) {
+                try {
+                    SSLSocket clientSocket = (SSLSocket) sslServerSocket.accept();
+                    logInfo("[TRACKER-ENROLL]: Enrollment connection accepted from: " + clientSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+                    requestExecutor.submit(() -> handleEnrollmentConnection(clientSocket));
+                } catch (IOException e) {
+                    logError("[TRACKER-ENROLL]: Enrollment accept error: " + e.getMessage(), e);
                 }
+            }
+        } catch (Exception e) {
+            logError("[TRACKER-ENROLL]: Enrollment Server error: " + e.getMessage(), e);
+        }
+    }
+
+
+    private void handleEnrollmentConnection(SSLSocket sslSocket) {
+        // Sử dụng try-with-resources cho cả socket để đảm bảo nó luôn được đóng
+        try (sslSocket;
+             Scanner scanner = new Scanner(sslSocket.getInputStream(), StandardCharsets.UTF_8);
+             PrintWriter writer = new PrintWriter(sslSocket.getOutputStream(), true)) {
+
+            StringBuilder sb = new StringBuilder();
+            while (scanner.hasNextLine()) {
+                String line = scanner.nextLine();
+                if (line.equals("END_OF_REQUEST")) break;
+                sb.append(line).append("\n");
+            }
+
+            String rawRequest = sb.toString().trim();
+            logInfo("[TRACKER-ENROLL]: Received raw data length: " + rawRequest.length() + " on " + getCurrentTime());
+            logInfo("[TRACKER-ENROLL]: Raw request: " + rawRequest);
+
+            // 2. Xử lý request đã nhận
+            String response;
+            if (rawRequest.isEmpty()) {
+                response = "CERT_ERROR|Empty request received.";
+            } else if (rawRequest.startsWith("CERT_REQUEST|")) {
+                // Tách phần payload (CSR) ra khỏi command
+                String escapedCsrPem = rawRequest.substring("CERT_REQUEST|".length());
+
+                if (escapedCsrPem.isEmpty()) {
+                    response = "CERT_ERROR|Invalid CERT_REQUEST format. CSR is missing.";
+                } else {
+                    response = processCertificateRequest(escapedCsrPem);
+                }
+            } else {
+                response = "CERT_ERROR|This port only accepts CERT_REQUEST commands.";
+            }
+
+            String finalResponse = response + "\nEND_OF_RESPONSE\n";
+            writer.write(finalResponse);
+            writer.flush();
+
+            logInfo("[TRACKER-ENROLL]: Sent response to " + sslSocket.getRemoteSocketAddress());
+
+        } catch (Exception e) {
+            logError("[TRACKER-ENROLL]: Connection error: " + e.getMessage(), e);
+        }
+        // Không cần khối finally để đóng socket vì nó đã nằm trong try-with-resources
+    }
+
+    private void handleSSLConnection(SSLSocket sslSocket) {
+        try {
+            sslSocket.startHandshake();
+            logInfo("[TRACKER]: SSL handshake completed with " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+
+            // Basic SSL handling - treat as blocking I/O for simplicity
+            Scanner scanner = new Scanner(sslSocket.getInputStream());
+            PrintWriter writer = new PrintWriter(sslSocket.getOutputStream(), true);
+
+            while (scanner.hasNextLine()) {
+                String request = scanner.nextLine().trim();
+                logInfo("[TRACKER]: SSL Received request: " + request + " from " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+
+                String response = processRequest(request);
+                writer.println(response);
+                logInfo("[TRACKER]: SSL Sent response to " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
+            }
+
+        } catch (Exception e) {
+            logError("[TRACKER]: SSL connection error: " + e.getMessage() + " on " + getCurrentTime(), e);
+        } finally {
+            try {
+                sslSocket.close();
+                logInfo("[TRACKER]: SSL connection closed: " + sslSocket.getRemoteSocketAddress() + " on " + getCurrentTime());
             } catch (IOException e) {
-                logError("[TRACKER]: Send response to client error" + state.clientAddress + ": " + e.getMessage() + " on " + getCurrentTime(), e);
-                key.cancel();
-                client.close();
+                logError("[TRACKER]: SSL socket close error: " + e.getMessage() + " on " + getCurrentTime(), e);
             }
         }
     }
@@ -176,6 +186,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Received empty request on " + getCurrentTime());
             return "Yêu cầu rỗng";
         }
+        logInfo("[TRACKER]: Request: " + request);
 
         String[] parts = request.split("\\|");
         if (request.startsWith(RequestInfor.REGISTER)) {
@@ -220,7 +231,7 @@ public class TrackerModel {
             }
             logInfo("[TRACKER]: Invalid GET_SHARED_PEERS request: " + request + " on " + getCurrentTime());
             return "Định dạng yêu cầu GET_SHARED_PEERS không hợp lệ. Sử dụng: GET_SHARED_PEERS|<fileHash>";
-        }else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
+        } else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
             return getKnownPeers();
         }
         logInfo("[TRACKER]: Unkhown command: " + request + " on " + getCurrentTime());
@@ -252,9 +263,9 @@ public class TrackerModel {
 
         StringBuilder response = new StringBuilder(RequestInfor.GET_PEERS + "|" + peers.size() + "|");
         for (String peer : peers) {
-            response.append(peer).append(Infor.LIST_SEPARATOR);
+            response.append(peer).append(Config.LIST_SEPARATOR);
         }
-        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
             response.deleteCharAt(response.length() - 1);
         }
         logInfo("[TRACKER]: Sending peer list for file hash: " + fileHash + " on " + getCurrentTime());
@@ -315,10 +326,10 @@ public class TrackerModel {
         }
 
         for (FileInfo file : files) {
-            response.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Infor.LIST_SEPARATOR);
+            response.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Config.LIST_SEPARATOR);
         }
-        if (response.toString().endsWith(Infor.LIST_SEPARATOR)) {
-            response = new StringBuilder(response.substring(0, response.length() - Infor.LIST_SEPARATOR.length()));
+        if (response.toString().endsWith(Config.LIST_SEPARATOR)) {
+            response = new StringBuilder(response.substring(0, response.length() - Config.LIST_SEPARATOR.length()));
         }
         response.append("\n");
         return response.toString();
@@ -327,7 +338,7 @@ public class TrackerModel {
     private String shareFile(String[] parts) {
         int publicCount = Integer.parseInt(parts[1]);
         int privateCount = Integer.parseInt(parts[2]);
-        if (publicCount < 0 || privateCount < 0 || (publicCount == 0 && privateCount == 0)) {
+        if (publicCount < 0 || privateCount < 0) {
             logInfo("[TRACKER]: Invalid counts in SHARE: publicCount=" + publicCount + ", privateCount=" + privateCount + " on " + getCurrentTime());
             return "Số lượng chia sẻ không hợp lệ.";
         }
@@ -382,7 +393,7 @@ public class TrackerModel {
             logInfo("[TRACKER]: Received privateSharedFile: " + privateSharedFileJson + " on " + getCurrentTime());
 
             Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
-                    .enableComplexMapKeySerialization().setPrettyPrinting().create();
+                    .enableComplexMapKeySerialization().create();
 
             Type publicType = new TypeToken<Map<String, FileInfo>>() {
             }.getType();
@@ -417,20 +428,20 @@ public class TrackerModel {
     private void pingPeers() {
         try (DatagramChannel channel = DatagramChannel.open()) {
             channel.configureBlocking(false);
-            channel.socket().setSoTimeout(Infor.SOCKET_TIMEOUT_MS);
+            channel.socket().setSoTimeout(Config.SOCKET_TIMEOUT_MS);
 
             for (int i = 0; i < 3; i++) {
 
                 // ping to all peers with broadcast message
                 String pingMessage = RequestInfor.PING;
                 ByteBuffer buffer = ByteBuffer.wrap(pingMessage.getBytes());
-                channel.send(buffer, new InetSocketAddress(Infor.BROADCAST_IP, Infor.PEER_PORT));
-                logInfo("[TRACKER]: Sent ping to broadcast address on " + Infor.BROADCAST_IP);
+                channel.send(buffer, new InetSocketAddress(Config.BROADCAST_IP, Config.PEER_PORT));
+                logInfo("[TRACKER]: Sent ping to broadcast address on " + Config.BROADCAST_IP);
 
                 // Collect alive peers
                 Set<PeerInfo> alivePeers = ConcurrentHashMap.newKeySet();
                 long startTime = System.currentTimeMillis();
-                while (System.currentTimeMillis() - startTime < Infor.SOCKET_TIMEOUT_MS) {
+                while (System.currentTimeMillis() - startTime < Config.SOCKET_TIMEOUT_MS) {
                     buffer.clear();
                     InetSocketAddress responder;
 
@@ -476,7 +487,7 @@ public class TrackerModel {
         }
     }
 
-     private String getKnownPeers() {
+    private String getKnownPeers() {
         if (knownPeers.isEmpty()) {
             logInfo("[TRACKER]: No known peers found on " + getCurrentTime());
             return RequestInfor.NOT_FOUND + "|No known peers found";
@@ -484,9 +495,9 @@ public class TrackerModel {
 
         StringBuilder response = new StringBuilder(RequestInfor.GET_KNOWN_PEERS + "|" + knownPeers.size() + "|");
         for (PeerInfo peer : knownPeers) {
-            response.append(peer.toString().replace('|', ':')).append(Infor.LIST_SEPARATOR);
+            response.append(peer.toString().replace('|', ':')).append(Config.LIST_SEPARATOR);
         }
-        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
             response.deleteCharAt(response.length() - 1);
         }
         logInfo("[TRACKER]: Sending known peers list on " + getCurrentTime());
@@ -513,9 +524,9 @@ public class TrackerModel {
 
         StringBuilder response = new StringBuilder(RequestInfor.GET_SHARED_PEERS + "|" + peers.size() + "|");
         for (PeerInfo peer : peers) {
-            response.append(peer).append(Infor.LIST_SEPARATOR);
+            response.append(peer).append(Config.LIST_SEPARATOR);
         }
-        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
             response.deleteCharAt(response.length() - 1);
         }
         logInfo("[TRACKER]: Sending selective peer list for file hash: " + fileHash + " on " + getCurrentTime());
@@ -528,6 +539,26 @@ public class TrackerModel {
 
     void addKnownPeer(PeerInfo peer) {
         knownPeers.add(peer);
+    }
+
+    /**
+     * Process certificate signing request from a peer
+     * Acts as the Intermediate Certificate Authority (CA)
+     */
+    private String processCertificateRequest(String csrPem) {
+        try {
+            long startTime = System.currentTimeMillis();
+            logInfo("[TRACKER-ENROLL]: Processing certificate request on " + getCurrentTime());
+
+            String certificateChainPem = SSLUtils.signCertificateForPeer(csrPem);
+            logInfo("[TRACKER-ENROLL]: Certificate chain generated successfully for peer on " + getCurrentTime());
+
+            return "CERT_RESPONSE|" + certificateChainPem;
+
+        } catch (Exception e) {
+            logError("[TRACKER-ENROLL]: Error processing certificate request: " + e.getMessage() + " on " + getCurrentTime(), e);
+            return "CERT_ERROR|Failed to sign certificate: " + e.getMessage();
+        }
     }
 
     String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
@@ -555,7 +586,7 @@ public class TrackerModel {
 
         StringBuilder msgBuilder = new StringBuilder();
         for (FileInfo file : filesToSend) {
-            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Infor.LIST_SEPARATOR);
+            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Config.LIST_SEPARATOR);
         }
 
         if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {

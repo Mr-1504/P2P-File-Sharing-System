@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Set;
 
 public interface IPeerModel {
-    void initializeServerSocket() throws IOException;
+    void initializeServerSocket() throws Exception;
 
     void startServer();
 
