@@ -6,7 +6,7 @@ import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
 import main.java.utils.AppPaths;
-import main.java.utils.Infor;
+import main.java.utils.Config;
 import main.java.utils.Log;
 import main.java.utils.LogTag;
 import main.java.utils.SSLUtils;
@@ -53,9 +53,9 @@ public class PeerModel implements IPeerModel {
     private final ReentrantLock fileLock;
 
     public PeerModel() throws IOException {
-        this.CHUNK_SIZE = Infor.CHUNK_SIZE;
-        this.SERVER_HOST = new PeerInfo(Infor.SERVER_IP, Infor.PEER_PORT);
-        this.TRACKER_HOST = new PeerInfo(Infor.TRACKER_IP, Infor.TRACKER_PORT);
+        this.CHUNK_SIZE = Config.CHUNK_SIZE;
+        this.SERVER_HOST = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT);
+        this.TRACKER_HOST = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
         this.openChannels = new ConcurrentHashMap<>();
         this.futures = new ConcurrentHashMap<>();
         this.processes = new ConcurrentHashMap<>();
@@ -579,11 +579,11 @@ public class PeerModel implements IPeerModel {
 
         int count = 0;
 
-        while (count < Infor.MAX_RETRIES) {
+        while (count < Config.MAX_RETRIES) {
             SSLSocket sslSocket = null;
             try {
                 // Create SSL connection to tracker (now mandatory)
-                PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), SSLUtils.SSL_TRACKER_PORT);
+                PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
                 sslSocket = createSecureSocket(sslTrackerHost);
                 Log.logInfo("Established SSL connection to tracker");
 
@@ -741,7 +741,7 @@ public class PeerModel implements IPeerModel {
 
         try {
             // Create SSL connection to tracker (now mandatory)
-            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), SSLUtils.SSL_TRACKER_PORT);
+            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
             SSLSocket sslSocket = createSecureSocket(sslTrackerHost);
             Socket socket = sslSocket; // Cast for compatibility
             Log.logInfo("Established SSL connection to tracker for sharing files");
@@ -784,7 +784,7 @@ public class PeerModel implements IPeerModel {
 
         try {
             // Create SSL connection to tracker (now mandatory)
-            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), SSLUtils.SSL_TRACKER_PORT);
+            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
             SSLSocket sslSocket = createSecureSocket(sslTrackerHost);
             Log.logInfo("Established SSL connection to tracker for getting known peers");
 
@@ -844,7 +844,7 @@ public class PeerModel implements IPeerModel {
 
         try {
             // Create SSL connection to tracker (now mandatory)
-            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), SSLUtils.SSL_TRACKER_PORT);
+            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
             SSLSocket sslSocket = createSecureSocket(sslTrackerHost);
             Log.logInfo("Established SSL connection to tracker for unsharing file");
 
@@ -1263,7 +1263,7 @@ public class PeerModel implements IPeerModel {
 
         try {
             // Create SSL connection to tracker (now mandatory)
-            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), SSLUtils.SSL_TRACKER_PORT);
+            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
             SSLSocket sslSocket = createSecureSocket(sslTrackerHost);
             Log.logInfo("Established SSL connection to tracker for getting peers with file hash");
 
@@ -1719,7 +1719,7 @@ public class PeerModel implements IPeerModel {
 
         try {
             // Create SSL connection to tracker (now mandatory)
-            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), SSLUtils.SSL_TRACKER_PORT);
+            PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
             SSLSocket sslSocket = createSecureSocket(sslTrackerHost);
             Log.logInfo("Established SSL connection to tracker for refreshing shared files");
 
@@ -1846,7 +1846,7 @@ public class PeerModel implements IPeerModel {
         SSLSocket sslSocket = (SSLSocket) sslSocketFactory.createSocket(peerInfo.getIp(), peerInfo.getPort());
         sslSocket.setUseClientMode(true);
         sslSocket.setNeedClientAuth(true);
-        sslSocket.setSoTimeout(Infor.SOCKET_TIMEOUT_MS);
+        sslSocket.setSoTimeout(Config.SOCKET_TIMEOUT_MS);
         sslSocket.startHandshake();
         return sslSocket;
     }

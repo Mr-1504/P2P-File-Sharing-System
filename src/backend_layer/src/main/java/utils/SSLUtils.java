@@ -24,18 +24,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SSLUtils {
-    public static final int SSL_TRACKER_ENROLL_PORT = Infor.TRACKER_ENROLL_PORT;
-    public static final int SSL_TRACKER_PORT = Infor.TRACKER_PORT;
-    public static final String KEYSTORE_PASSWORD = EnvConf.getEnv("KEYSTORE_PASSWORD", "p2ppassword");
-    public static final String TRUSTSTORE_PASSWORD = EnvConf.getEnv("TRUSTSTORE_PASSWORD", "p2ppassword");
-    public static final Path CERT_DIRECTORY = AppPaths.getCertificatePath();
-    public static final String KEYSTORE_NAME = "peer-keystore.jks";
-    public static final String TRUSTSTORE_NAME = "peer-truststore.jks";
-    public static final String KEY_ALIAS = EnvConf.getEnv("KEY_ALIAS", "peer-key");
-    public static final String CERT_ALIAS = "peer-cert";
-    public static final String CA_CERT_ALIAS = EnvConf.getEnv("CA_CERT_ALIAS", "tracker-ca-cert");
+    private static final String TRUSTSTORE_HASH = "ffe24be633fdbddae20ae7ec5effdfa422a0a15bc4d37f5284b5860da0364171";
+    private static final int SSL_TRACKER_ENROLL_PORT = Config.TRACKER_ENROLL_PORT;
+    private static final int SSL_TRACKER_PORT = Config.TRACKER_PORT;
+    private static final String KEYSTORE_PASSWORD = EnvUtils.getEnv("KEYSTORE_PASSWORD", "p2ppassword");
+    private static final String TRUSTSTORE_PASSWORD = EnvUtils.getEnv("TRUSTSTORE_PASSWORD", "p2ppassword");
+    private static final Path CERT_DIRECTORY = AppPaths.getCertificatePath();
+    private static final String KEYSTORE_NAME = "peer-keystore.jks";
+    private static final String TRUSTSTORE_NAME = "peer-truststore.jks";
+    private static final String KEY_ALIAS = EnvUtils.getEnv("KEY_ALIAS", "peer-key");
 
-    private static final String SERVER_IP = Infor.TRACKER_IP; // Should be the Tracker's IP
+    private static final String SERVER_IP = Config.TRACKER_IP; // Should be the Tracker's IP
     private static final int TRACKER_PORT_FOR_CSR = SSL_TRACKER_PORT;
 
     static {
@@ -51,6 +50,18 @@ public class SSLUtils {
             File certDir = CERT_DIRECTORY.toFile();
             if (!certDir.exists()) {
                 certDir.mkdirs();
+            }
+
+            File truststoreFile = Paths.get(certDir.getAbsolutePath(), TRUSTSTORE_NAME).toFile();
+            if (!truststoreFile.exists()) {
+                Log.logError("Truststore not found at: " + truststoreFile.getAbsolutePath(), null);
+                throw new RuntimeException("Truststore not found. Please ensure the truststore is present at: " + truststoreFile.getAbsolutePath());
+            } else {
+                String currentHash = computeFileHash(truststoreFile);
+                if (currentHash == null || !currentHash.equalsIgnoreCase(TRUSTSTORE_HASH)) {
+                    Log.logError("Truststore integrity check failed. Expected hash: " + TRUSTSTORE_HASH + ", but got: " + currentHash, null);
+                    throw new RuntimeException("Truststore integrity check failed. Expected hash: " + TRUSTSTORE_HASH + ", but got: " + currentHash);
+                }
             }
 
             File keystoreFile = Paths.get(certDir.getAbsolutePath(), KEYSTORE_NAME).toFile();
@@ -103,7 +114,7 @@ public class SSLUtils {
     }
 
     private static String generateCsrPem(KeyPair keyPair) throws Exception {
-        String subjectName = "CN=Peer-" + Infor.SERVER_IP;
+        String subjectName = "CN=Peer-" + Config.SERVER_IP;
         X500Name subject = new X500Name(subjectName);
 
         JcaPKCS10CertificationRequestBuilder p10Builder = new JcaPKCS10CertificationRequestBuilder(subject, keyPair.getPublic());
@@ -222,5 +233,25 @@ public class SSLUtils {
         File key = CERT_DIRECTORY.resolve(KEYSTORE_NAME).toFile();
         File trust = CERT_DIRECTORY.resolve(TRUSTSTORE_NAME).toFile();
         return key.exists() && trust.exists();
+    }
+
+    private static String computeFileHash(File file) {
+        try (InputStream fis = new FileInputStream(file)) {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] byteArray = new byte[1024];
+            int bytesCount;
+            while ((bytesCount = fis.read(byteArray)) != -1) {
+                digest.update(byteArray, 0, bytesCount);
+            }
+            byte[] bytes = digest.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            Log.logError("Failed to compute file hash: " + e.getMessage(), e);
+            return null;
+        }
     }
 }

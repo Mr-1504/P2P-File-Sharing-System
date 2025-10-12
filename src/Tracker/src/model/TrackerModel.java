@@ -6,16 +6,8 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.PrivateKey;
-import java.security.SecureRandom;
-import java.security.cert.Certificate;
-import java.security.cert.X509Certificate;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.Scanner;
@@ -23,14 +15,6 @@ import java.util.Scanner;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.openssl.PEMParser;
-import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import src.adapter.FileInfoAdapter;
 import src.utils.*;
 
@@ -38,8 +22,6 @@ import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
 
 import static src.utils.Log.*;
-
-import java.math.BigInteger;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<PeerInfo> knownPeers;
@@ -76,7 +58,7 @@ public class TrackerModel {
     private void startSSLServer() {
         SSLServerSocket sslServerSocket = null;
         try {
-            sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(SSLUtils.SSL_TRACKER_PORT);
+            sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(Config.SSL_TRACKER_PORT);
         } catch (Exception e) {
             logError("[TRACKER]: SSL Server socket creation error: " + e.getMessage() + " on " + getCurrentTime(), e);
             throw new RuntimeException(e);
@@ -84,7 +66,7 @@ public class TrackerModel {
         sslServerSocket.setNeedClientAuth(true);
         sslServerSocket.setUseClientMode(false);
 
-        logInfo("[TRACKER]: SSL Tracker started on " + SSLUtils.SSL_TRACKER_PORT + " - " + getCurrentTime());
+        logInfo("[TRACKER]: SSL Tracker started on " + Config.SSL_TRACKER_PORT + " - " + getCurrentTime());
 
         while (true) {
             try {
@@ -102,11 +84,11 @@ public class TrackerModel {
 
     private void startEnrollmentServer() {
         try {
-            SSLServerSocket sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(Infor.TRACKER_ENROLLMENT_PORT);
+            SSLServerSocket sslServerSocket = (SSLServerSocket) SSLUtils.createSSLServerSocketFactory().createServerSocket(Config.TRACKER_ENROLLMENT_PORT);
             sslServerSocket.setNeedClientAuth(false);
             sslServerSocket.setUseClientMode(false);
 
-            logInfo("[TRACKER-ENROLL]: Enrollment SSL Server started on " + Infor.TRACKER_ENROLLMENT_PORT);
+            logInfo("[TRACKER-ENROLL]: Enrollment SSL Server started on " + Config.TRACKER_ENROLLMENT_PORT);
 
             while (true) {
                 try {
@@ -151,8 +133,7 @@ public class TrackerModel {
                 if (escapedCsrPem.isEmpty()) {
                     response = "CERT_ERROR|Invalid CERT_REQUEST format. CSR is missing.";
                 } else {
-                    String csrPem = escapedCsrPem;
-                    response = processCertificateRequest(csrPem);
+                    response = processCertificateRequest(escapedCsrPem);
                 }
             } else {
                 response = "CERT_ERROR|This port only accepts CERT_REQUEST commands.";
@@ -282,9 +263,9 @@ public class TrackerModel {
 
         StringBuilder response = new StringBuilder(RequestInfor.GET_PEERS + "|" + peers.size() + "|");
         for (String peer : peers) {
-            response.append(peer).append(Infor.LIST_SEPARATOR);
+            response.append(peer).append(Config.LIST_SEPARATOR);
         }
-        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
             response.deleteCharAt(response.length() - 1);
         }
         logInfo("[TRACKER]: Sending peer list for file hash: " + fileHash + " on " + getCurrentTime());
@@ -345,10 +326,10 @@ public class TrackerModel {
         }
 
         for (FileInfo file : files) {
-            response.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Infor.LIST_SEPARATOR);
+            response.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Config.LIST_SEPARATOR);
         }
-        if (response.toString().endsWith(Infor.LIST_SEPARATOR)) {
-            response = new StringBuilder(response.substring(0, response.length() - Infor.LIST_SEPARATOR.length()));
+        if (response.toString().endsWith(Config.LIST_SEPARATOR)) {
+            response = new StringBuilder(response.substring(0, response.length() - Config.LIST_SEPARATOR.length()));
         }
         response.append("\n");
         return response.toString();
@@ -447,20 +428,20 @@ public class TrackerModel {
     private void pingPeers() {
         try (DatagramChannel channel = DatagramChannel.open()) {
             channel.configureBlocking(false);
-            channel.socket().setSoTimeout(Infor.SOCKET_TIMEOUT_MS);
+            channel.socket().setSoTimeout(Config.SOCKET_TIMEOUT_MS);
 
             for (int i = 0; i < 3; i++) {
 
                 // ping to all peers with broadcast message
                 String pingMessage = RequestInfor.PING;
                 ByteBuffer buffer = ByteBuffer.wrap(pingMessage.getBytes());
-                channel.send(buffer, new InetSocketAddress(Infor.BROADCAST_IP, Infor.PEER_PORT));
-                logInfo("[TRACKER]: Sent ping to broadcast address on " + Infor.BROADCAST_IP);
+                channel.send(buffer, new InetSocketAddress(Config.BROADCAST_IP, Config.PEER_PORT));
+                logInfo("[TRACKER]: Sent ping to broadcast address on " + Config.BROADCAST_IP);
 
                 // Collect alive peers
                 Set<PeerInfo> alivePeers = ConcurrentHashMap.newKeySet();
                 long startTime = System.currentTimeMillis();
-                while (System.currentTimeMillis() - startTime < Infor.SOCKET_TIMEOUT_MS) {
+                while (System.currentTimeMillis() - startTime < Config.SOCKET_TIMEOUT_MS) {
                     buffer.clear();
                     InetSocketAddress responder;
 
@@ -514,9 +495,9 @@ public class TrackerModel {
 
         StringBuilder response = new StringBuilder(RequestInfor.GET_KNOWN_PEERS + "|" + knownPeers.size() + "|");
         for (PeerInfo peer : knownPeers) {
-            response.append(peer.toString().replace('|', ':')).append(Infor.LIST_SEPARATOR);
+            response.append(peer.toString().replace('|', ':')).append(Config.LIST_SEPARATOR);
         }
-        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
             response.deleteCharAt(response.length() - 1);
         }
         logInfo("[TRACKER]: Sending known peers list on " + getCurrentTime());
@@ -543,9 +524,9 @@ public class TrackerModel {
 
         StringBuilder response = new StringBuilder(RequestInfor.GET_SHARED_PEERS + "|" + peers.size() + "|");
         for (PeerInfo peer : peers) {
-            response.append(peer).append(Infor.LIST_SEPARATOR);
+            response.append(peer).append(Config.LIST_SEPARATOR);
         }
-        if (response.charAt(response.length() - 1) == Infor.LIST_SEPARATOR.charAt(0)) {
+        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
             response.deleteCharAt(response.length() - 1);
         }
         logInfo("[TRACKER]: Sending selective peer list for file hash: " + fileHash + " on " + getCurrentTime());
@@ -569,65 +550,7 @@ public class TrackerModel {
             long startTime = System.currentTimeMillis();
             logInfo("[TRACKER-ENROLL]: Processing certificate request on " + getCurrentTime());
 
-            // 1. Đọc CSR từ chuỗi PEM bằng Bouncy Castle
-            PKCS10CertificationRequest csr;
-            try (StringReader reader = new StringReader(csrPem); PEMParser pemParser = new PEMParser(reader)) {
-                Object parsedObj = pemParser.readObject();
-                if (parsedObj instanceof PKCS10CertificationRequest) {
-                    csr = (PKCS10CertificationRequest) parsedObj;
-                } else {
-                    throw new IllegalArgumentException("Provided string is not a valid PKCS#10 CSR");
-                }
-            }
-            long parseTime = System.currentTimeMillis();
-            logInfo("[TRACKER-ENROLL]: CSR parsing completed in " + (parseTime - startTime) + "ms on " + getCurrentTime());
-
-            // 2. Tải Keystore của CA (Intermediate CA)
-            // get tracker-ca-keystore.jks from Resources
-            File trackerKeystoreFile = new File("D:\\code\\P2P-File-Sharing-System\\src\\Tracker\\resource\\tracker-ca-keystore.jks");
-            if (!trackerKeystoreFile.exists()) {
-                logError("[TRACKER-ENROLL]: Intermediate CA keystore not found! Cannot sign certificates on " + getCurrentTime(), null);
-                return "CERT_ERROR|Intermediate CA keystore not available";
-            }
-
-            KeyStore caKeyStore = KeyStore.getInstance("JKS");
-            try (FileInputStream fis = new FileInputStream(trackerKeystoreFile)) {
-                caKeyStore.load(fis, "p2ppassword".toCharArray());
-            }
-
-            // 3. Lấy private key và chứng chỉ của Intermediate CA
-            PrivateKey caPrivateKey = (PrivateKey) caKeyStore.getKey("tracker-ca", "p2ppassword".toCharArray());
-            X509Certificate caCert = (X509Certificate) caKeyStore.getCertificate("tracker-ca");
-
-            // 4. Tạo chứng chỉ mới cho Peer bằng Bouncy Castle Builder
-            Instant now = Instant.now();
-            Date validityBeginDate = Date.from(now);
-            Date validityEndDate = Date.from(now.plus(365, ChronoUnit.DAYS)); // Hiệu lực 1 năm
-
-            JcaX509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
-                    X500Name.getInstance(caCert.getSubjectX500Principal().getEncoded()), // Issuer là Intermediate CA
-                    new BigInteger(128, new SecureRandom()), // Tạo số serial ngẫu nhiên
-                    validityBeginDate,
-                    validityEndDate,
-                    csr.getSubject(), // Subject lấy từ CSR
-                    csr.getSubjectPublicKeyInfo() // Public key lấy từ CSR
-            );
-
-            // 5. Ký chứng chỉ mới bằng private key của CA
-            ContentSigner contentSigner = new JcaContentSignerBuilder("SHA256WithRSA").build(caPrivateKey);
-            X509Certificate peerCert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(certBuilder.build(contentSigner));
-
-            // 6. Tạo chuỗi chứng chỉ PEM để gửi về cho Peer
-            Certificate rootCaCert = caKeyStore.getCertificate("ca"); // Lấy Root CA cert từ keystore
-
-            StringWriter stringWriter = new StringWriter();
-            try (JcaPEMWriter pemWriter = new JcaPEMWriter(stringWriter)) {
-                pemWriter.writeObject(peerCert);     // Chứng chỉ của Peer
-                pemWriter.writeObject(caCert);       // Chứng chỉ của Intermediate CA
-                pemWriter.writeObject(rootCaCert);   // Chứng chỉ của Root CA
-            }
-
-            String certificateChainPem = stringWriter.toString();
+            String certificateChainPem = SSLUtils.signCertificateForPeer(csrPem);
             logInfo("[TRACKER-ENROLL]: Certificate chain generated successfully for peer on " + getCurrentTime());
 
             return "CERT_RESPONSE|" + certificateChainPem;
@@ -663,7 +586,7 @@ public class TrackerModel {
 
         StringBuilder msgBuilder = new StringBuilder();
         for (FileInfo file : filesToSend) {
-            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Infor.LIST_SEPARATOR);
+            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Config.LIST_SEPARATOR);
         }
 
         if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {

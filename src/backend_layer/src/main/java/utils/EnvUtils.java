@@ -2,7 +2,7 @@ package main.java.utils;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
-public class EnvConf {
+public class EnvUtils {
     public static String strLang;
     private static final Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
 

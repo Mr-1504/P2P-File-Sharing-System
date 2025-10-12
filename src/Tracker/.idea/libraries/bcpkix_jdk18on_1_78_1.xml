@@ -4,6 +4,7 @@
       <root url="jar://$PROJECT_DIR$/lib/bcpkix-jdk18on-1.78.1.jar!/" />
       <root url="jar://$PROJECT_DIR$/lib/bcprov-jdk18on-1.78.1.jar!/" />
       <root url="jar://$PROJECT_DIR$/lib/bcutil-jdk18on-1.78.1.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/dotenv-java-3.2.0.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />
