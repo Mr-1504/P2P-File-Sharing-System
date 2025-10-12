@@ -16,6 +16,7 @@ import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.util.UUID;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.security.cert.Certificate;
@@ -114,7 +115,7 @@ public class SSLUtils {
     }
 
     private static String generateCsrPem(KeyPair keyPair) throws Exception {
-        String subjectName = "CN=Peer-" + Config.SERVER_IP;
+        String subjectName = "CN=peer-" + UUID.randomUUID().toString();
         X500Name subject = new X500Name(subjectName);
 
         JcaPKCS10CertificationRequestBuilder p10Builder = new JcaPKCS10CertificationRequestBuilder(subject, keyPair.getPublic());
