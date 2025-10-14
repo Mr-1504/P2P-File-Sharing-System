@@ -12,6 +12,10 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public interface IP2PApi {
+    // Username management routes (highest priority - called during startup)
+    void setRouteForCheckUsername(Callable<Boolean> callable);
+    void setRouteForSetUsername(Function<String, Boolean> callable);
+
     void setRouteForCheckFile(Function<String, Boolean> callable);
 
     void setRouteForRefresh(Callable<Integer> callable);

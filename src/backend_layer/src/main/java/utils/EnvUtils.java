@@ -20,4 +20,8 @@ public class EnvUtils {
             return defaultValue;
         }
     }
+
+    public static String getEnvString(String key) {
+        return dotenv.get(key);
+    }
 }

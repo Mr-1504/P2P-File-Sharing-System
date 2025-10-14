@@ -13,4 +13,5 @@ public interface Config {
     int CHUNK_SIZE = EnvUtils.getEnvInt("CHUNK_SIZE", 1024 * 1024 * 2);
     int SOCKET_TIMEOUT_MS = EnvUtils.getEnvInt("SOCKET_TIMEOUT_MS", 5000);
     int MAX_RETRIES = EnvUtils.getEnvInt("MAX_RETRIES", 3);
+    String USERNAME = EnvUtils.getEnvString("USERNAME");
 }

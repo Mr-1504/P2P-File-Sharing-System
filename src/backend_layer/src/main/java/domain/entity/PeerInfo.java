@@ -8,6 +8,7 @@ public class PeerInfo implements Serializable {
     private String ip;
     private int port;
     private int taskForDownloadCount;
+    private String username;
 
     public int getTaskForDownload() {
         return taskForDownloadCount;
@@ -39,6 +40,13 @@ public class PeerInfo implements Serializable {
         this.port = port;
     }
 
+    public PeerInfo(String ip, int port, String username) {
+        this.taskForDownloadCount = 1;
+        this.ip = ip;
+        this.port = port;
+        this.username = username;
+    }
+
     public String getIp() {
         return ip;
     }
@@ -53,6 +61,14 @@ public class PeerInfo implements Serializable {
 
     public void setPort(int port) {
         this.port = port;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     @Override

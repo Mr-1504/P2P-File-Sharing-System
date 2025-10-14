@@ -135,11 +135,11 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     private PeerInfo convertToDomainPeerInfo(PeerInfo modelPeer) {
-        return new PeerInfo(modelPeer.getIp(), modelPeer.getPort());
+        return new PeerInfo(modelPeer.getIp(), modelPeer.getPort(), modelPeer.getUsername());
     }
 
     private PeerInfo convertToModelPeerInfo(PeerInfo domainPeer) {
-        return new PeerInfo(domainPeer.getIp(), domainPeer.getPort());
+        return new PeerInfo(domainPeer.getIp(), domainPeer.getPort(), domainPeer.getUsername());
     }
 
     private ProgressInfo convertToDomainProgressInfo(ProgressInfo modelProgress) {

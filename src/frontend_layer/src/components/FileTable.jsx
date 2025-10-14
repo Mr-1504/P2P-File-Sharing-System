@@ -32,7 +32,7 @@ const FileTable = ({ files, onDownload, onStopSharing, onShareToPeers, isLoading
                             <tr key={index} className="hover:bg-blue-50 transition-all duration-200">
                                 <td className="px-6 py-4 whitespace-nowrap text-gray-800 font-medium">{file.fileName}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-gray-600">{formatFileSize(file.fileSize)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-gray-600">{`${file.peerInfo.ip}:${file.peerInfo.port}`}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-gray-600">{file.peerInfo.username || 'Peer'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap flex space-x-2">
                                     {!file.isSharedByMe && (
                                         <button

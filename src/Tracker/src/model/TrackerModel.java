@@ -586,7 +586,7 @@ public class TrackerModel {
 
         StringBuilder msgBuilder = new StringBuilder();
         for (FileInfo file : filesToSend) {
-            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append(Config.LIST_SEPARATOR);
+            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append("'").append(file.getPeerInfo().getUsername()).append(Config.LIST_SEPARATOR);
         }
 
         if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {

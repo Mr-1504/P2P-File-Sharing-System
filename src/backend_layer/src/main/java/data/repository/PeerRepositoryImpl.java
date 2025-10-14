@@ -3,8 +3,6 @@ package main.java.data.repository;
 import main.java.domain.repository.PeerRepository;
 import main.java.model.IPeerModel;
 
-import java.io.IOException;
-
 public class PeerRepositoryImpl implements PeerRepository {
     private final IPeerModel peerModel;
 

@@ -12,12 +12,12 @@ public class FileInfoAdapter extends TypeAdapter<FileInfo> {
     @Override
     public void write(JsonWriter out, FileInfo value) throws IOException {
         out.value(value.getFileName() + "'" + value.getFileSize() + "'" + value.getFileHash() + "'" + value.getPeerInfo().getIp()
-        + "'" + value.getPeerInfo().getPort());
+        + "'" + value.getPeerInfo().getPort() + "'" + value.getPeerInfo().getUsername());
     }
 
     @Override
     public FileInfo read(JsonReader in) throws IOException {
         String[] parts = in.nextString().split("'");
-        return new FileInfo(parts[0], Long.parseLong(parts[1]), parts[2], new PeerInfo(parts[3], Integer.parseInt(parts[4])));
+        return new FileInfo(parts[0], Long.parseLong(parts[1]), parts[2], new PeerInfo(parts[3], Integer.parseInt(parts[4]), parts[5]));
     }
 }

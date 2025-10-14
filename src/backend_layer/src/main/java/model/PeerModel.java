@@ -54,7 +54,7 @@ public class PeerModel implements IPeerModel {
 
     public PeerModel() throws IOException {
         this.CHUNK_SIZE = Config.CHUNK_SIZE;
-        this.SERVER_HOST = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT);
+        this.SERVER_HOST = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername());
         this.TRACKER_HOST = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
         this.openChannels = new ConcurrentHashMap<>();
         this.futures = new ConcurrentHashMap<>();
@@ -62,7 +62,6 @@ public class PeerModel implements IPeerModel {
         this.fileLock = new ReentrantLock();
         this.publicSharedFiles = new ConcurrentHashMap<>();
         this.privateSharedFiles = new ConcurrentHashMap<>();
-        loadData();
         this.sharedFileNames = new HashSet<>();
         this.executor = Executors.newFixedThreadPool(8);
         this.isRunning = true;
@@ -123,6 +122,7 @@ public class PeerModel implements IPeerModel {
     }
 
     public void initializeServerSocket() throws Exception {
+        loadData();
         // Initialize non-blocking SSL server with NIO
         this.selector = Selector.open();
         this.sslContext = SSLUtils.createSSLContext();
@@ -545,31 +545,6 @@ public class PeerModel implements IPeerModel {
         Log.logInfo("Pong response sent to " + receivedPacket.getAddress() + ":" + receivedPacket.getPort());
     }
 
-    private void sendFileInforSSL(SSLSocket sslSocket, String fileName) {
-        try {
-            FileInfo fileInfo = this.publicSharedFiles.get(fileName);
-            String response;
-            if (fileInfo != null) {
-                response = "FILE_INFO|" + fileName + "|" + fileInfo.getFileSize() + "|" + fileInfo.getPeerInfo().getIp()
-                        + "|" + fileInfo.getPeerInfo().getPort() + "|" + fileInfo.getFileHash() + "\n";
-            } else {
-                response = "FILE_NOT_FOUND|" + fileName + "\n";
-            }
-            sslSocket.getOutputStream().write(response.getBytes());
-            Log.logInfo("Sent SSL file information for: " + fileName + ", response: [" + response.trim() + "]");
-        } catch (IOException sendException) {
-            Log.logError("Error sending file info via SSL: " + sendException.getMessage(), sendException);
-        }
-    }
-
-    private void acceptConnection(SelectionKey key) throws IOException {
-        ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
-        SocketChannel socketChannel = serverSocketChannel.accept();
-        Log.logInfo("Accepted connection from: " + socketChannel.getRemoteAddress());
-        socketChannel.configureBlocking(false);
-        socketChannel.register(this.selector, 1);
-    }
-
     public int registerWithTracker() {
         // SSL is now mandatory - throw error if certificates not available
         if (!SSLUtils.isSSLSupported()) {
@@ -742,8 +717,6 @@ public class PeerModel implements IPeerModel {
         try {
             // Create SSL connection to tracker (now mandatory)
             PeerInfo sslTrackerHost = new PeerInfo(this.TRACKER_HOST.getIp(), Config.TRACKER_PORT);
-            SSLSocket sslSocket = createSecureSocket(sslTrackerHost);
-            Socket socket = sslSocket; // Cast for compatibility
             Log.logInfo("Established SSL connection to tracker for sharing files");
             StringBuilder messageBuilder = new StringBuilder("SHARE|");
             messageBuilder.append(publicFiles.size()).append("|")
@@ -763,12 +736,16 @@ public class PeerModel implements IPeerModel {
 
             String message = messageBuilder.toString();
             Log.logInfo("Sent request: " + message);
-            socket.getOutputStream().write(message.getBytes());
-            // response
-            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            String response = reader.readLine();
-            Log.logInfo("Shared file list with tracker, response: " + response);
-            return response.startsWith(LogTag.S_SUCCESS);
+            Socket socket;
+            try (SSLSocket sslSocket = createSecureSocket(sslTrackerHost)) {
+                socket = sslSocket;
+                socket.getOutputStream().write(message.getBytes());
+                // response
+                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                String response = reader.readLine();
+                Log.logInfo("Shared file list with tracker, response: " + response);
+                return response.startsWith(LogTag.S_SUCCESS);
+            }
         } catch (Exception e) {
             Log.logError("Error sharing file list with tracker: " + e.getMessage(), e);
             return false;
@@ -831,8 +808,7 @@ public class PeerModel implements IPeerModel {
 
     @Override
     public List<FileInfo> getPublicFiles() {
-        List<FileInfo> fileInfos = new ArrayList<>(publicSharedFiles.values());
-        return fileInfos;
+        return new ArrayList<>(publicSharedFiles.values());
     }
 
     private int unshareFile(FileInfo fileInfo) {
@@ -1745,16 +1721,18 @@ public class PeerModel implements IPeerModel {
 
                         for (String file : fileParts) {
                             String[] f = file.split("'");
-                            if (f.length != 5) {
+                            if (f.length != 6) {
                                 Log.logInfo("Invalid file info format: " + file);
                             } else {
                                 String fileName = f[0];
                                 long fileSize = Long.parseLong(f[1]);
                                 String fileHash = f[2];
-                                PeerInfo peerInfo = new PeerInfo(f[3], Integer.parseInt(f[4]));
+                                PeerInfo peerInfo = new PeerInfo(f[3], Integer.parseInt(f[4]), f[5]);
+                                FileInfo fileInfo = new FileInfo(fileName, fileSize, fileHash, peerInfo, false);
                                 // Check if this file is shared by us
-                                boolean isSharedByMe = this.publicSharedFiles.containsKey(fileName) || this.privateSharedFiles.contains(fileName);
-                                this.sharedFileNames.add(new FileInfo(fileName, fileSize, fileHash, peerInfo, isSharedByMe));
+                                boolean isSharedByMe = this.publicSharedFiles.containsKey(fileName) || this.privateSharedFiles.contains(fileInfo);
+                                fileInfo.setSharedByMe(isSharedByMe);
+                                this.sharedFileNames.add(fileInfo);
                             }
                         }
 
@@ -1889,6 +1867,9 @@ public class PeerModel implements IPeerModel {
         if (publicFile.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(publicFile))) {
                 this.publicSharedFiles = (ConcurrentHashMap<String, FileInfo>) ois.readObject();
+                for (FileInfo fileInfo : this.publicSharedFiles.values()) {
+                    fileInfo.getPeerInfo().setUsername(this.SERVER_HOST.getUsername());
+                }
                 Log.logInfo("Public shared files loaded successfully. " + this.publicSharedFiles.toString() + " files found.");
             } catch (IOException | ClassNotFoundException e) {
                 Log.logError("Error loading public shared files: " + e.getMessage(), e);
@@ -1900,6 +1881,9 @@ public class PeerModel implements IPeerModel {
         if (privateFile.exists()) {
             try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(privateFile))) {
                 this.privateSharedFiles = (ConcurrentHashMap<FileInfo, Set<PeerInfo>>) ois.readObject();
+                for (FileInfo fileInfo : this.privateSharedFiles.keySet()) {
+                    fileInfo.getPeerInfo().setUsername(this.SERVER_HOST.getUsername());
+                }
                 Log.logInfo("Private shared files loaded successfully. " + this.privateSharedFiles.toString() + " files found.");
             } catch (IOException | ClassNotFoundException e) {
                 Log.logError("Error loading private shared files: " + e.getMessage(), e);

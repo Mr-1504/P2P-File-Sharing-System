@@ -26,7 +26,7 @@ function createWindow() {
     // const win = new BrowserWindow({
     //     width: 1500,
     //     height: 700,
-    //     ...(iconPath && { icon: iconPath }), // Chỉ set icon khi có path (production)
+    //     ...(iconPath && { icon: iconPath }),
     //     webPreferences: {
     //         preload: preloadPath,
     //         contextIsolation: true,

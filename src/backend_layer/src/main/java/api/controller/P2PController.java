@@ -29,6 +29,10 @@ public class P2PController {
     private boolean isLoadSharedFiles = false;
     private boolean isRetrying = false;
 
+    // Username state management - blocks full initialization until set
+    private String username = null;
+    private boolean isInitialized = false;
+
     public P2PController(PeerRepository peerRepository, FileRepository fileRepository, IP2PApi api) {
         this.peerRepository = peerRepository;
         this.fileRepository = fileRepository;
@@ -38,9 +42,59 @@ public class P2PController {
         setupApiRoutes();
     }
 
-    public void start() {
+    public synchronized void start() {
+        if (!checkUsernameExists()) {
+            return;
+        }
+        performFullInitialization();
+    }
+
+    private void performFullInitialization() {
         taskInitialization();
         taskTrackerRegistration();
+        isInitialized = true;
+    }
+
+    public synchronized boolean setUsername(String inputUsername) {
+        if (this.username != null) {
+            return false; // Already set
+        }
+
+        if (inputUsername == null || inputUsername.trim().isEmpty()) {
+            return false; // Invalid username
+        }
+
+        this.username = inputUsername.trim();
+
+        // Save to backend
+        if(!AppPaths.saveUsername(this.username)) {
+            this.username = null;
+            return false;
+        }
+
+        // Now start the full initialization if not already started
+        if (!isInitialized) {
+            performFullInitialization();
+        }
+
+        return true;
+    }
+
+    public synchronized boolean checkUsernameExists() {
+        if (this.username == null) {
+            this.username = AppPaths.loadUsername();
+        }
+        return this.username != null;
+    }
+
+    // Public API method for frontend to check initialization status
+    public synchronized boolean isInitialized() {
+        return isInitialized;
+    }
+
+    // Public API method to get current username
+    public synchronized String getUsername() {
+        return username;
     }
 
     private void taskInitialization() {
@@ -154,7 +208,7 @@ public class P2PController {
     }
 
     public void retryConnectToTracker() {
-        if (isRetrying) {
+        if (isRetrying || username == null) {
             return;
         }
         isRetrying = true;
@@ -253,6 +307,12 @@ public class P2PController {
             return progressId;
         });
 
+        // Username management routes (highest priority - called during startup)
+        api.setRouteForCheckUsername(() -> checkUsernameExists());
+
+        // Synchronous setter returns boolean indicating success
+        api.setRouteForSetUsername((username) -> setUsername(username));
+
         api.setRouteForGetKnownPeers(this::getKnownPeers);
         // Start periodic timeout checker
         startTimeoutChecker();
@@ -289,7 +349,7 @@ public class P2PController {
                 modelFile.getFileName(),
                 modelFile.getFileSize(),
                 modelFile.getFileHash(),
-                new PeerInfo(modelFile.getPeerInfo().getIp(), modelFile.getPeerInfo().getPort()),
+                new PeerInfo(modelFile.getPeerInfo().getIp(), modelFile.getPeerInfo().getPort(), modelFile.getPeerInfo().getUsername()),
                 modelFile.isSharedByMe()
         );
     }
@@ -313,7 +373,7 @@ public class P2PController {
                 domainFile.getFileName(),
                 domainFile.getFileSize(),
                 domainFile.getFileHash(),
-                new PeerInfo(domainFile.getPeerInfo().getIp(), domainFile.getPeerInfo().getPort()),
+                new PeerInfo(domainFile.getPeerInfo().getIp(), domainFile.getPeerInfo().getPort(), domainFile.getPeerInfo().getUsername()),
                 domainFile.isSharedByMe()
         );
     }

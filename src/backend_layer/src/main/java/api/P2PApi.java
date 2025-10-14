@@ -10,6 +10,9 @@ import main.java.domain.entity.ProgressInfo;
 import main.java.api.dto.CleanupRequest;
 import main.java.utils.LogTag;
 
+import java.util.concurrent.Callable;
+import java.util.function.Function;
+
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -52,6 +55,76 @@ public class P2PApi implements IP2PApi {
         } catch (IOException e) {
             logError("Cannot init api server on port 8080", e);
         }
+    }
+
+    @Override
+    public void setRouteForCheckUsername(Callable<Boolean> callable) {
+        server.createContext("/api/check-username", exchange -> {
+            addCorsHeaders(exchange);
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "GET":
+                        logInfo("Check username request");
+                        boolean hasUsername = callable.call();
+                        String response = gson.toJson(Collections.singletonMap("hasUsername", hasUsername));
+                        sendResponse(exchange, LogTag.OK, response);
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                logError("Check username request error", e);
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
+    }
+
+    @Override
+    public void setRouteForSetUsername(Function<String, Boolean> callable) {
+        server.createContext("/api/set-username", exchange -> {
+            addCorsHeaders(exchange);
+            try {
+                switch (exchange.getRequestMethod().toUpperCase()) {
+                    case "OPTIONS":
+                        sendResponse(exchange, LogTag.OK, "");
+                        break;
+                    case "POST":
+                        logInfo("Set username request");
+                        JsonObject body = gson.fromJson(
+                                new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8),
+                                JsonObject.class
+                        );
+
+                        String username = body.has("username") ? body.get("username").getAsString() : null;
+
+                        if (username == null || username.trim().isEmpty()) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Username is required"));
+                            return;
+                        }
+
+                        boolean success = callable.apply(username.trim());
+                        if (success) {
+                            String response = gson.toJson(Collections.singletonMap("status", "success"));
+                            sendResponse(exchange, LogTag.OK, response);
+                        } else {
+                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Failed to set username"));
+                        }
+                        break;
+                    default:
+                        sendResponse(exchange, LogTag.METHOD_NOT_ALLOW,
+                                jsonError("Method not allowed"));
+                }
+            } catch (Exception e) {
+                logError("Set username request error", e);
+                sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR,
+                        jsonError("Internal server error"));
+            }
+        });
     }
 
     @Override

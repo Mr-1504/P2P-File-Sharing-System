@@ -176,4 +176,31 @@ public class AppPaths {
         }
         return false;
     }
+
+    public static boolean saveUsername(String username) {
+        Path configPath = Paths.get(getAppDataDirectory(), "config.json");
+        try (BufferedWriter writer = Files.newBufferedWriter(configPath)) {
+            writer.write("{\"username\": \"" + username + "\"}");
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public static String loadUsername() {
+        Path configPath = Paths.get(getAppDataDirectory(), "config.json");
+        if (Files.exists(configPath)) {
+            try (BufferedReader reader = Files.newBufferedReader(configPath)) {
+                String line = reader.readLine();
+                if (line != null && line.contains("\"username\":")) {
+                    String username = line.split(":")[1].trim().replace("\"", "").replace("}", "");
+                    return username;
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return null;
+    }
 }
