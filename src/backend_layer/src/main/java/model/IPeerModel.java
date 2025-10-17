@@ -3,57 +3,76 @@ package main.java.model;
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
+import main.java.model.submodel.IFileDownloadModel;
+import main.java.model.submodel.IFileShareModel;
+import main.java.model.submodel.INetworkModel;
+import main.java.model.submodel.IPeerDiscoveryModel;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLSocket;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.io.File;
-import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReentrantLock;
 
-public interface IPeerModel {
-    void initializeServerSocket() throws Exception;
+public interface IPeerModel extends IFileDownloadModel, IFileShareModel, INetworkModel, IPeerDiscoveryModel {
+    int getChunkSize();
 
-    void startServer();
+    PeerInfo getServerHost();
 
-    void startUDPServer();
+    PeerInfo getTrackerHost();
 
-    int registerWithTracker();
+    ExecutorService getExecutor();
 
-    List<String> getKnownPeers();
+    ConcurrentHashMap<String, ProgressInfo> getProcesses();
 
-    boolean sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo);
+    ReentrantLock getFileLock();
 
-    boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles);
+    ConcurrentHashMap<String, List<Future<Boolean>>> getFutures();
 
-    void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId);
+    ConcurrentHashMap<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels();
 
-    void resumeDownload(String progressId);
+    boolean isRunning();
 
-    List<PeerInfo> getPeersWithFile(String fileHash);
+    void setRunning(boolean running);
 
-    boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
+    Selector getSelector();
 
-    List<PeerInfo> getSelectivePeers(String fileHash);
+    void setSelector(Selector selector);
 
-//    void loadSharedFiles();
+    SSLContext getSslContext();
 
-    int refreshSharedFileNames();
+    void setSslContext(SSLContext sslContext);
 
-    Set<FileInfo> getSharedFileNames();
+    ConcurrentHashMap<SocketChannel, SSLEngine> getSslEngineMap();
 
-    void setSharedFileNames(Set<FileInfo> sharedFileNames);
+    void setSslEngineMap(ConcurrentHashMap<SocketChannel, SSLEngine> sslEngineMap);
 
-    Map<String, FileInfo> getPublicSharedFiles();
+    ConcurrentHashMap<SocketChannel, ByteBuffer> getPendingData();
 
-    Map<FileInfo, Set<PeerInfo>> getPrivateSharedFiles();
+    void setPendingData(ConcurrentHashMap<SocketChannel, ByteBuffer> pendingData);
 
-    int stopSharingFile(String fileName);
+    ConcurrentHashMap<SocketChannel, Map<String, Object>> getChannelAttachments();
 
-    Map<String, ProgressInfo> getProgress();
+    void setChannelAttachments(ConcurrentHashMap<SocketChannel, Map<String, Object>> channelAttachments);
 
-    void setProgress(ProgressInfo progressInfo);
+    SSLSocket createSecureSocket(PeerInfo peerInfo) throws Exception;
 
-    void cleanupProgress(List<String> progressIds);
+    String processSSLRequest(SocketChannel socketChannel, String request);
 
-    List<FileInfo> getPublicFiles();
+    void loadData();
+
+    String bytesToHex(byte[] bytes);
+
+    String hashFile(File file, String progressId);
 }
