@@ -136,7 +136,6 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         fileDownloadModel.cleanupProgress(progressIds);
     }
 
-    // Delegated methods from IFileShareModel
     @Override
     public void sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
         fileShareModel.sharePublicFile(file, fileName, progressId, isReplace, oldFileInfo);
