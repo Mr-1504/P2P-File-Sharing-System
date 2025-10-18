@@ -235,7 +235,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     public Map<String, List<Future<Boolean>>> getFutures() {
-        return Collections.unmodifiableMap(futures);
+        return futures;
     }
 
     public Map<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels() {
