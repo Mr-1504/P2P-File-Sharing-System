@@ -1,5 +1,10 @@
-package main.java.utils;
+package main.java.infras.utils;
 
+import main.java.domain.entity.PeerInfo;
+import main.java.utils.AppPaths;
+import main.java.utils.Config;
+import main.java.utils.EnvUtils;
+import main.java.utils.Log;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.openssl.PEMParser;
@@ -28,12 +33,12 @@ public class SSLUtils {
     private static final String TRUSTSTORE_HASH = "ffe24be633fdbddae20ae7ec5effdfa422a0a15bc4d37f5284b5860da0364171";
     private static final int SSL_TRACKER_ENROLL_PORT = Config.TRACKER_ENROLL_PORT;
     private static final int SSL_TRACKER_PORT = Config.TRACKER_PORT;
-    private static final String KEYSTORE_PASSWORD = EnvUtils.getEnv("KEYSTORE_PASSWORD", "p2ppassword");
-    private static final String TRUSTSTORE_PASSWORD = EnvUtils.getEnv("TRUSTSTORE_PASSWORD", "p2ppassword");
+    private static final String KEYSTORE_PASSWORD = requireEnv("KEYSTORE_PASSWORD");
+    private static final String TRUSTSTORE_PASSWORD = requireEnv("TRUSTSTORE_PASSWORD");
     private static final Path CERT_DIRECTORY = AppPaths.getCertificatePath();
     private static final String KEYSTORE_NAME = "peer-keystore.jks";
     private static final String TRUSTSTORE_NAME = "peer-truststore.jks";
-    private static final String KEY_ALIAS = EnvUtils.getEnv("KEY_ALIAS", "peer-key");
+    private static final String KEY_ALIAS = getKeyAlias();
 
     private static final String SERVER_IP = Config.TRACKER_IP; // Should be the Tracker's IP
     private static final int TRACKER_PORT_FOR_CSR = SSL_TRACKER_PORT;
@@ -41,6 +46,19 @@ public class SSLUtils {
     static {
         // Register Bouncy Castle provider once
         Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+    }
+
+    private static String requireEnv(String key) {
+        String value = EnvUtils.getEnvString(key);
+        if (value == null) {
+            throw new RuntimeException("Environment variable " + key + " is not set");
+        }
+        return value;
+    }
+
+    private static String getKeyAlias() {
+        String alias = EnvUtils.getEnvString("KEY_ALIAS");
+        return alias != null ? alias : "peer-key";
     }
 
     public static boolean initializeSSLCertificates() {
@@ -234,6 +252,16 @@ public class SSLUtils {
         File key = CERT_DIRECTORY.resolve(KEYSTORE_NAME).toFile();
         File trust = CERT_DIRECTORY.resolve(TRUSTSTORE_NAME).toFile();
         return key.exists() && trust.exists();
+    }
+
+    public static SSLSocket createSecureSocket(PeerInfo peerInfo) throws Exception {
+        SSLSocketFactory sslSocketFactory = SSLUtils.createSSLSocketFactory();
+        SSLSocket sslSocket = (SSLSocket) sslSocketFactory.createSocket(peerInfo.getIp(), peerInfo.getPort());
+        sslSocket.setUseClientMode(true);
+        sslSocket.setNeedClientAuth(true);
+        sslSocket.setSoTimeout(Config.SOCKET_TIMEOUT_MS);
+        sslSocket.startHandshake();
+        return sslSocket;
     }
 
     private static String computeFileHash(File file) {

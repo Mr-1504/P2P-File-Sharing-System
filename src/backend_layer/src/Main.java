@@ -1,6 +1,6 @@
-import main.java.api.P2PApi;
-import main.java.api.controller.P2PController;
-import main.java.infras.PeerRepository;
+import main.java.delivery.api.P2PApi;
+import main.java.delivery.controller.P2PController;
+import main.java.infras.repository.PeerRepository;
 import main.java.service.FileService;
 import main.java.service.NetworkService;
 

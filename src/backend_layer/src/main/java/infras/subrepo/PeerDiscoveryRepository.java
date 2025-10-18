@@ -6,7 +6,7 @@ import main.java.domain.repository.IPeerDiscoveryRepository;
 import main.java.domain.repository.IPeerRepository;
 import main.java.utils.Config;
 import main.java.utils.Log;
-import main.java.utils.SSLUtils;
+import main.java.infras.utils.SSLUtils;
 
 import javax.net.ssl.SSLSocket;
 import java.io.BufferedReader;
@@ -32,7 +32,7 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
             throw new IllegalStateException("SSL certificates required for secure communication");
         }
 
-        try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
             Log.logInfo("Established SSL connection to tracker for getting known peers");
 
             String request = "GET_KNOWN_PEERS\n";
@@ -83,7 +83,7 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
             throw new IllegalStateException("SSL certificates required for secure communication");
         }
 
-        try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
             Log.logInfo("Established SSL connection to tracker for getting peers with file hash");
 
             String request = "GET_PEERS|" + fileHash + "|" + Config.SERVER_IP+ "|" + Config.PEER_PORT + "\n";

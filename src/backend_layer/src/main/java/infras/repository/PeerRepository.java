@@ -1,4 +1,4 @@
-package main.java.infras;
+package main.java.infras.repository;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
@@ -9,15 +9,13 @@ import main.java.infras.utils.FileUtils;
 import main.java.utils.AppPaths;
 import main.java.utils.Config;
 import main.java.utils.Log;
-import main.java.utils.SSLUtils;
+import main.java.infras.utils.SSLUtils;
 
 import javax.net.ssl.*;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
@@ -29,8 +27,8 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     private ConcurrentHashMap<SocketChannel, SSLEngine> sslEngineMap;
     private ConcurrentHashMap<SocketChannel, ByteBuffer> pendingData;
     private ConcurrentHashMap<SocketChannel, Map<String, Object>> channelAttachments;
-    private ConcurrentHashMap<String, FileInfo> publicSharedFiles;
-    private ConcurrentHashMap<FileInfo, Set<PeerInfo>> privateSharedFiles;
+    private final ConcurrentHashMap<String, FileInfo> publicSharedFiles;
+    private final ConcurrentHashMap<FileInfo, Set<PeerInfo>> privateSharedFiles;
     private Set<FileInfo> sharedFileNames;
     private final ExecutorService executor;
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<SSLSocket>> openChannels;
@@ -79,7 +77,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
             Log.logInfo("Starting timeout monitor...");
             while (this.isRunning) {
                 try {
-                    Thread.sleep(10000); // Check every 10 seconds
+                    Thread.sleep(10000);
                     checkForTimeouts();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -109,7 +107,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
                     if (status.equals(ProgressInfo.ProgressStatus.DOWNLOADING)) {
                         progress.setStatus(ProgressInfo.ProgressStatus.TIMEOUT);
                         Log.logInfo("Download marked as timed out: " + entry.getKey());
-                    } else if (status.equals(ProgressInfo.ProgressStatus.SHARING)) {
+                    } else {
                         Log.logInfo("Sharing operation appears stalled: " + entry.getKey());
                     }
                 }
@@ -121,11 +119,6 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     @Override
     public void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId) {
         fileDownloadModel.downloadFile(fileInfo, saveFile, peers, progressId);
-    }
-
-    @Override
-    public void resumeDownload(String progressId) {
-        fileDownloadModel.resumeDownload(progressId);
     }
 
     @Override
@@ -145,8 +138,8 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
 
     // Delegated methods from IFileShareModel
     @Override
-    public boolean sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
-        return fileShareModel.sharePublicFile(file, fileName, progressId, isReplace, oldFileInfo);
+    public void sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
+        fileShareModel.sharePublicFile(file, fileName, progressId, isReplace, oldFileInfo);
     }
 
     @Override
@@ -155,8 +148,8 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     @Override
-    public boolean sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
-        return fileShareModel.sharePrivateFile(file, oldFileInfo, isReplace, progressId, peerList);
+    public void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+        fileShareModel.sharePrivateFile(file, oldFileInfo, isReplace, progressId, peerList);
     }
 
     @Override
@@ -235,7 +228,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     public Map<String, ProgressInfo> getProcesses() {
-        return Collections.unmodifiableMap(processes);
+        return processes;
     }
 
     public ReentrantLock getFileLock() {
@@ -247,15 +240,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     public Map<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels() {
-        return Collections.unmodifiableMap(openChannels);
-    }
-
-    public boolean isRunning() {
-        return isRunning;
-    }
-
-    public void setRunning(boolean running) {
-        isRunning = running;
+        return openChannels;
     }
 
     public Selector getSelector() {
@@ -298,70 +283,8 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         this.channelAttachments = channelAttachments;
     }
 
-    // Utility/Cross-cutting methods
-    public SSLSocket createSecureSocket(PeerInfo peerInfo) throws Exception {
-        SSLSocketFactory sslSocketFactory = SSLUtils.createSSLSocketFactory();
-        SSLSocket sslSocket = (SSLSocket) sslSocketFactory.createSocket(peerInfo.getIp(), peerInfo.getPort());
-        sslSocket.setUseClientMode(true);
-        sslSocket.setNeedClientAuth(true);
-        sslSocket.setSoTimeout(Config.SOCKET_TIMEOUT_MS);
-        sslSocket.startHandshake();
-        return sslSocket;
-    }
-
     public String processSSLRequest(SocketChannel socketChannel, String request) {
         return networkModel.processSSLRequest(socketChannel, request);
-    }
-
-
-
-    public String bytesToHex(byte[] bytes) {
-        StringBuilder hex = new StringBuilder();
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
-    }
-
-    public String hashFile(File file, String progressId) {
-        try (FileInputStream fileInputStream = new FileInputStream(file)) {
-            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = new byte[Config.CHUNK_SIZE];
-            long fileSize = file.length();
-            long readbyte = 0L;
-            ProgressInfo progressInfo = this.processes.get(progressId);
-            if (progressInfo != null && Objects.equals(progressInfo.getStatus(), ProgressInfo.ProgressStatus.CANCELLED)) {
-                return null;
-            } else {
-                if (progressInfo != null) {
-                    progressInfo.setStatus(ProgressInfo.ProgressStatus.SHARING);
-                }
-
-                int readedByteCount;
-                while ((readedByteCount = fileInputStream.read(bytes)) != -1) {
-                    if (progressInfo != null && progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
-                        return null;
-                    }
-
-                    messageDigest.update(bytes, 0, readedByteCount);
-                    readbyte += readedByteCount;
-                    if (progressInfo != null) {
-                        int percentage = (int) ((double) readbyte * 25.0 / fileSize) + 70;
-                        synchronized (progressInfo) {
-                            progressInfo.setProgressPercentage(percentage);
-                        }
-                    }
-                }
-
-                return this.bytesToHex(messageDigest.digest());
-            }
-        } catch (NoSuchAlgorithmException | IOException e) {
-            ProgressInfo progressInfo = this.processes.get(progressId);
-            if (progressInfo != null) {
-                progressInfo.setStatus(ProgressInfo.ProgressStatus.FAILED);
-            }
-            return null;
-        }
     }
 
     @Override

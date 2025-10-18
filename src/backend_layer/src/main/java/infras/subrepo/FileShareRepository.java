@@ -9,6 +9,8 @@ import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
 import main.java.domain.repository.IFileShareRepository;
 import main.java.domain.repository.IPeerRepository;
+import main.java.infras.utils.FileUtils;
+import main.java.infras.utils.SSLUtils;
 import main.java.utils.*;
 
 import javax.net.ssl.SSLSocket;
@@ -25,7 +27,7 @@ public class FileShareRepository implements IFileShareRepository {
     }
 
     @Override
-    public boolean sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
+    public void sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo) {
         try {
             if (isReplace == 1 && oldFileInfo != null) {
                 this.unshareFile(oldFileInfo);
@@ -33,42 +35,36 @@ public class FileShareRepository implements IFileShareRepository {
                 peerModel.getPrivateSharedFiles().remove(oldFileInfo);
             }
 
-            String fileHash = this.peerModel.hashFile(file, progressId);
+            ProgressInfo progress = peerModel.getProgress().get(progressId);
+
+            String fileHash = FileUtils.hashFile(file, progress);
             if (fileHash == null) {
-                return false;
+                return;
             }
 
             FileInfo newFileInfo = new FileInfo(fileName, file.length(), fileHash, new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername()), true);
             List<FileInfo> fileInfos = new ArrayList<>();
             fileInfos.add(newFileInfo);
-            ProgressInfo progress = this.peerModel.getProcesses().get(progressId);
-
             boolean result = shareFileList(fileInfos, new HashMap<>());
             if (!result) {
-                if (progress != null) {
-                    progress.setStatus(ProgressInfo.ProgressStatus.FAILED);
-                }
+                progress.setStatus(ProgressInfo.ProgressStatus.FAILED);
                 peerModel.getExecutor().submit(() -> AppPaths.removeSharedFile(fileName));
-                return false;
+                return;
             }
             this.peerModel.getPublicSharedFiles().put(fileName, newFileInfo);
             this.peerModel.getFiles().add(newFileInfo);
 
 
-            if (progress != null) {
-                synchronized (progress) {
-                    progress.setProgressPercentage(100);
-                    progress.setStatus(ProgressInfo.ProgressStatus.COMPLETED);
-                }
+            synchronized (progress) {
+                progress.setProgressPercentage(100);
+                progress.setStatus(ProgressInfo.ProgressStatus.COMPLETED);
             }
-            return true;
         } catch (Exception e) {
             Log.logError("Error in shareFileAsync: " + e.getMessage(), e);
             ProgressInfo progress = this.peerModel.getProcesses().get(progressId);
             if (progress != null) {
                 progress.setStatus(ProgressInfo.ProgressStatus.FAILED);
             }
-            return false;
         }
     }
 
@@ -100,7 +96,7 @@ public class FileShareRepository implements IFileShareRepository {
 
             String message = messageBuilder.toString();
             Log.logInfo("Sent request: " + message);
-            try (SSLSocket sslSocket = peerModel.createSecureSocket(sslTrackerHost)) {
+            try (SSLSocket sslSocket = SSLUtils.createSecureSocket(sslTrackerHost)) {
                 sslSocket.getOutputStream().write(message.getBytes());
                 BufferedReader reader = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
                 String response = reader.readLine();
@@ -114,13 +110,15 @@ public class FileShareRepository implements IFileShareRepository {
     }
 
     @Override
-    public boolean sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+    public void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
         if (isReplace == 1 && oldFileInfo != null) {
             this.unshareFile(oldFileInfo);
             peerModel.getPublicSharedFiles().remove(oldFileInfo.getFileName(), oldFileInfo);
             peerModel.getPrivateSharedFiles().remove(oldFileInfo);
         }
-        String fileHash = this.peerModel.hashFile(file, progressId);
+
+        ProgressInfo progress = peerModel.getProgress().get(progressId);
+        String fileHash = FileUtils.hashFile(file, progress);
         String fileName = file.getName();
         long fileSize = file.length();
         FileInfo sharedFile = new FileInfo(fileName, fileSize, fileHash, new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername()), true);
@@ -134,7 +132,7 @@ public class FileShareRepository implements IFileShareRepository {
                 peerInfos.add(new PeerInfo(ip, port));
             } else {
                 Log.logInfo("Invalid peer format: " + peer);
-                return false;
+                return;
             }
         }
         boolean result = shareFileList(new ArrayList<>(), Map.of(sharedFile, peerInfos));
@@ -143,7 +141,7 @@ public class FileShareRepository implements IFileShareRepository {
             Log.logInfo("Failed to share file " + fileName + " to specific peers: " + peerList);
             peerModel.getExecutor().submit(() -> AppPaths.removeSharedFile(fileName));
             peerModel.getProcesses().get(progressId).setStatus(ProgressInfo.ProgressStatus.FAILED);
-            return false;
+            return;
         }
 
         peerModel.getPrivateSharedFiles().put(sharedFile, new HashSet<>(peerInfos));
@@ -151,7 +149,6 @@ public class FileShareRepository implements IFileShareRepository {
 
         peerModel.getProcesses().get(progressId).setStatus(ProgressInfo.ProgressStatus.COMPLETED);
         peerModel.getProcesses().get(progressId).setProgressPercentage(100);
-        return result;
     }
 
     @Override
@@ -161,14 +158,13 @@ public class FileShareRepository implements IFileShareRepository {
             throw new IllegalStateException("SSL certificates required for secure communication");
         }
 
-        try {
-            PeerInfo sslTrackerHost = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
-            SSLSocket sslSocket = peerModel.createSecureSocket(sslTrackerHost);
+        PeerInfo sslTrackerHost = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(sslTrackerHost)) {
             Log.logInfo("Established SSL connection to tracker for refreshing shared files");
 
             PrintWriter printWriter = new PrintWriter(sslSocket.getOutputStream(), true);
             String ip = Config.SERVER_IP;
-            String request = "REFRESH|" + ip + "|" +Config.PEER_PORT + "\n";
+            String request = "REFRESH|" + ip + "|" + Config.PEER_PORT + "\n";
             printWriter.println(request);
             BufferedReader buffer = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
             String response = buffer.readLine();
@@ -210,6 +206,7 @@ public class FileShareRepository implements IFileShareRepository {
                 Log.logInfo("Invalid response from tracker: " + response);
                 return -1;
             }
+
         } catch (Exception e) {
             Log.logError("Error refreshing shared file names from tracker: " + e.getMessage(), e);
             return 0;
@@ -265,16 +262,15 @@ public class FileShareRepository implements IFileShareRepository {
     }
 
 
-
     private int unshareFile(FileInfo fileInfo) {
         if (!SSLUtils.isSSLSupported()) {
             Log.logError("SSL certificates not found! SSL is now mandatory for security.", null);
             throw new IllegalStateException("SSL certificates required for secure communication");
         }
 
-        try {
-            PeerInfo sslTrackerHost = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
-            SSLSocket sslSocket = peerModel.createSecureSocket(sslTrackerHost);
+
+        PeerInfo sslTrackerHost = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(sslTrackerHost)) {
             Log.logInfo("Established SSL connection to tracker for unsharing file");
 
             String query = "UNSHARED_FILE" + "|" + fileInfo.getFileName() + "|" + fileInfo.getFileSize() + "|" + fileInfo.getFileHash() + "|" + Config.SERVER_IP + "|" + Config.PEER_PORT;

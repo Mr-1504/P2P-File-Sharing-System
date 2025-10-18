@@ -10,7 +10,6 @@ import java.util.Map;
 
 public interface IFileDownloadRepository {
     void downloadFile(FileInfo fileInfo, File saveFile, List<PeerInfo> peers, String progressId);
-    void resumeDownload(String progressId);
     Map<String, ProgressInfo> getProgress();
     void setProgress(ProgressInfo progressInfo);
     void cleanupProgress(List<String> progressIds);

@@ -1,4 +1,4 @@
-package main.java.api;
+package main.java.delivery.api;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -7,7 +7,7 @@ import com.sun.net.httpserver.HttpServer;
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.api.dto.CleanupRequest;
+import main.java.delivery.dto.CleanupRequest;
 import main.java.utils.LogTag;
 
 import java.util.concurrent.Callable;
@@ -20,11 +20,9 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import static main.java.utils.Log.logError;
 import static main.java.utils.Log.logInfo;
@@ -193,7 +191,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForShareFile(TriFunction<String, Integer, AtomicBoolean, String> callable) {
+    public void setRouteForSharePublicFile(TriFunction<String, Integer, AtomicBoolean, String> callable) {
         server.createContext("/api/files", exchange -> {
             addCorsHeaders(exchange);
             try {
@@ -482,7 +480,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForShareToSelectivePeers(TriFunction<String, Integer, List<String>, String> callable) {
+    public void setRouteForSharePrivateFile(TriFunction<String, Integer, List<String>, String> callable) {
         server.createContext("/api/files/share-to-peers", exchange -> {
             addCorsHeaders(exchange);
             try {

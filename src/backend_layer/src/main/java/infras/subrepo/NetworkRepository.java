@@ -12,7 +12,7 @@ import main.java.infras.utils.FileUtils;
 import main.java.utils.Config;
 import main.java.utils.Log;
 import main.java.utils.LogTag;
-import main.java.utils.SSLUtils;
+import main.java.infras.utils.SSLUtils;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -41,8 +41,10 @@ public class NetworkRepository implements INetworkRepository {
 
     private final IPeerRepository peerModel;
     private final ExecutorService executorService;
+    private boolean isRunning;
 
     public NetworkRepository(IPeerRepository peerModel) {
+        this.isRunning = true;
         this.peerModel = peerModel;
         this.executorService = Executors.newFixedThreadPool(8);
     }
@@ -56,12 +58,13 @@ public class NetworkRepository implements INetworkRepository {
         peerModel.setPendingData(new ConcurrentHashMap<>());
         peerModel.setChannelAttachments(new ConcurrentHashMap<>());
 
-        ServerSocketChannel serverChannel = ServerSocketChannel.open();
-        serverChannel.configureBlocking(false);
-        serverChannel.socket().bind(new InetSocketAddress(Config.SERVER_IP, Config.PEER_PORT));
-        serverChannel.register(peerModel.getSelector(), SelectionKey.OP_ACCEPT);
+        try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
+            serverChannel.configureBlocking(false);
+            serverChannel.socket().bind(new InetSocketAddress(Config.SERVER_IP, Config.PEER_PORT));
+            serverChannel.register(peerModel.getSelector(), SelectionKey.OP_ACCEPT);
 
-        Log.logInfo("Non-blocking SSL server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
+            Log.logInfo("Non-blocking SSL server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
+        }
     }
 
     @Override
@@ -70,7 +73,7 @@ public class NetworkRepository implements INetworkRepository {
             Log.logInfo("Starting non-blocking SSL server loop...");
 
             try {
-                while (peerModel.isRunning()) {
+                while (isRunning) {
                     int readyChannels = peerModel.getSelector().select(1000L);
 
                     if (readyChannels > 0 || peerModel.getPendingData().values().stream().anyMatch(buff -> buff != null && buff.hasRemaining())) {
@@ -85,7 +88,7 @@ public class NetworkRepository implements INetworkRepository {
                                 }
                             } catch (Exception e) {
                                 Log.logError("Error handling key: " + e.getMessage(), e);
-                                closeChannel((java.nio.channels.SelectableChannel) key.channel());
+                                closeChannel(key.channel());
                                 key.cancel();
                             }
                         }
@@ -109,7 +112,7 @@ public class NetworkRepository implements INetworkRepository {
                 byte[] buffer = new byte[1024];
                 Log.logInfo("UDP server started on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
 
-                while (this.peerModel.isRunning()) {
+                while (isRunning) {
                     DatagramPacket receivedPacket = new DatagramPacket(buffer, buffer.length);
                     udpSocket.receive(receivedPacket);
                     String receivedMessage = new String(receivedPacket.getData(), 0, receivedPacket.getLength());
@@ -134,7 +137,7 @@ public class NetworkRepository implements INetworkRepository {
         int count = 0;
 
         while (count < Config.MAX_RETRIES) {
-            try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
                 Log.logInfo("Established SSL connection to tracker");
 
                 Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
@@ -189,7 +192,7 @@ public class NetworkRepository implements INetworkRepository {
 
     private void shutdown() {
         Log.logInfo("Shutting down SSL server...");
-        peerModel.setRunning(false);
+        isRunning = false;
 
         peerModel.getExecutor().shutdown();
 
@@ -219,36 +222,37 @@ public class NetworkRepository implements INetworkRepository {
     }
 
     private void acceptSSLConnection(SelectionKey key) throws IOException {
-        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
-        SocketChannel socketChannel = serverChannel.accept();
+        try (ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel()) {
+            SocketChannel socketChannel = serverChannel.accept();
 
-        if (socketChannel != null) {
-            socketChannel.configureBlocking(false);
-            Log.logInfo("Accepted SSL connection from: " + socketChannel.getRemoteAddress());
+            if (socketChannel != null) {
+                socketChannel.configureBlocking(false);
+                Log.logInfo("Accepted SSL connection from: " + socketChannel.getRemoteAddress());
 
-            SSLEngine sslEngine = peerModel.getSslContext().createSSLEngine();
-            sslEngine.setUseClientMode(false);
-            sslEngine.setNeedClientAuth(false);
+                SSLEngine sslEngine = peerModel.getSslContext().createSSLEngine();
+                sslEngine.setUseClientMode(false);
+                sslEngine.setNeedClientAuth(false);
 
-            SSLSession session = sslEngine.getSession();
-            int netBufferSize = session.getPacketBufferSize();
-            int appBufferSize = session.getApplicationBufferSize();
+                SSLSession session = sslEngine.getSession();
+                int netBufferSize = session.getPacketBufferSize();
+                int appBufferSize = session.getApplicationBufferSize();
 
-            ByteBuffer netInBuffer = ByteBuffer.allocate(netBufferSize);
-            ByteBuffer appInBuffer = ByteBuffer.allocate(appBufferSize);
+                ByteBuffer netInBuffer = ByteBuffer.allocate(netBufferSize);
+                ByteBuffer appInBuffer = ByteBuffer.allocate(appBufferSize);
 
-            Map<String, Object> connectionData = new HashMap<>();
-            connectionData.put("netInBuffer", netInBuffer);
-            connectionData.put("appInBuffer", appInBuffer);
+                Map<String, Object> connectionData = new HashMap<>();
+                connectionData.put("netInBuffer", netInBuffer);
+                connectionData.put("appInBuffer", appInBuffer);
 
-            peerModel.getChannelAttachments().put(socketChannel, connectionData);
-            peerModel.getSslEngineMap().put(socketChannel, sslEngine);
+                peerModel.getChannelAttachments().put(socketChannel, connectionData);
+                peerModel.getSslEngineMap().put(socketChannel, sslEngine);
 
-            socketChannel.register(peerModel.getSelector(), SelectionKey.OP_READ, netInBuffer);
+                socketChannel.register(peerModel.getSelector(), SelectionKey.OP_READ, netInBuffer);
 
-            sslEngine.beginHandshake();
+                sslEngine.beginHandshake();
 
-            Log.logInfo("SSL connection setup complete for: " + socketChannel.getRemoteAddress());
+                Log.logInfo("SSL connection setup complete for: " + socketChannel.getRemoteAddress());
+            }
         }
     }
 

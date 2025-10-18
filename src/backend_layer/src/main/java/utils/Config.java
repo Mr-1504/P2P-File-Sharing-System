@@ -1,5 +1,7 @@
 package main.java.utils;
 
+import main.java.infras.utils.NetworkUtils;
+
 /**
  * This interface defines constants for server and tracker configurations.
  * It includes the server port, tracker port, server IP address, and tracker IP address.

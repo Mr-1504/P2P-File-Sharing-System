@@ -3,7 +3,7 @@ package main.java.service;
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.infras.PeerRepository;
+import main.java.infras.repository.PeerRepository;
 import main.java.utils.AppPaths;
 import main.java.utils.LogTag;
 

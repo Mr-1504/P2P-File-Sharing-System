@@ -18,7 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
 
-    public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepository, INetworkRepository, IPeerDiscoveryRepository {
+public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepository, INetworkRepository, IPeerDiscoveryRepository {
     ExecutorService getExecutor();
 
     Map<String, ProgressInfo> getProcesses();
@@ -28,10 +28,6 @@ import java.util.concurrent.locks.ReentrantLock;
     Map<String, List<Future<Boolean>>> getFutures();
 
     Map<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels();
-
-    boolean isRunning();
-
-    void setRunning(boolean running);
 
     Selector getSelector();
 
@@ -53,11 +49,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
     void setChannelAttachments(ConcurrentHashMap<SocketChannel, Map<String, Object>> channelAttachments);
 
-    SSLSocket createSecureSocket(PeerInfo peerInfo) throws Exception;
-
     String processSSLRequest(SocketChannel socketChannel, String request);
 
-    String bytesToHex(byte[] bytes);
-
-    String hashFile(File file, String progressId);
 }

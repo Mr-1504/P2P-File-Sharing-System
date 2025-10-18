@@ -1,9 +1,9 @@
-package main.java.api.controller;
+package main.java.delivery.controller;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.api.IP2PApi;
+import main.java.delivery.api.IP2PApi;
 import main.java.service.*;
 import main.java.utils.AppPaths;
 import main.java.utils.LogTag;
@@ -136,10 +136,6 @@ public class P2PController {
         }
     }
 
-    public void shareFile(String filePath, int isReplace, String fileName, String progressId) {
-        service.sharePublicFile(filePath, isReplace, fileName, progressId);
-    }
-
     public String downloadFile(FileInfo fileInfo, String savePath) {
         return service.downloadFile(fileInfo, savePath);
     }
@@ -215,7 +211,7 @@ public class P2PController {
             return 0;
         });
 
-        api.setRouteForShareFile((filePath, isReplace, isCancelled) -> {
+        api.setRouteForSharePublicFile((filePath, isReplace, isCancelled) -> {
             if (!isConnected) {
                 retryConnectToTracker();
                 return LogTag.S_NOT_CONNECTION;
@@ -234,7 +230,7 @@ public class P2PController {
             service.setProgress(newProgress);
             String finalFileName = fileName;
             executor.submit(() -> {
-                shareFile(filePath, isReplace, finalFileName, progressId);
+                service.sharePublicFile(filePath, isReplace, finalFileName, progressId);
             });
 
             return progressId;
@@ -271,7 +267,7 @@ public class P2PController {
 
         api.setRouteForResumeTask(this::resumeTask);
 
-        api.setRouteForShareToSelectivePeers((filePath, isReplace, peerList) -> {
+        api.setRouteForSharePrivateFile((filePath, isReplace, peerList) -> {
             if (!isConnected) {
                 retryConnectToTracker();
                 return LogTag.S_NOT_CONNECTION;
