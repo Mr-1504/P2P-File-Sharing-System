@@ -6,6 +6,7 @@ import FilesPage from './pages/FilesPage';
 import ChatPage from './pages/ChatPage';
 import Tasks from './components/Tasks';
 import Notification from './components/Notification';
+import UsernameDialog from './components/UsernameDialog';
 import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
 // import './styles/App.css';
@@ -23,6 +24,7 @@ function App() {
     const [messages, setMessages] = useState({});
     const [selectedPeer, setSelectedPeer] = useState(null);
     const [isNewTask, setIsNewTask] = useState(false);
+    const [showUsernameDialog, setShowUsernameDialog] = useState(false);
 
     const { notifications, addNotification, removeNotification } = useNotifications();
     const { tasks, setTasks, taskMap, handleResume } = useTasks(addNotification);
@@ -72,8 +74,43 @@ function App() {
     };
 
     useEffect(() => {
+        const initApp = async () => {
+            try {
+                // Check if backend has username set
+                const checkResponse = await fetch(buildApiUrl('/api/check-username'), {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!checkResponse.ok) {
+                    throw new Error('Failed to check username');
+                }
+
+                const checkData = await checkResponse.json();
+                const hasUsername = checkData.hasUsername;
+
+                if (!hasUsername) {
+                    // No username set, show dialog
+                    setShowUsernameDialog(true);
+                    setShowSplash(false); // Hide splash while showing dialog
+                    return;
+                }
+
+                // Username exists, proceed with normal init
+                await fetchFiles();
+
+            } catch (error) {
+                console.error('Error during app initialization:', error);
+                addNotification('Lỗi khởi tạo ứng dụng', true);
+                // Show dialog anyway if can't check
+                setShowUsernameDialog(true);
+                setShowSplash(false);
+            }
+        };
+
         const timer = setTimeout(() => setShowSplash(false), 10000);
-        fetchFiles();
+        initApp();
+
         return () => clearTimeout(timer);
     }, []);
 
@@ -222,6 +259,16 @@ function App() {
                     />
                 ))}
             </div>
+            {/* Username Dialog */}
+            <UsernameDialog
+                isOpen={showUsernameDialog}
+                onClose={() => {
+                    setShowUsernameDialog(false);
+                    // Trigger app reinitialization when dialog closes
+                    // Backend should now be initialized, so fetch files
+                    fetchFiles();
+                }}
+            />
         </>
     );
 }
