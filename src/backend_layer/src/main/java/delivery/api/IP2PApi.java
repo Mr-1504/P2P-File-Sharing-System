@@ -1,8 +1,8 @@
-package main.java.api;
+package main.java.delivery.api;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.api.dto.CleanupRequest;
+import main.java.delivery.dto.CleanupRequest;
 
 import java.util.List;
 import java.util.Map;
@@ -20,7 +20,7 @@ public interface IP2PApi {
 
     void setRouteForRefresh(Callable<Integer> callable);
 
-    void setRouteForShareFile(TriFunction<String, Integer, AtomicBoolean, String> callable);
+    void setRouteForSharePublicFile(TriFunction<String, Integer, AtomicBoolean, String> callable);
 
     void setRouteForRemoveFile(Function<String, Integer> callable);
 
@@ -34,7 +34,7 @@ public interface IP2PApi {
 
     void setRouteForResumeTask(Consumer<String> handler);
 
-    void setRouteForShareToSelectivePeers(TriFunction<String, Integer, List<String>, String> callable);
+    void setRouteForSharePrivateFile(TriFunction<String, Integer, List<String>, String> callable);
 
     void setRouteForGetKnownPeers(Callable<List<String>> callable);
 

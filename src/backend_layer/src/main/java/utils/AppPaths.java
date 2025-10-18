@@ -92,7 +92,6 @@ public class AppPaths {
     }
 
     public static boolean copyFileToShare(File sourceFile, String newfileName, ProgressInfo progressInfor) {
-        // Record start time
         long start = System.currentTimeMillis();
         File destFile = new File(getSharedFile(newfileName));
         try (

@@ -1,13 +1,10 @@
-package main.java.api.controller;
+package main.java.delivery.controller;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.domain.repository.FileRepository;
-import main.java.domain.repository.PeerRepository;
-import main.java.api.IP2PApi;
-import main.java.service.DownloadFileUseCase;
-import main.java.service.ShareFileUseCase;
+import main.java.delivery.api.IP2PApi;
+import main.java.service.*;
 import main.java.utils.AppPaths;
 import main.java.utils.LogTag;
 
@@ -19,11 +16,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class P2PController {
-    private final PeerRepository peerRepository;
-    private final FileRepository fileRepository;
+    private final IFileService service;
+    private final INetworkService networkService;
     private final IP2PApi api;
-    private final ShareFileUseCase shareFileUseCase;
-    private final DownloadFileUseCase downloadFileUseCase;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private boolean isConnected = false;
     private boolean isLoadSharedFiles = false;
@@ -33,12 +28,10 @@ public class P2PController {
     private String username = null;
     private boolean isInitialized = false;
 
-    public P2PController(PeerRepository peerRepository, FileRepository fileRepository, IP2PApi api) {
-        this.peerRepository = peerRepository;
-        this.fileRepository = fileRepository;
+    public P2PController(IFileService service, INetworkService networkService, IP2PApi api) {
+        this.service = service;
+        this.networkService = networkService;
         this.api = api;
-        this.shareFileUseCase = new ShareFileUseCase(fileRepository);
-        this.downloadFileUseCase = new DownloadFileUseCase(fileRepository);
         setupApiRoutes();
     }
 
@@ -67,7 +60,7 @@ public class P2PController {
         this.username = inputUsername.trim();
 
         // Save to backend
-        if(!AppPaths.saveUsername(this.username)) {
+        if (!AppPaths.saveUsername(this.username)) {
             this.username = null;
             return false;
         }
@@ -98,42 +91,38 @@ public class P2PController {
     }
 
     private void taskInitialization() {
-        executor.submit(() -> {
-            try {
-                String shareDirPath = AppPaths.getAppDataDirectory() + "/shared_files/";
-                File shareDir = new File(shareDirPath);
-                if (!shareDir.exists()) {
-                    shareDir.mkdir();
-                }
-                peerRepository.initializeServerSocket();
-                peerRepository.startServer();
-                peerRepository.startUDPServer();
-//                fileRepository.loadSharedFiles();
-                isLoadSharedFiles = true;
-                fileRepository.shareFileList();
-            } catch (Exception e) {
-                e.printStackTrace();
+        try {
+            String shareDirPath = AppPaths.getAppDataDirectory() + "/shared_files/";
+            File shareDir = new File(shareDirPath);
+            if (!shareDir.exists()) {
+                shareDir.mkdir();
             }
-        });
+            networkService.initializeServerSocket();
+            networkService.startServer();
+            networkService.startUDPServer();
+//                fileRepository.loadSharedFiles();
+            isLoadSharedFiles = true;
+            service.shareFileList();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void taskTrackerRegistration() {
-        executor.submit(() -> {
-            try {
-                registerWithTracker();
-                while (!isLoadSharedFiles) {
-                    Thread.sleep(1000);
-                }
-                fileRepository.shareFileList();
-            } catch (Exception e) {
-                e.printStackTrace();
+        try {
+            registerWithTracker();
+            while (!isLoadSharedFiles) {
+                Thread.sleep(1000);
             }
-        });
+            service.shareFileList();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void registerWithTracker() {
         while (!isConnected) {
-            int result = peerRepository.registerWithTracker();
+            int result = networkService.registerWithTracker();
             switch (result) {
                 case LogTag.I_SUCCESS, LogTag.I_NOT_FOUND -> isConnected = true;
                 default -> {
@@ -147,28 +136,24 @@ public class P2PController {
         }
     }
 
-    public String shareFile(String filePath, int isReplace, String fileName, String progressId) {
-        return shareFileUseCase.execute(filePath, isReplace, fileName, progressId);
-    }
-
     public String downloadFile(FileInfo fileInfo, String savePath) {
-        return downloadFileUseCase.execute(fileInfo, savePath);
+        return service.downloadFile(fileInfo, savePath);
     }
 
     public int removeFile(String fileName) {
-        return fileRepository.stopSharingFile(fileName);
+        return service.stopSharingFile(fileName);
     }
 
     public Map<String, ProgressInfo> getProgress() {
-        return fileRepository.getProgress();
+        return service.getProgress();
     }
 
     public void cleanupProgress(List<String> taskIds) {
-        fileRepository.cleanupProgress(taskIds);
+        service.cleanupProgress(taskIds);
     }
 
     public void cancelTask(String progressId) {
-        Map<String, ProgressInfo> progressMap = fileRepository.getProgress();
+        Map<String, ProgressInfo> progressMap = service.getProgress();
         if (progressMap.containsKey(progressId)) {
             ProgressInfo progress = progressMap.get(progressId);
             progress.setStatus(ProgressInfo.ProgressStatus.CANCELLED);
@@ -178,13 +163,13 @@ public class P2PController {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-                fileRepository.cleanupProgress(List.of(progressId));
+                service.cleanupProgress(List.of(progressId));
             });
         }
     }
 
     public void resumeTask(String progressId) {
-        Map<String, ProgressInfo> progressMap = fileRepository.getProgress();
+        Map<String, ProgressInfo> progressMap = service.getProgress();
         if (progressMap.containsKey(progressId)) {
             ProgressInfo progress = progressMap.get(progressId);
             if (progress.getStatus().equals(ProgressInfo.ProgressStatus.TIMEOUT) ||
@@ -196,7 +181,7 @@ public class P2PController {
     }
 
     public void checkTimeouts() {
-        Map<String, ProgressInfo> progressMap = fileRepository.getProgress();
+        Map<String, ProgressInfo> progressMap = service.getProgress();
         for (Map.Entry<String, ProgressInfo> entry : progressMap.entrySet()) {
             ProgressInfo progress = entry.getValue();
             if ((progress.getStatus().equals(ProgressInfo.ProgressStatus.DOWNLOADING) ||
@@ -226,7 +211,7 @@ public class P2PController {
             return 0;
         });
 
-        api.setRouteForShareFile((filePath, isReplace, isCancelled) -> {
+        api.setRouteForSharePublicFile((filePath, isReplace, isCancelled) -> {
             if (!isConnected) {
                 retryConnectToTracker();
                 return LogTag.S_NOT_CONNECTION;
@@ -242,10 +227,10 @@ public class P2PController {
             }
             String progressId = ProgressInfo.generateProgressId();
             ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
-            fileRepository.setProgress(newProgress);
+            service.setProgress(newProgress);
             String finalFileName = fileName;
             executor.submit(() -> {
-                shareFile(filePath, isReplace, finalFileName, progressId);
+                service.sharePublicFile(filePath, isReplace, finalFileName, progressId);
             });
 
             return progressId;
@@ -270,19 +255,19 @@ public class P2PController {
         });
 
         api.setRouteForCheckFile(fileName -> {
-            Set<FileInfo> sharedFiles = fileRepository.getSharedFileNames();
+            Set<FileInfo> sharedFiles = service.getFiles();
             return sharedFiles.stream().anyMatch(file -> file.getFileName().equals(fileName) && file.isSharedByMe());
         });
 
-        api.setRouteForGetProgress(() -> getProgress());
+        api.setRouteForGetProgress(this::getProgress);
 
         api.setRouteForCleanupProgress((request) -> cleanupProgress(request.taskIds));
 
-        api.setRouteForCancelTask((progressId) -> cancelTask(progressId));
+        api.setRouteForCancelTask(this::cancelTask);
 
-        api.setRouteForResumeTask((progressId) -> resumeTask(progressId));
+        api.setRouteForResumeTask(this::resumeTask);
 
-        api.setRouteForShareToSelectivePeers((filePath, isReplace, peerList) -> {
+        api.setRouteForSharePrivateFile((filePath, isReplace, peerList) -> {
             if (!isConnected) {
                 retryConnectToTracker();
                 return LogTag.S_NOT_CONNECTION;
@@ -298,20 +283,20 @@ public class P2PController {
             }
             String progressId = ProgressInfo.generateProgressId();
             ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
-            fileRepository.setProgress(newProgress);
+            service.setProgress(newProgress);
             String finalFileName = fileName;
             executor.submit(() -> {
-                shareFileUseCase.executeShareFileToSelectivePeer(filePath, isReplace, finalFileName, peerList, progressId);
+                service.sharePrivateFile(filePath, isReplace, finalFileName, peerList, progressId);
             });
 
             return progressId;
         });
 
         // Username management routes (highest priority - called during startup)
-        api.setRouteForCheckUsername(() -> checkUsernameExists());
+        api.setRouteForCheckUsername(this::checkUsernameExists);
 
         // Synchronous setter returns boolean indicating success
-        api.setRouteForSetUsername((username) -> setUsername(username));
+        api.setRouteForSetUsername(this::setUsername);
 
         api.setRouteForGetKnownPeers(this::getKnownPeers);
         // Start periodic timeout checker
@@ -322,13 +307,13 @@ public class P2PController {
     }
 
     public List<String> getKnownPeers() {
-        return fileRepository.getKnownPeers();
+        return networkService.queryOnlinePeerList();
     }
 
     private void refreshFileList() {
         executor.submit(() -> {
             try {
-                fileRepository.refreshSharedFileNames();
+                service.refreshFiles();
                 updateApiFiles();
             } catch (Exception e) {
                 e.printStackTrace();
@@ -337,7 +322,7 @@ public class P2PController {
     }
 
     private void updateApiFiles() {
-        Set<FileInfo> domainFiles = fileRepository.getSharedFileNames();
+        Set<FileInfo> domainFiles = service.getFiles();
         List<FileInfo> modelFiles = domainFiles.stream()
                 .map(this::convertToModelFileInfo)
                 .collect(java.util.stream.Collectors.toList());
