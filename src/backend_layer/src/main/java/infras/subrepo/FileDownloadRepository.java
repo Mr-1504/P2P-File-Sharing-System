@@ -1,9 +1,11 @@
-package main.java.model.submodel;
+package main.java.infras.subrepo;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.model.IPeerModel;
+import main.java.domain.repository.IFileDownloadRepository;
+import main.java.domain.repository.IPeerRepository;
+import main.java.utils.Config;
 import main.java.utils.Log;
 import main.java.utils.LogTag;
 
@@ -20,11 +22,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class FileDownloadModelImpl implements IFileDownloadModel {
+public class FileDownloadRepository implements IFileDownloadRepository {
 
-    private final IPeerModel peerModel;
+    private final IPeerRepository peerModel;
 
-    public FileDownloadModelImpl(IPeerModel peerModel) {
+    public FileDownloadRepository(IPeerRepository peerModel) {
         this.peerModel = peerModel;
     }
 
@@ -117,7 +119,7 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
             try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
                 raf.setLength(fileInfo.getFileSize());
                 ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk = new ConcurrentHashMap<>();
-                int totalChunk = (int) Math.ceil((double) fileInfo.getFileSize() / (double) this.peerModel.getChunkSize());
+                int totalChunk = (int) Math.ceil((double) fileInfo.getFileSize() / (double) Config.CHUNK_SIZE);
                 this.initializeHashMap(peerOfChunk, totalChunk);
                 int result = this.downloadAllChunksResume(fileInfo, peerInfos, progressId, chunkCount, raf, peerOfChunk);
                 if (result == LogTag.I_CANCELLED) {
@@ -170,7 +172,7 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
             try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
                 raf.setLength(fileInfo.getFileSize());
                 ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk = new ConcurrentHashMap<>();
-                int totalChunk = (int) Math.ceil((double) fileInfo.getFileSize() / (double) this.peerModel.getChunkSize());
+                int totalChunk = (int) Math.ceil((double) fileInfo.getFileSize() / (double) Config.CHUNK_SIZE);
                 this.initializeHashMap(peerOfChunk, totalChunk);
                 int result = this.downloadAllChunks(fileInfo, peerInfos, progressId, chunkCount, raf, peerOfChunk);
                 if (result == LogTag.I_CANCELLED) {
@@ -213,7 +215,7 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
             chunkCount,
                                       RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws
             InterruptedException {
-        int totalChunk = (int) Math.ceil((double) file.getFileSize() / (double) this.peerModel.getChunkSize());
+        int totalChunk = (int) Math.ceil((double) file.getFileSize() / (double) Config.CHUNK_SIZE);
         ArrayList<Integer> failedChunks = new ArrayList<>();
         ProgressInfo progressInfo = this.peerModel.getProcesses().get(progressId);
 
@@ -265,7 +267,7 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
             progressId, AtomicInteger chunkCount,
                                             RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws
             InterruptedException {
-        int totalChunk = (int) Math.ceil((double) file.getFileSize() / (double) this.peerModel.getChunkSize());
+        int totalChunk = (int) Math.ceil((double) file.getFileSize() / (double) Config.CHUNK_SIZE);
         ArrayList<Integer> failedChunks = new ArrayList<>();
         ProgressInfo progressInfo = this.peerModel.getProcesses().get(progressId);
 
@@ -450,7 +452,7 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
     private String computeFileHash(File file) {
         try (FileInputStream fileInputStream = new FileInputStream(file)) {
             MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
-            byte[] buff = new byte[this.peerModel.getChunkSize()];
+            byte[] buff = new byte[Config.CHUNK_SIZE];
 
             int byteRead;
             while ((byteRead = fileInputStream.read(buff)) != -1) {
@@ -529,11 +531,11 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
                         byte[] chunkDataByteArray = chunkData.toByteArray();
                         if (chunkDataByteArray.length != 0) {
                             synchronized (raf) {
-                                raf.seek((long) chunkIndex * (long) this.peerModel.getChunkSize());
+                                raf.seek((long) chunkIndex * (long) Config.CHUNK_SIZE);
                                 raf.write(chunkDataByteArray);
                             }
 
-                            long totalChunks = (file.getFileSize() + (long) this.peerModel.getChunkSize() - 1L) / (long) this.peerModel.getChunkSize();
+                            long totalChunks = (file.getFileSize() + (long) Config.CHUNK_SIZE - 1L) / (long) Config.CHUNK_SIZE;
                             long downloadedChunks = chunkCount.incrementAndGet();
                             int percent = (int) ((double) downloadedChunks * (double) 100.0F / (double) totalChunks);
                             ProgressInfo progress = peerModel.getProcesses().get(progressId);
@@ -633,11 +635,11 @@ public class FileDownloadModelImpl implements IFileDownloadModel {
                         byte[] chunkDataByteArray = chunkData.toByteArray();
                         if (chunkDataByteArray.length != 0) {
                             synchronized (raf) {
-                                raf.seek((long) chunkIndex * (long) this.peerModel.getChunkSize());
+                                raf.seek((long) chunkIndex * (long) Config.CHUNK_SIZE);
                                 raf.write(chunkDataByteArray);
                             }
 
-                            long totalChunks = (file.getFileSize() + (long) this.peerModel.getChunkSize() - 1L) / (long) this.peerModel.getChunkSize();
+                            long totalChunks = (file.getFileSize() + (long) Config.CHUNK_SIZE - 1L) / (long) Config.CHUNK_SIZE;
                             long downloadedChunks = chunkCount.incrementAndGet();
                             int percent = (int) ((double) downloadedChunks * (double) 100.0F / (double) totalChunks);
                             ProgressInfo progress = peerModel.getProcesses().get(progressId);

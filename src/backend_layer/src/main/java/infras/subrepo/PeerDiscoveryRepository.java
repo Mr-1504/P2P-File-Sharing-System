@@ -1,8 +1,9 @@
-package main.java.model.submodel;
+package main.java.infras.subrepo;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
-import main.java.model.IPeerModel;
+import main.java.domain.repository.IPeerDiscoveryRepository;
+import main.java.domain.repository.IPeerRepository;
 import main.java.utils.Config;
 import main.java.utils.Log;
 import main.java.utils.SSLUtils;
@@ -16,22 +17,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class PeerDiscoveryModelImpl implements IPeerDiscoveryModel {
+public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
 
-    private final IPeerModel peerModel;
+    private final IPeerRepository peerModel;
 
-    public PeerDiscoveryModelImpl(IPeerModel peerModel) {
+    public PeerDiscoveryRepository(IPeerRepository peerModel) {
         this.peerModel = peerModel;
     }
 
     @Override
-    public List<String> getKnownPeers() {
+    public List<String> queryOnlinePeerList() {
         if (!SSLUtils.isSSLSupported()) {
             Log.logError("SSL certificates not found! SSL is now mandatory for security.", null);
             throw new IllegalStateException("SSL certificates required for secure communication");
         }
 
-        try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(peerModel.getTrackerHost().getIp(), Config.TRACKER_PORT))) {
+        try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
             Log.logInfo("Established SSL connection to tracker for getting known peers");
 
             String request = "GET_KNOWN_PEERS\n";
@@ -82,10 +83,10 @@ public class PeerDiscoveryModelImpl implements IPeerDiscoveryModel {
             throw new IllegalStateException("SSL certificates required for secure communication");
         }
 
-        try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(peerModel.getTrackerHost().getIp(), Config.TRACKER_PORT))) {
+        try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
             Log.logInfo("Established SSL connection to tracker for getting peers with file hash");
 
-            String request = "GET_PEERS|" + fileHash + "|" + peerModel.getServerHost().getIp() + "|" + peerModel.getServerHost().getPort() + "\n";
+            String request = "GET_PEERS|" + fileHash + "|" + Config.SERVER_IP+ "|" + Config.PEER_PORT + "\n";
             sslSocket.getOutputStream().write(request.getBytes());
             Log.logInfo("SSL Requesting peers with file hash: " + fileHash + ", message: " + request);
             BufferedReader buff = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));

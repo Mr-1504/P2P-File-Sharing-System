@@ -1,4 +1,4 @@
-package main.java.model.submodel;
+package main.java.infras.subrepo;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -6,16 +6,16 @@ import com.google.gson.reflect.TypeToken;
 import main.java.domain.adapter.FileInfoAdapter;
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
-import main.java.model.IPeerModel;
+import main.java.domain.repository.INetworkRepository;
+import main.java.domain.repository.IPeerRepository;
+import main.java.infras.utils.FileUtils;
 import main.java.utils.Config;
 import main.java.utils.Log;
 import main.java.utils.LogTag;
 import main.java.utils.SSLUtils;
 
 import javax.net.ssl.*;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.lang.reflect.Type;
 import java.net.ConnectException;
 import java.net.DatagramPacket;
@@ -26,23 +26,30 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public class NetworkModelImpl implements INetworkModel {
+public class NetworkRepository implements INetworkRepository {
 
-    private final IPeerModel peerModel;
+    private final IPeerRepository peerModel;
+    private final ExecutorService executorService;
 
-    public NetworkModelImpl(IPeerModel peerModel) {
+    public NetworkRepository(IPeerRepository peerModel) {
         this.peerModel = peerModel;
+        this.executorService = Executors.newFixedThreadPool(8);
     }
 
     @Override
-    public void initializeServerSocket() throws Exception {
-        peerModel.loadData();
+    public void initializeServerSocket(String username) throws Exception {
+        FileUtils.loadData(username, peerModel.getPublicSharedFiles(), peerModel.getPrivateSharedFiles());
         peerModel.setSelector(Selector.open());
         peerModel.setSslContext(SSLUtils.createSSLContext());
         peerModel.setSslEngineMap(new ConcurrentHashMap<>());
@@ -51,15 +58,15 @@ public class NetworkModelImpl implements INetworkModel {
 
         ServerSocketChannel serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
-        serverChannel.socket().bind(new InetSocketAddress(peerModel.getServerHost().getIp(), peerModel.getServerHost().getPort()));
+        serverChannel.socket().bind(new InetSocketAddress(Config.SERVER_IP, Config.PEER_PORT));
         serverChannel.register(peerModel.getSelector(), SelectionKey.OP_ACCEPT);
 
-        Log.logInfo("Non-blocking SSL server socket initialized on " + peerModel.getServerHost().getIp() + ":" + peerModel.getServerHost().getPort());
+        Log.logInfo("Non-blocking SSL server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
     }
 
     @Override
     public void startServer() {
-        this.peerModel.getExecutor().submit(() -> {
+        this.executorService.submit(() -> {
             Log.logInfo("Starting non-blocking SSL server loop...");
 
             try {
@@ -97,10 +104,10 @@ public class NetworkModelImpl implements INetworkModel {
 
     @Override
     public void startUDPServer() {
-        this.peerModel.getExecutor().submit(() -> {
-            try (DatagramSocket udpSocket = new DatagramSocket(this.peerModel.getServerHost().getPort())) {
+        this.executorService.submit(() -> {
+            try (DatagramSocket udpSocket = new DatagramSocket(Config.PEER_PORT)) {
                 byte[] buffer = new byte[1024];
-                Log.logInfo("UDP server started on " + this.peerModel.getServerHost().getIp() + ":" + this.peerModel.getServerHost().getPort());
+                Log.logInfo("UDP server started on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
 
                 while (this.peerModel.isRunning()) {
                     DatagramPacket receivedPacket = new DatagramPacket(buffer, buffer.length);
@@ -127,7 +134,7 @@ public class NetworkModelImpl implements INetworkModel {
         int count = 0;
 
         while (count < Config.MAX_RETRIES) {
-            try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(this.peerModel.getTrackerHost().getIp(), Config.TRACKER_PORT))) {
+            try (SSLSocket sslSocket = peerModel.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
                 Log.logInfo("Established SSL connection to tracker");
 
                 Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
@@ -139,7 +146,7 @@ public class NetworkModelImpl implements INetworkModel {
                 }.getType();
                 String privateSharedFileJson = gson.toJson(peerModel.getPrivateSharedFiles(), privateFileType);
 
-                String message = "REGISTER|" + this.peerModel.getServerHost().getIp() + "|" + this.peerModel.getServerHost().getPort() +
+                String message = "REGISTER|" + Config.SERVER_IP + "|" + Config.PEER_PORT +
                         "|" + publicFileToPeersJson +
                         "|" + privateSharedFileJson +
                         "\n";
@@ -341,7 +348,7 @@ public class NetworkModelImpl implements INetworkModel {
         if (!request.isEmpty()) {
             try {
                 Log.logInfo("Received SSL application data: [" + request.trim() + "] from " + socketChannel.getRemoteAddress());
-                String response = peerModel.processSSLRequest(socketChannel, request.trim());
+                String response = this.processSSLRequest(socketChannel, request.trim());
                 sendSSLResponse(socketChannel, response);
             } catch (Exception e) {
                 Log.logError("Error processing SSL request: " + e.getMessage(), e);
@@ -412,5 +419,100 @@ public class NetworkModelImpl implements INetworkModel {
         DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, receivedPacket.getAddress(), receivedPacket.getPort());
         udpSocket.send(pongPacket);
         Log.logInfo("Pong response sent to " + receivedPacket.getAddress() + ":" + receivedPacket.getPort());
+    }
+
+    @Override
+    public String processSSLRequest(SocketChannel socketChannel, String request) {
+        try {
+            String clientIP = socketChannel.getRemoteAddress().toString().split(":")[0].replace("/", "");
+            PeerInfo clientIdentifier = new PeerInfo(clientIP, Config.PEER_PORT);
+
+            if (request.startsWith("SEARCH")) {
+                String fileName = request.split("\\|")[1];
+                Map<String, FileInfo> publicSharedFiles = peerModel.getPublicSharedFiles();
+                FileInfo fileInfo = publicSharedFiles.get(fileName);
+                if (fileInfo != null) {
+                    return "FILE_INFO|" + fileName + "|" + fileInfo.getFileSize() + "|" +
+                            fileInfo.getPeerInfo().getIp() + "|" + fileInfo.getPeerInfo().getPort() + "|" +
+                            fileInfo.getFileHash() + "\n";
+                } else {
+                    return "FILE_NOT_FOUND|" + fileName + "\n";
+                }
+            } else if (request.startsWith("GET_CHUNK")) {
+                String[] requestParts = request.split("\\|");
+                String fileHash = requestParts[1];
+                int chunkIndex = Integer.parseInt(requestParts[2]);
+                if (this.hasAccessToFile(clientIdentifier, fileHash)) {
+                    return getChunkData(fileHash, chunkIndex);
+                } else {
+                    return "ACCESS_DENIED\n";
+                }
+            } else if (request.startsWith("CHAT_MESSAGE")) {
+                String[] messageParts = request.split("\\|", 3);
+                if (messageParts.length >= 3) {
+                    Log.logInfo("Processing SSL chat message from " + messageParts[1] + ": " + messageParts[2]);
+                    return "CHAT_RECEIVED|" + messageParts[1] + "\n";
+                } else {
+                    return "ERROR|Invalid chat format\n";
+                }
+            }
+        } catch (IOException e) {
+            Log.logError("Error processing request: " + e.getMessage(), e);
+        }
+        return "UNKNOWN_REQUEST\n";
+    }
+
+    private String getChunkData(String fileHash, int chunkIndex) {
+        FileInfo fileInfo = findFileByHash(fileHash);
+        if (fileInfo == null) {
+            return "FILE_NOT_FOUND\n";
+        }
+
+        String appPath = main.java.utils.AppPaths.getAppDataDirectory();
+        String filePath = appPath + "/shared_files/" + fileInfo.getFileName();
+        File file = new File(filePath);
+
+        if (file.exists() && file.canRead()) {
+            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                byte[] chunkData = new byte[Config.CHUNK_SIZE];
+                raf.seek((long) chunkIndex * (long) Config.CHUNK_SIZE);
+                int byteRead = raf.read(chunkData);
+
+                if (byteRead > 0) {
+                    byte[] actualData = byteRead == Config.CHUNK_SIZE ? chunkData : Arrays.copyOf(chunkData, byteRead);
+                    return "CHUNK_DATA|" + chunkIndex + "|" + Base64.getEncoder().encodeToString(actualData) + "\n";
+                }
+            } catch (IOException e) {
+                Log.logError("Error reading chunk data: " + e.getMessage(), e);
+            }
+        }
+        return "CHUNK_ERROR\n";
+    }
+
+    private FileInfo findFileByHash(String fileHash) {
+        Map<String, FileInfo> publicSharedFiles = peerModel.getPublicSharedFiles();
+        for (FileInfo file : publicSharedFiles.values()) {
+            if (file.getFileHash().equals(fileHash)) {
+                return file;
+            }
+        }
+        Map<FileInfo, Set<PeerInfo>> privateSharedFiles = peerModel.getPrivateSharedFiles();
+        for (FileInfo file : privateSharedFiles.keySet()) {
+            if (file.getFileHash().equals(fileHash)) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasAccessToFile(PeerInfo clientIdentify, String fileHash) {
+        Map<String, FileInfo> publicSharedFiles = peerModel.getPublicSharedFiles();
+        for (FileInfo file : publicSharedFiles.values()) {
+            if (file.getFileHash().equals(fileHash)) {
+                return true;
+            }
+        }
+        List<PeerInfo> selectivePeers = peerModel.getSelectivePeers(fileHash);
+        return selectivePeers.stream().anyMatch(p -> p.getIp().equals(clientIdentify.getIp()));
     }
 }

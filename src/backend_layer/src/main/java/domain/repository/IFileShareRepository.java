@@ -1,4 +1,4 @@
-package main.java.model.submodel;
+package main.java.domain.repository;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
@@ -8,16 +8,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public interface IFileShareModel {
+public interface IFileShareRepository {
     boolean sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo);
 
     boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles);
 
-    boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
+    boolean sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
 
-    int refreshSharedFileNames();
+    int refreshFiles();
 
-    Set<FileInfo> getSharedFileNames();
+    Set<FileInfo> getFiles();
 
     void setSharedFileNames(Set<FileInfo> sharedFileNames);
 

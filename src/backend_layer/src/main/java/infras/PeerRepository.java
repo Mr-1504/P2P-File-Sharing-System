@@ -1,9 +1,11 @@
-package main.java.model;
+package main.java.infras;
 
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.model.submodel.*;
+import main.java.domain.repository.*;
+import main.java.infras.subrepo.*;
+import main.java.infras.utils.FileUtils;
 import main.java.utils.AppPaths;
 import main.java.utils.Config;
 import main.java.utils.Log;
@@ -21,10 +23,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 
-public class PeerModel implements IPeerModel {
-    private final int CHUNK_SIZE;
-    private final PeerInfo SERVER_HOST;
-    private final PeerInfo TRACKER_HOST;
+public class PeerRepository implements IPeerRepository, AutoCloseable {
     private Selector selector;
     private SSLContext sslContext;
     private ConcurrentHashMap<SocketChannel, SSLEngine> sslEngineMap;
@@ -39,17 +38,15 @@ public class PeerModel implements IPeerModel {
     private final ConcurrentHashMap<String, ProgressInfo> processes;
     private boolean isRunning;
     private final ReentrantLock fileLock;
+    private final String username;
 
     // Sub-models
-    private final IFileDownloadModel fileDownloadModel;
-    private final IFileShareModel fileShareModel;
-    private final INetworkModel networkModel;
-    private final IPeerDiscoveryModel peerDiscoveryModel;
+    private final IFileDownloadRepository fileDownloadModel;
+    private final IFileShareRepository fileShareModel;
+    private final INetworkRepository networkModel;
+    private final IPeerDiscoveryRepository peerDiscoveryModel;
 
-    public PeerModel() throws IOException {
-        this.CHUNK_SIZE = Config.CHUNK_SIZE;
-        this.SERVER_HOST = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername());
-        this.TRACKER_HOST = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
+    public PeerRepository() {
         this.openChannels = new ConcurrentHashMap<>();
         this.futures = new ConcurrentHashMap<>();
         this.processes = new ConcurrentHashMap<>();
@@ -59,12 +56,12 @@ public class PeerModel implements IPeerModel {
         this.sharedFileNames = new HashSet<>();
         this.executor = Executors.newFixedThreadPool(8);
         this.isRunning = true;
-
+        this.username = AppPaths.loadUsername();
         // Instantiate sub-models
-        this.fileDownloadModel = new FileDownloadModelImpl(this);
-        this.fileShareModel = new FileShareModelImpl(this);
-        this.networkModel = new NetworkModelImpl(this);
-        this.peerDiscoveryModel = new PeerDiscoveryModelImpl(this);
+        this.fileDownloadModel = new FileDownloadRepository(this);
+        this.fileShareModel = new FileShareRepository(this);
+        this.networkModel = new NetworkRepository(this);
+        this.peerDiscoveryModel = new PeerDiscoveryRepository(this);
 
 
         if (!SSLUtils.initializeSSLCertificates()) {
@@ -72,9 +69,9 @@ public class PeerModel implements IPeerModel {
             throw new RuntimeException("SSL certificate initialization failed");
         }
 
-        Log.logInfo("Server socket initialized on " + this.SERVER_HOST.getIp() + ":" + this.SERVER_HOST.getPort());
+        Log.logInfo("Server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
         startTimeoutMonitor();
-        Runtime.getRuntime().addShutdownHook(new Thread(this::saveData));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> FileUtils.saveData(this.publicSharedFiles, this.privateSharedFiles)) );
     }
 
     private void startTimeoutMonitor() {
@@ -158,17 +155,17 @@ public class PeerModel implements IPeerModel {
     }
 
     @Override
-    public boolean shareFileToPeers(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
-        return fileShareModel.shareFileToPeers(file, oldFileInfo, isReplace, progressId, peerList);
+    public boolean sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+        return fileShareModel.sharePrivateFile(file, oldFileInfo, isReplace, progressId, peerList);
     }
 
     @Override
-    public int refreshSharedFileNames() {
-        return fileShareModel.refreshSharedFileNames();
+    public int refreshFiles() {
+        return fileShareModel.refreshFiles();
     }
 
     @Override
-    public Set<FileInfo> getSharedFileNames() {
+    public Set<FileInfo> getFiles() {
         return sharedFileNames;
     }
 
@@ -197,10 +194,9 @@ public class PeerModel implements IPeerModel {
         return fileShareModel.getPublicFiles();
     }
 
-    // Delegated methods from INetworkModel
     @Override
-    public void initializeServerSocket() throws Exception {
-        networkModel.initializeServerSocket();
+    public void initializeServerSocket(String username) throws Exception {
+        networkModel.initializeServerSocket(username);
     }
 
     @Override
@@ -220,8 +216,8 @@ public class PeerModel implements IPeerModel {
 
     // Delegated methods from IPeerDiscoveryModel
     @Override
-    public List<String> getKnownPeers() {
-        return peerDiscoveryModel.getKnownPeers();
+    public List<String> queryOnlinePeerList() {
+        return peerDiscoveryModel.queryOnlinePeerList();
     }
 
     @Override
@@ -234,37 +230,24 @@ public class PeerModel implements IPeerModel {
         return peerDiscoveryModel.getSelectivePeers(fileHash);
     }
 
-    // Getters for state to be used by sub-models via IPeerModel
-    public int getChunkSize() {
-        return CHUNK_SIZE;
-    }
-
-    public PeerInfo getServerHost() {
-        return SERVER_HOST;
-    }
-
-    public PeerInfo getTrackerHost() {
-        return TRACKER_HOST;
-    }
-
     public ExecutorService getExecutor() {
         return executor;
     }
 
-    public ConcurrentHashMap<String, ProgressInfo> getProcesses() {
-        return processes;
+    public Map<String, ProgressInfo> getProcesses() {
+        return Collections.unmodifiableMap(processes);
     }
 
     public ReentrantLock getFileLock() {
         return fileLock;
     }
 
-    public ConcurrentHashMap<String, List<Future<Boolean>>> getFutures() {
-        return futures;
+    public Map<String, List<Future<Boolean>>> getFutures() {
+        return Collections.unmodifiableMap(futures);
     }
 
-    public ConcurrentHashMap<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels() {
-        return openChannels;
+    public Map<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels() {
+        return Collections.unmodifiableMap(openChannels);
     }
 
     public boolean isRunning() {
@@ -327,151 +310,10 @@ public class PeerModel implements IPeerModel {
     }
 
     public String processSSLRequest(SocketChannel socketChannel, String request) {
-        try {
-            String clientIP = socketChannel.getRemoteAddress().toString().split(":")[0].replace("/", "");
-            PeerInfo clientIdentifier = new PeerInfo(clientIP, SERVER_HOST.getPort());
-
-            if (request.startsWith("SEARCH")) {
-                String fileName = request.split("\\|")[1];
-                FileInfo fileInfo = this.publicSharedFiles.get(fileName);
-                if (fileInfo != null) {
-                    return "FILE_INFO|" + fileName + "|" + fileInfo.getFileSize() + "|" +
-                            fileInfo.getPeerInfo().getIp() + "|" + fileInfo.getPeerInfo().getPort() + "|" +
-                            fileInfo.getFileHash() + "\n";
-                } else {
-                    return "FILE_NOT_FOUND|" + fileName + "\n";
-                }
-            } else if (request.startsWith("GET_CHUNK")) {
-                String[] requestParts = request.split("\\|");
-                String fileHash = requestParts[1];
-                int chunkIndex = Integer.parseInt(requestParts[2]);
-                if (this.hasAccessToFile(clientIdentifier, fileHash)) {
-                    return getChunkData(fileHash, chunkIndex);
-                } else {
-                    return "ACCESS_DENIED\n";
-                }
-            } else if (request.startsWith("CHAT_MESSAGE")) {
-                String[] messageParts = request.split("\\|", 3);
-                if (messageParts.length >= 3) {
-                    Log.logInfo("Processing SSL chat message from " + messageParts[1] + ": " + messageParts[2]);
-                    return "CHAT_RECEIVED|" + messageParts[1] + "\n";
-                } else {
-                    return "ERROR|Invalid chat format\n";
-                }
-            }
-        } catch (IOException e) {
-            Log.logError("Error processing request: " + e.getMessage(), e);
-        }
-        return "UNKNOWN_REQUEST\n";
+        return networkModel.processSSLRequest(socketChannel, request);
     }
 
-    private String getChunkData(String fileHash, int chunkIndex) {
-        FileInfo fileInfo = findFileByHash(fileHash);
-        if (fileInfo == null) {
-            return "FILE_NOT_FOUND\n";
-        }
 
-        String appPath = AppPaths.getAppDataDirectory();
-        String filePath = appPath + "/shared_files/" + fileInfo.getFileName();
-        File file = new File(filePath);
-
-        if (file.exists() && file.canRead()) {
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                byte[] chunkData = new byte[this.CHUNK_SIZE];
-                raf.seek((long) chunkIndex * (long) this.CHUNK_SIZE);
-                int byteRead = raf.read(chunkData);
-
-                if (byteRead > 0) {
-                    byte[] actualData = byteRead == this.CHUNK_SIZE ? chunkData : Arrays.copyOf(chunkData, byteRead);
-                    return "CHUNK_DATA|" + chunkIndex + "|" + Base64.getEncoder().encodeToString(actualData) + "\n";
-                }
-            } catch (IOException e) {
-                Log.logError("Error reading chunk data: " + e.getMessage(), e);
-            }
-        }
-        return "CHUNK_ERROR\n";
-    }
-
-    private FileInfo findFileByHash(String fileHash) {
-        for (FileInfo file : this.publicSharedFiles.values()) {
-            if (file.getFileHash().equals(fileHash)) {
-                return file;
-            }
-        }
-        for (FileInfo file : this.privateSharedFiles.keySet()) {
-            if (file.getFileHash().equals(fileHash)) {
-                return file;
-            }
-        }
-        return null;
-    }
-
-    private boolean hasAccessToFile(PeerInfo clientIdentify, String fileHash) {
-        for (FileInfo file : this.publicSharedFiles.values()) {
-            if (file.getFileHash().equals(fileHash)) {
-                return true;
-            }
-        }
-        List<PeerInfo> selectivePeers = this.getSelectivePeers(fileHash);
-        return selectivePeers.stream().anyMatch(p -> p.getIp().equals(clientIdentify.getIp()));
-    }
-
-    public void loadData() {
-        String dataDirPath = AppPaths.getAppDataDirectory() + File.separator + "data";
-        File dataDir = new File(dataDirPath);
-        if (!dataDir.exists()) {
-            dataDir.mkdirs();
-            return;
-        }
-
-        File publicFile = new File(dataDirPath + File.separator + "publicSharedFiles.dat");
-        if (publicFile.exists()) {
-            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(publicFile))) {
-                this.publicSharedFiles = (ConcurrentHashMap<String, FileInfo>) ois.readObject();
-                for (FileInfo fileInfo : this.publicSharedFiles.values()) {
-                    fileInfo.getPeerInfo().setUsername(this.SERVER_HOST.getUsername());
-                }
-                Log.logInfo("Public shared files loaded successfully. " + this.publicSharedFiles.size() + " files found.");
-            } catch (IOException | ClassNotFoundException | ClassCastException e) {
-                Log.logError("Error loading public shared files: " + e.getMessage(), e);
-            }
-        }
-
-        File privateFile = new File(dataDirPath + File.separator + "privateSharedFiles.dat");
-        if (privateFile.exists()) {
-            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(privateFile))) {
-                this.privateSharedFiles = (ConcurrentHashMap<FileInfo, Set<PeerInfo>>) ois.readObject();
-                for (FileInfo fileInfo : this.privateSharedFiles.keySet()) {
-                    fileInfo.getPeerInfo().setUsername(this.SERVER_HOST.getUsername());
-                }
-                Log.logInfo("Private shared files loaded successfully. " + this.privateSharedFiles.size() + " files found.");
-            } catch (IOException | ClassNotFoundException | ClassCastException e) {
-                Log.logError("Error loading private shared files: " + e.getMessage(), e);
-            }
-        }
-    }
-
-    private void saveData() {
-        String dataDirPath = AppPaths.getAppDataDirectory() + File.separator + "data";
-        File dataDir = new File(dataDirPath);
-        if (!dataDir.exists()) {
-            dataDir.mkdirs();
-        }
-
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(dataDirPath + File.separator + "publicSharedFiles.dat"))) {
-            oos.writeObject(this.publicSharedFiles);
-            Log.logInfo("Public shared files saved successfully.");
-        } catch (IOException e) {
-            Log.logError("Error saving public shared files: " + e.getMessage(), e);
-        }
-
-        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(dataDirPath + File.separator + "privateSharedFiles.dat"))) {
-            oos.writeObject(this.privateSharedFiles);
-            Log.logInfo("Private shared files saved successfully.");
-        } catch (IOException e) {
-            Log.logError("Error saving private shared files: " + e.getMessage(), e);
-        }
-    }
 
     public String bytesToHex(byte[] bytes) {
         StringBuilder hex = new StringBuilder();
@@ -484,7 +326,7 @@ public class PeerModel implements IPeerModel {
     public String hashFile(File file, String progressId) {
         try (FileInputStream fileInputStream = new FileInputStream(file)) {
             MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = new byte[this.CHUNK_SIZE];
+            byte[] bytes = new byte[Config.CHUNK_SIZE];
             long fileSize = file.length();
             long readbyte = 0L;
             ProgressInfo progressInfo = this.processes.get(progressId);
@@ -520,5 +362,15 @@ public class PeerModel implements IPeerModel {
             }
             return null;
         }
+    }
+
+    @Override
+    public void close() {
+        for (Future<Boolean> future : futures.values().stream().flatMap(List::stream).toList()) {
+            future.cancel(true);
+        }
+        this.isRunning = false;
+        this.executor.shutdown();
+        FileUtils.saveData(publicSharedFiles, privateSharedFiles);
     }
 }

@@ -1,12 +1,7 @@
-package main.java.model;
+package main.java.domain.repository;
 
-import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
-import main.java.model.submodel.IFileDownloadModel;
-import main.java.model.submodel.IFileShareModel;
-import main.java.model.submodel.INetworkModel;
-import main.java.model.submodel.IPeerDiscoveryModel;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -18,29 +13,21 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
 
-public interface IPeerModel extends IFileDownloadModel, IFileShareModel, INetworkModel, IPeerDiscoveryModel {
-    int getChunkSize();
-
-    PeerInfo getServerHost();
-
-    PeerInfo getTrackerHost();
-
+    public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepository, INetworkRepository, IPeerDiscoveryRepository {
     ExecutorService getExecutor();
 
-    ConcurrentHashMap<String, ProgressInfo> getProcesses();
+    Map<String, ProgressInfo> getProcesses();
 
     ReentrantLock getFileLock();
 
-    ConcurrentHashMap<String, List<Future<Boolean>>> getFutures();
+    Map<String, List<Future<Boolean>>> getFutures();
 
-    ConcurrentHashMap<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels();
+    Map<String, CopyOnWriteArrayList<SSLSocket>> getOpenChannels();
 
     boolean isRunning();
 
@@ -69,8 +56,6 @@ public interface IPeerModel extends IFileDownloadModel, IFileShareModel, INetwor
     SSLSocket createSecureSocket(PeerInfo peerInfo) throws Exception;
 
     String processSSLRequest(SocketChannel socketChannel, String request);
-
-    void loadData();
 
     String bytesToHex(byte[] bytes);
 

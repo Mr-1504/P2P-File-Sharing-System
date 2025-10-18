@@ -1,10 +1,11 @@
-package main.java.domain.repository;
+package main.java.service;
 
-import java.io.IOException;
+import java.util.List;
 
-public interface PeerRepository {
+public interface INetworkService {
     void initializeServerSocket() throws Exception;
     void startServer();
     void startUDPServer();
     int registerWithTracker();
+    List<String> queryOnlinePeerList();
 }
