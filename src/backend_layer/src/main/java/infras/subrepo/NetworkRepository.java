@@ -59,13 +59,12 @@ public class NetworkRepository implements INetworkRepository {
         peerModel.setPendingData(new ConcurrentHashMap<>());
         peerModel.setChannelAttachments(new ConcurrentHashMap<>());
 
-        try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {
-            serverChannel.configureBlocking(false);
-            serverChannel.socket().bind(new InetSocketAddress(Config.SERVER_IP, Config.PEER_PORT));
-            serverChannel.register(peerModel.getSelector(), SelectionKey.OP_ACCEPT);
+        ServerSocketChannel serverChannel = ServerSocketChannel.open();
+        serverChannel.configureBlocking(false);
+        serverChannel.socket().bind(new InetSocketAddress(Config.SERVER_IP, Config.PEER_PORT));
+        serverChannel.register(peerModel.getSelector(), SelectionKey.OP_ACCEPT);
 
-            Log.logInfo("Non-blocking SSL server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
-        }
+        Log.logInfo("Non-blocking SSL server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
     }
 
     @Override

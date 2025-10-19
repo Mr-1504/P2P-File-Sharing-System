@@ -329,7 +329,7 @@ public class P2PApi implements IP2PApi {
                                             jsonError(LogTag.S_NOT_CONNECTION));
                                     return;
                                 }
-                                String response = gson.toJson(Collections.singletonMap("status", "downloaded"));
+                                String response = gson.toJson(Collections.singletonMap("status", "starting"));
                                 logInfo(response);
                                 sendResponse(exchange, LogTag.OK, response);
                                 return;

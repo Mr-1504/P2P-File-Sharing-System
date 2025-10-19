@@ -16,23 +16,22 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class FileDownloadRepository implements IFileDownloadRepository {
 
     private final IPeerRepository peerModel;
+    private final ExecutorService executorService;
 
     public FileDownloadRepository(IPeerRepository peerModel) {
         this.peerModel = peerModel;
+        this.executorService = Executors.newFixedThreadPool(10);
     }
 
     @Override
     public void downloadFile(FileInfo fileInfo, File file, List<PeerInfo> peerInfos, String progressId) {
-        this.peerModel.getExecutor().submit(() -> this.processDownload(fileInfo, file, progressId, peerInfos));
+        this.executorService.submit(() -> this.processDownload(fileInfo, file, progressId, peerInfos));
     }
 
     @Override
@@ -192,7 +191,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                 Log.logInfo("Retrying to download chunk " + chunkIndex + " from peer " + peerInfo.getIp() + ":" + peerInfo.getPort() + " (attempt " + (i + 1) + ")");
                 peerInfo.addTaskForDownload();
                 peerOfChunk.computeIfAbsent(chunkIndex, (v) -> new ArrayList<>()).add(peerInfo);
-                Future<Boolean> future = this.peerModel.getExecutor().submit(() -> {
+                Future<Boolean> future = this.executorService.submit(() -> {
                     this.peerModel.getFileLock().lock();
 
                     boolean result;

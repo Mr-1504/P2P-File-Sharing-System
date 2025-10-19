@@ -249,9 +249,7 @@ public class P2PController {
                 retryConnectToTracker();
                 return "Not connected";
             }
-            // Convert model FileInfor to domain FileInfo
-            FileInfo domainFile = convertToDomainFileInfo(file);
-            return downloadFile(domainFile, savePath);
+            return downloadFile(file, savePath);
         });
 
         api.setRouteForCheckFile(fileName -> {
