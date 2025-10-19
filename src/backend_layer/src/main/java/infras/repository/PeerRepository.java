@@ -147,7 +147,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     @Override
-    public void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+    public void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<PeerInfo> peerList) {
         fileShareModel.sharePrivateFile(file, oldFileInfo, isReplace, progressId, peerList);
     }
 
@@ -208,7 +208,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
 
     // Delegated methods from IPeerDiscoveryModel
     @Override
-    public List<String> queryOnlinePeerList() {
+    public Set<PeerInfo> queryOnlinePeerList() {
         return peerDiscoveryModel.queryOnlinePeerList();
     }
 

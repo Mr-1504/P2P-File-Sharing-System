@@ -2,6 +2,7 @@ package main.java.delivery.api;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import main.java.domain.entity.FileInfo;
@@ -10,6 +11,7 @@ import main.java.domain.entity.ProgressInfo;
 import main.java.delivery.dto.CleanupRequest;
 import main.java.utils.LogTag;
 
+import java.lang.reflect.Type;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 
@@ -480,7 +482,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForSharePrivateFile(TriFunction<String, Integer, List<String>, String> callable) {
+    public void setRouteForSharePrivateFile(TriFunction<String, Integer, List<PeerInfo>, String> callable) {
         server.createContext("/api/files/share-to-peers", exchange -> {
             addCorsHeaders(exchange);
             try {
@@ -497,17 +499,25 @@ public class P2PApi implements IP2PApi {
 
                         String filePath = body.has("filePath") ? body.get("filePath").getAsString() : null;
                         int isReplace = body.has("isReplace") ? body.get("isReplace").getAsInt() : 0;
-                        List<String> peerList = new ArrayList<>();
+
+                        List<PeerInfo> peers = new ArrayList<>();
                         if (body.has("peers")) {
-                            body.get("peers").getAsJsonArray().forEach(peer -> peerList.add(peer.getAsString()));
+                            body.get("peers").getAsJsonArray().forEach(peerJson -> {
+                                JsonObject p = peerJson.getAsJsonObject();
+                                String ip = p.has("ip") ? p.get("ip").getAsString() : null;
+                                int port = p.has("port") ? p.get("port").getAsInt() : 0;
+                                String username = p.has("username") ? p.get("username").getAsString() : null;
+                                peers.add(new PeerInfo(ip, port, username));
+                            });
                         }
 
-                        if (filePath == null || filePath.isEmpty() || peerList.isEmpty()) {
-                            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("filePath and peers are required"));
+                        if (filePath == null || filePath.isEmpty() || peers.isEmpty()) {
+                            sendResponse(exchange, LogTag.BAD_REQUEST,
+                                    jsonError("filePath and peers are required"));
                             return;
                         }
 
-                        String result = callable.apply(filePath, isReplace, peerList);
+                        String result = callable.apply(filePath, isReplace, peers);
                         logInfo("Share to peers result: " + result);
 
                         switch (result) {
@@ -524,7 +534,8 @@ public class P2PApi implements IP2PApi {
                                         jsonError("Internal server error"));
                                 break;
                             default:
-                                sendResponse(exchange, LogTag.OK, gson.toJson(Collections.singletonMap("status", "shared")));
+                                sendResponse(exchange, LogTag.OK,
+                                        gson.toJson(Collections.singletonMap("status", "shared")));
                         }
                         break;
                     default:
@@ -539,8 +550,9 @@ public class P2PApi implements IP2PApi {
         });
     }
 
+
     @Override
-    public void setRouteForGetKnownPeers(Callable<List<String>> callable) {
+    public void setRouteForGetKnownPeers(Callable<Set<PeerInfo>> callable) {
         server.createContext("/api/peers/known", exchange -> {
             addCorsHeaders(exchange);
             try {
@@ -550,7 +562,7 @@ public class P2PApi implements IP2PApi {
                         break;
                     case "GET":
                         logInfo("Get known peers request");
-                        List<String> peers = callable.call();
+                        Set<PeerInfo> peers = callable.call();
                         String response = gson.toJson(peers);
                         logInfo("Known peers response: " + response);
                         sendResponse(exchange, LogTag.OK, response);

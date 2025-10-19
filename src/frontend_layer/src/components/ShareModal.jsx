@@ -77,7 +77,7 @@ const ShareModal = ({ isOpen, onClose, onShareAll, onShareSelective, file }) => 
                                             onChange={() => handlePeerToggle(peer)}
                                             className="rounded"
                                         />
-                                        <span className="text-sm">{peer}</span>
+                                        <span className="text-sm">{peer.username} ({peer.ip})</span>
                                     </label>
                                 ))
                             )}
