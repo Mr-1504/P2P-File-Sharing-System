@@ -1,11 +1,13 @@
 package main.java.delivery.api;
 
 import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
 import main.java.delivery.dto.CleanupRequest;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -34,9 +36,9 @@ public interface IP2PApi {
 
     void setRouteForResumeTask(Consumer<String> handler);
 
-    void setRouteForSharePrivateFile(TriFunction<String, Integer, List<String>, String> callable);
+    void setRouteForSharePrivateFile(TriFunction<String, Integer, List<PeerInfo>, String> callable);
 
-    void setRouteForGetKnownPeers(Callable<List<String>> callable);
+    void setRouteForGetKnownPeers(Callable<Set<PeerInfo>> callable);
 
     void setFiles(List<FileInfo> files);
 
