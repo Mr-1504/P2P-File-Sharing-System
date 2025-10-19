@@ -60,6 +60,7 @@ public class FileUtils {
                 Map<String, FileInfo> loaded = gson.fromJson(reader, publicType);
                 for (FileInfo fileInfo : loaded.values()) {
                     fileInfo.getPeerInfo().setUsername(username);
+                    fileInfo.getPeerInfo().setIp(Config.SERVER_IP);
                 }
                 publicSharedFiles.clear();
                 publicSharedFiles.putAll(loaded);
@@ -77,6 +78,7 @@ public class FileUtils {
                 Map<FileInfo, Set<PeerInfo>> loaded = gson.fromJson(reader, privateType);
                 for (FileInfo fileInfo : loaded.keySet()) {
                     fileInfo.getPeerInfo().setUsername(username);
+                    fileInfo.getPeerInfo().setIp(Config.SERVER_IP);
                 }
                 privateSharedFiles.clear();
                 privateSharedFiles.putAll(loaded);
