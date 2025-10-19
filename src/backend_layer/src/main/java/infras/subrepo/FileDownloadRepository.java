@@ -288,31 +288,13 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                     int receivedIndex = dis.readInt();
 
                     if (receivedIndex == chunkIndex) {
+                        int chunkLength = dis.readInt();
+
                         // Read chunk data
-                        ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
-                        byte[] buffer = new byte[8192];
-                        int bytesRead;
-                        long startTime = System.currentTimeMillis();
+                        byte[] chunkDataByteArray = new byte[chunkLength];
+                        dis.readFully(chunkDataByteArray);
 
-                        while (System.currentTimeMillis() - startTime < 5000L) {
-                            if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) || Thread.currentThread().isInterrupted()) {
-                                Log.logInfo("Process cancelled by user while reading chunk data from peer " + peerInfo);
-                                return false;
-                            }
-
-                            if (dis.available() > 0) {
-                                bytesRead = dis.read(buffer);
-                                if (bytesRead == -1) {
-                                    break;
-                                }
-                                chunkData.write(buffer, 0, bytesRead);
-                            } else {
-                                Thread.sleep(100L);
-                            }
-                        }
-
-                        byte[] chunkDataByteArray = chunkData.toByteArray();
-                        if (chunkDataByteArray.length != 0) {
+                        if (chunkLength > 0) {
                             synchronized (raf) {
                                 raf.seek((long) chunkIndex * (long) Config.CHUNK_SIZE);
                                 raf.write(chunkDataByteArray);
@@ -324,7 +306,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                             ProgressInfo progress = peerModel.getProcesses().get(progressId);
                             if (progress != null) {
                                 synchronized (progress) {
-                                    progress.addBytesTransferred(chunkDataByteArray.length);
+                                    progress.addBytesTransferred(chunkLength);
                                     progress.setProgressPercentage(percent);
                                     progress.updateProgressTime();
                                 }

@@ -49,6 +49,6 @@ public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepo
 
     void setChannelAttachments(ConcurrentHashMap<SocketChannel, Map<String, Object>> channelAttachments);
 
-    String processSSLRequest(SocketChannel socketChannel, String request);
+    void processSSLRequest(SocketChannel socketChannel, String request);
 
 }

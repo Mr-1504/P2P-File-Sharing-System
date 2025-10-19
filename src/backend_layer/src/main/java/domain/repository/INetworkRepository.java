@@ -7,5 +7,5 @@ public interface INetworkRepository {
     void startServer();
     void startUDPServer();
     int registerWithTracker();
-    String processSSLRequest(SocketChannel socketChannel, String request);
+    void processSSLRequest(SocketChannel socketChannel, String request);
 }

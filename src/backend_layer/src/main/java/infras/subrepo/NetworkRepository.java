@@ -28,7 +28,7 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Arrays;
-import java.util.Base64;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -353,8 +353,7 @@ public class NetworkRepository implements INetworkRepository {
         if (!request.isEmpty()) {
             try {
                 Log.logInfo("Received SSL application data: [" + request.trim() + "] from " + socketChannel.getRemoteAddress());
-                String response = this.processSSLRequest(socketChannel, request.trim());
-                sendSSLResponse(socketChannel, response);
+                this.processSSLRequest(socketChannel, request.trim());
             } catch (Exception e) {
                 Log.logError("Error processing SSL request: " + e.getMessage(), e);
             }
@@ -383,6 +382,31 @@ public class NetworkRepository implements INetworkRepository {
             }
         } catch (SSLException e) {
             Log.logError("Error sending SSL response: " + e.getMessage(), e);
+        }
+    }
+
+    private void sendSSLBinary(SocketChannel socketChannel, byte[] data) {
+        SSLEngine sslEngine = peerModel.getSslEngineMap().get(socketChannel);
+        if (sslEngine == null) {
+            Log.logError("SSL engine not found for binary response", null);
+            return;
+        }
+
+        try {
+            ByteBuffer responseBuffer = ByteBuffer.wrap(data);
+            ByteBuffer netBuffer = ByteBuffer.allocate(sslEngine.getSession().getPacketBufferSize());
+            SSLEngineResult result = sslEngine.wrap(responseBuffer, netBuffer);
+
+            if (result.getStatus() == SSLEngineResult.Status.OK) {
+                netBuffer.flip();
+                peerModel.getPendingData().put(socketChannel, netBuffer);
+                SelectionKey key = socketChannel.keyFor(peerModel.getSelector());
+                if (key != null) {
+                    key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
+                }
+            }
+        } catch (SSLException e) {
+            Log.logError("Error sending SSL binary: " + e.getMessage(), e);
         }
     }
 
@@ -428,7 +452,7 @@ public class NetworkRepository implements INetworkRepository {
     }
 
     @Override
-    public String processSSLRequest(SocketChannel socketChannel, String request) {
+    public void processSSLRequest(SocketChannel socketChannel, String request) {
         try {
             String clientIP = socketChannel.getRemoteAddress().toString().split(":")[0].replace("/", "");
             PeerInfo clientIdentifier = new PeerInfo(clientIP, Config.PEER_PORT);
@@ -437,41 +461,48 @@ public class NetworkRepository implements INetworkRepository {
                 String fileName = request.split("\\|")[1];
                 Map<String, FileInfo> publicSharedFiles = peerModel.getPublicSharedFiles();
                 FileInfo fileInfo = publicSharedFiles.get(fileName);
+                String response;
                 if (fileInfo != null) {
-                    return "FILE_INFO|" + fileName + "|" + fileInfo.getFileSize() + "|" +
+                    response = "FILE_INFO|" + fileName + "|" + fileInfo.getFileSize() + "|" +
                             fileInfo.getPeerInfo().getIp() + "|" + fileInfo.getPeerInfo().getPort() + "|" +
                             fileInfo.getFileHash() + "\n";
                 } else {
-                    return "FILE_NOT_FOUND|" + fileName + "\n";
+                    response = "FILE_NOT_FOUND|" + fileName + "\n";
                 }
+                sendSSLResponse(socketChannel, response);
             } else if (request.startsWith("GET_CHUNK")) {
                 String[] requestParts = request.split("\\|");
                 String fileHash = requestParts[1];
                 int chunkIndex = Integer.parseInt(requestParts[2]);
+                byte[] data;
                 if (this.hasAccessToFile(clientIdentifier, fileHash)) {
-                    return getChunkData(fileHash, chunkIndex);
+                    data = getChunkData(fileHash, chunkIndex);
                 } else {
-                    return "ACCESS_DENIED\n";
+                    data = "ACCESS_DENIED\n".getBytes();
                 }
+                sendSSLBinary(socketChannel, data);
             } else if (request.startsWith("CHAT_MESSAGE")) {
                 String[] messageParts = request.split("\\|", 3);
+                String response;
                 if (messageParts.length >= 3) {
                     Log.logInfo("Processing SSL chat message from " + messageParts[1] + ": " + messageParts[2]);
-                    return "CHAT_RECEIVED|" + messageParts[1] + "\n";
+                    response = "CHAT_RECEIVED|" + messageParts[1] + "\n";
                 } else {
-                    return "ERROR|Invalid chat format\n";
+                    response = "ERROR|Invalid chat format\n";
                 }
+                sendSSLResponse(socketChannel, response);
+            } else {
+                sendSSLResponse(socketChannel, "UNKNOWN_REQUEST\n");
             }
         } catch (IOException e) {
             Log.logError("Error processing request: " + e.getMessage(), e);
         }
-        return "UNKNOWN_REQUEST\n";
     }
 
-    private String getChunkData(String fileHash, int chunkIndex) {
+    private byte[] getChunkData(String fileHash, int chunkIndex) {
         FileInfo fileInfo = findFileByHash(fileHash);
         if (fileInfo == null) {
-            return "FILE_NOT_FOUND\n";
+            return "FILE_NOT_FOUND\n".getBytes();
         }
 
         String appPath = main.java.utils.AppPaths.getAppDataDirectory();
@@ -479,20 +510,26 @@ public class NetworkRepository implements INetworkRepository {
         File file = new File(filePath);
 
         if (file.exists() && file.canRead()) {
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            try (RandomAccessFile raf = new RandomAccessFile(file, "r");
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                 DataOutputStream dos = new DataOutputStream(baos)) {
                 byte[] chunkData = new byte[Config.CHUNK_SIZE];
                 raf.seek((long) chunkIndex * (long) Config.CHUNK_SIZE);
                 int byteRead = raf.read(chunkData);
 
                 if (byteRead > 0) {
                     byte[] actualData = byteRead == Config.CHUNK_SIZE ? chunkData : Arrays.copyOf(chunkData, byteRead);
-                    return "CHUNK_DATA|" + chunkIndex + "|" + Base64.getEncoder().encodeToString(actualData) + "\n";
+                    dos.writeInt(chunkIndex);
+                    dos.writeInt(actualData.length);
+                    dos.write(actualData);
+                    dos.flush();
+                    return baos.toByteArray();
                 }
             } catch (IOException e) {
                 Log.logError("Error reading chunk data: " + e.getMessage(), e);
             }
         }
-        return "CHUNK_ERROR\n";
+        return "CHUNK_ERROR\n".getBytes();
     }
 
     private FileInfo findFileByHash(String fileHash) {

@@ -282,8 +282,8 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         this.channelAttachments = channelAttachments;
     }
 
-    public String processSSLRequest(SocketChannel socketChannel, String request) {
-        return networkModel.processSSLRequest(socketChannel, request);
+    public void processSSLRequest(SocketChannel socketChannel, String request) {
+        networkModel.processSSLRequest(socketChannel, request);
     }
 
     @Override
