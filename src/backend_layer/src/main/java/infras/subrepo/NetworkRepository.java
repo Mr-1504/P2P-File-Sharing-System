@@ -27,6 +27,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 
 import java.util.HashMap;
@@ -47,7 +49,7 @@ public class NetworkRepository implements INetworkRepository {
     public NetworkRepository(IPeerRepository peerModel) {
         this.isRunning = true;
         this.peerModel = peerModel;
-        this.executorService = Executors.newFixedThreadPool(8);
+        this.executorService = Executors.newFixedThreadPool(20);
     }
 
     @Override
@@ -194,15 +196,15 @@ public class NetworkRepository implements INetworkRepository {
         Log.logInfo("Shutting down SSL server...");
         isRunning = false;
 
-        peerModel.getExecutor().shutdown();
+        executorService.shutdown();
 
         try {
-            if (!peerModel.getExecutor().awaitTermination(5L, TimeUnit.SECONDS)) {
-                peerModel.getExecutor().shutdownNow();
+            if (!executorService.awaitTermination(5L, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
                 Log.logInfo("Executor service forcefully shut down.");
             }
         } catch (InterruptedException e) {
-            peerModel.getExecutor().shutdownNow();
+            executorService.shutdownNow();
             Thread.currentThread().interrupt();
             Log.logError("Executor service interrupted during shutdown: " + e.getMessage(), e);
         }
@@ -222,49 +224,50 @@ public class NetworkRepository implements INetworkRepository {
     }
 
     private void acceptSSLConnection(SelectionKey key) throws IOException {
-        try (ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel()) {
-            SocketChannel socketChannel = serverChannel.accept();
+        ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+        SocketChannel socketChannel = serverChannel.accept();
 
-            if (socketChannel != null) {
-                socketChannel.configureBlocking(false);
-                Log.logInfo("Accepted SSL connection from: " + socketChannel.getRemoteAddress());
+        if (socketChannel != null) {
+            socketChannel.configureBlocking(false);
+            Log.logInfo("Accepted SSL connection from: " + socketChannel.getRemoteAddress());
 
-                SSLEngine sslEngine = peerModel.getSslContext().createSSLEngine();
-                sslEngine.setUseClientMode(false);
-                sslEngine.setNeedClientAuth(false);
+            SSLEngine sslEngine = peerModel.getSslContext().createSSLEngine();
+            sslEngine.setUseClientMode(false);
+            sslEngine.setNeedClientAuth(true);
 
-                sslEngine.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
-                sslEngine.setEnabledCipherSuites(sslEngine.getSupportedCipherSuites()); // enable all supported
+            sslEngine.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
+            sslEngine.setEnabledCipherSuites(sslEngine.getSupportedCipherSuites()); // enable all supported
 
-// Tăng buffer size nếu cần
-                SSLSession session = sslEngine.getSession();
-                int netBufferSize = Math.max(session.getPacketBufferSize(), 16 * 1024);
-                int appBufferSize = Math.max(session.getApplicationBufferSize(), 16 * 1024);
+            SSLSession session = sslEngine.getSession();
+            int netBufferSize = Math.max(session.getPacketBufferSize(), 16 * 1024);
+            int appBufferSize = Math.max(session.getApplicationBufferSize(), 16 * 1024);
+            int maxAccumulatorSize = 65536;
 
-                ByteBuffer netInBuffer = ByteBuffer.allocate(netBufferSize);
-                ByteBuffer appInBuffer = ByteBuffer.allocate(appBufferSize);
+            ByteBuffer netInBuffer = ByteBuffer.allocate(netBufferSize);
+            ByteBuffer appInBuffer = ByteBuffer.allocate(appBufferSize);
+            ByteBuffer appDataAccumulator = ByteBuffer.allocate(maxAccumulatorSize); // SỬA: Dùng ByteBuffer
 
-// Log thêm status
-                Log.logInfo("SSLEngine protocols: " + Arrays.toString(sslEngine.getEnabledProtocols()));
-                Log.logInfo("SSLEngine ciphers: " + Arrays.toString(sslEngine.getEnabledCipherSuites()));
+            Log.logInfo("SSLEngine protocols: " + Arrays.toString(sslEngine.getEnabledProtocols()));
+            Log.logInfo("SSLEngine ciphers: " + Arrays.toString(sslEngine.getEnabledCipherSuites()));
 
-                Map<String, Object> connectionData = new HashMap<>();
-                connectionData.put("netInBuffer", netInBuffer);
-                connectionData.put("appInBuffer", appInBuffer);
+            Map<String, Object> connectionData = new HashMap<>();
+            connectionData.put("netInBuffer", netInBuffer);
+            connectionData.put("appInBuffer", appInBuffer);
+            connectionData.put("appData", appDataAccumulator);
+            connectionData.put("pendingQueue", new ArrayDeque<ByteBuffer>());
+            peerModel.getChannelAttachments().put(socketChannel, connectionData);
+            peerModel.getSslEngineMap().put(socketChannel, sslEngine);
 
-                peerModel.getChannelAttachments().put(socketChannel, connectionData);
-                peerModel.getSslEngineMap().put(socketChannel, sslEngine);
+            socketChannel.register(peerModel.getSelector(), SelectionKey.OP_READ, netInBuffer);
 
-                socketChannel.register(peerModel.getSelector(), SelectionKey.OP_READ, netInBuffer);
+            sslEngine.beginHandshake();
 
-                sslEngine.beginHandshake();
-
-                Log.logInfo("SSL connection setup complete for: " + socketChannel.getRemoteAddress());
-            }
+            Log.logInfo("SSL connection setup complete for: " + socketChannel.getRemoteAddress());
         }
     }
 
     private void handleSSLRead(SelectionKey key) throws IOException {
+        System.out.println("Handling SSL read");
         SocketChannel socketChannel = (SocketChannel) key.channel();
         SSLEngine sslEngine = peerModel.getSslEngineMap().get(socketChannel);
 
@@ -297,13 +300,30 @@ public class NetworkRepository implements INetworkRepository {
 
     private void handleSSLWrite(SelectionKey key) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
+        Map<String, Object> connectionData = this.peerModel.getChannelAttachments().get(socketChannel);
         ByteBuffer pendingData = this.peerModel.getPendingData().get(socketChannel);
 
-        if (pendingData != null && pendingData.hasRemaining()) {
+        if (pendingData == null) {
+            ByteBuffer nextBuffer = pollPendingBuffer(connectionData);
+            if (nextBuffer != null) {
+                this.peerModel.getPendingData().put(socketChannel, nextBuffer);
+                pendingData = nextBuffer;
+            }
+        }
+
+        if (pendingData != null) {
             socketChannel.write(pendingData);
             if (!pendingData.hasRemaining()) {
-                this.peerModel.getPendingData().remove(socketChannel);
-                key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+                this.peerModel.getPendingData().remove(socketChannel, pendingData);
+                ByteBuffer nextBuffer = pollPendingBuffer(connectionData);
+                if (nextBuffer != null) {
+                    this.peerModel.getPendingData().put(socketChannel, nextBuffer);
+                    key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
+                } else {
+                    key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
+                }
+            } else {
+                key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
             }
         } else {
             key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
@@ -320,51 +340,282 @@ public class NetworkRepository implements INetworkRepository {
 
         ByteBuffer appInBuffer = (ByteBuffer) connectionData.get("appInBuffer");
 
-        try {
-            SSLEngineResult result = sslEngine.unwrap(netInBuffer, appInBuffer);
+        while (netInBuffer.hasRemaining()) {
+            SSLEngineResult result;
+            try {
+                result = sslEngine.unwrap(netInBuffer, appInBuffer);
+            } catch (SSLException e) {
+                Log.logError("SSL error processing data: " + e.getMessage(), e);
+                closeChannel(socketChannel);
+                return;
+            } catch (Exception e) {
+                Log.logError("Unexpected error processing data: " + e.getMessage(), e);
+                closeChannel(socketChannel);
+                return;
+            }
 
             switch (result.getStatus()) {
-                case OK:
-                    appInBuffer.flip();
-                    processApplicationData(socketChannel, appInBuffer);
-                    appInBuffer.compact();
-                    break;
-                case BUFFER_OVERFLOW:
+                case OK -> {
+                    if (result.bytesProduced() > 0 && isHandshakeComplete(sslEngine)) {
+                        appInBuffer.flip();
+                        processApplicationData(socketChannel, appInBuffer);
+                        appInBuffer.compact();
+                    }
+                }
+                case BUFFER_OVERFLOW -> {
                     Log.logInfo("SSL buffer overflow, resizing application buffer");
                     resizeApplicationBuffer(sslEngine, connectionData);
-                    break;
-                case BUFFER_UNDERFLOW:
-                    break;
-                case CLOSED:
-                    Log.logInfo("SSL engine closed for: " + socketChannel.getRemoteAddress());
+                    appInBuffer = (ByteBuffer) connectionData.get("appInBuffer");
+                    continue;
+                }
+                case BUFFER_UNDERFLOW -> {
+                    handleHandshakeStatus(socketChannel, sslEngine, result.getHandshakeStatus());
+                    return;
+                }
+                case CLOSED -> {
+                    Log.logInfo("SSL engine closed for: " + socketChannel);
                     closeChannel(socketChannel);
-                    break;
+                    return;
+                }
             }
 
-            if (result.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_TASK) {
-                runHandshakeTasks(sslEngine);
-            }
-
-        } catch (Exception e) {
-            Log.logError("SSL error processing data: " + e.getMessage(), e);
-            closeChannel(socketChannel);
+            handleHandshakeStatus(socketChannel, sslEngine, result.getHandshakeStatus());
         }
+
+        handleHandshakeStatus(socketChannel, sslEngine, sslEngine.getHandshakeStatus());
     }
 
     private void processApplicationData(SocketChannel socketChannel, ByteBuffer appBuffer) {
-        StringBuilder requestBuilder = new StringBuilder();
-        while (appBuffer.hasRemaining()) {
-            requestBuilder.append((char) appBuffer.get());
+        Map<String, Object> connectionData = peerModel.getChannelAttachments().get(socketChannel);
+        if (connectionData == null) {
+            Log.logError("Application buffer missing connection data", null);
+            closeChannel(socketChannel);
+            return;
         }
-        String request = requestBuilder.toString();
-        if (!request.isEmpty()) {
-            try {
-                Log.logInfo("Received SSL application data: [" + request.trim() + "] from " + socketChannel.getRemoteAddress());
-                this.processSSLRequest(socketChannel, request.trim());
-            } catch (Exception e) {
-                Log.logError("Error processing SSL request: " + e.getMessage(), e);
+
+        ByteBuffer accumulator = (ByteBuffer) connectionData.get("appData");
+
+        if (!appBuffer.hasRemaining()) {
+            return;
+        }
+
+        if (accumulator.remaining() < appBuffer.remaining()) {
+            Log.logError("Accumulator capacity exceeded. Message dropped or connection closed.", null);
+            closeChannel(socketChannel);
+            return;
+        }
+
+        accumulator.put(appBuffer);
+
+        accumulator.flip();
+
+        int processedPosition = accumulator.position();
+
+        while (processedPosition < accumulator.limit()) {
+            int newlineIndex = -1;
+
+            for (int i = processedPosition; i < accumulator.limit(); i++) {
+                if (accumulator.get(i) == '\n') {
+                    newlineIndex = i;
+                    break;
+                }
+            }
+
+            if (newlineIndex >= 0) {
+                int messageLength = newlineIndex - processedPosition;
+                byte[] messageBytes = new byte[messageLength];
+
+                accumulator.get(processedPosition, messageBytes, 0, messageLength);
+
+                String message = new String(messageBytes, StandardCharsets.UTF_8).trim();
+
+                processedPosition = newlineIndex + 1;
+
+                if (!message.isEmpty()) {
+                    try {
+                        Log.logInfo("Received SSL application data: [" + message + "] from " + socketChannel.getRemoteAddress());
+                        this.processSSLRequest(socketChannel, message);
+                    } catch (Exception e) {
+                        Log.logError("Error processing SSL request: " + e.getMessage(), e);
+                    }
+                }
+            } else {
+                break;
             }
         }
+
+        if (processedPosition > accumulator.position()) {
+            accumulator.position(processedPosition);
+        }
+
+        accumulator.compact();
+    }
+
+    private void queuePendingData(SocketChannel socketChannel, ByteBuffer buffer) {
+        if (!buffer.hasRemaining()) {
+            return;
+        }
+
+        Map<String, Object> connectionData = peerModel.getChannelAttachments().get(socketChannel);
+        if (connectionData == null) {
+            Log.logError("Missing connection data for pending queue", null);
+            closeChannel(socketChannel);
+            return;
+        }
+
+        ByteBuffer data = ByteBuffer.allocate(buffer.remaining());
+        data.put(buffer);
+        data.flip();
+
+        synchronized (connectionData) {
+            ByteBuffer current = peerModel.getPendingData().get(socketChannel);
+            if (current == null) {
+                peerModel.getPendingData().put(socketChannel, data);
+            } else {
+                @SuppressWarnings("unchecked")
+                ArrayDeque<ByteBuffer> queue = (ArrayDeque<ByteBuffer>) connectionData.computeIfAbsent("pendingQueue", key -> new ArrayDeque<>());
+                queue.add(data);
+            }
+        }
+
+        SelectionKey key = socketChannel.keyFor(peerModel.getSelector());
+        if (key != null) {
+            key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
+        }
+
+        Selector selector = peerModel.getSelector();
+        if (selector != null) {
+            selector.wakeup();
+        }
+    }
+
+    private ByteBuffer pollPendingBuffer(Map<String, Object> connectionData) {
+        if (connectionData == null) {
+            return null;
+        }
+
+        synchronized (connectionData) {
+            @SuppressWarnings("unchecked")
+            ArrayDeque<ByteBuffer> queue = (ArrayDeque<ByteBuffer>) connectionData.get("pendingQueue");
+            if (queue == null) {
+                return null;
+            }
+
+            ByteBuffer next = queue.poll();
+            if (next != null) {
+                return next;
+            }
+        }
+
+        return null;
+    }
+
+    private void wrapAndQueue(SocketChannel socketChannel, SSLEngine sslEngine, ByteBuffer source) {
+        int netBufferSize = sslEngine.getSession().getPacketBufferSize();
+
+        while (source.hasRemaining()) {
+            ByteBuffer netBuffer = ByteBuffer.allocate(netBufferSize);
+            SSLEngineResult result;
+
+            try {
+                result = sslEngine.wrap(source, netBuffer);
+            } catch (SSLException e) {
+                Log.logError("Error sending SSL data: " + e.getMessage(), e);
+                closeChannel(socketChannel);
+                return;
+            }
+
+            switch (result.getStatus()) {
+                case OK -> {
+                    netBuffer.flip();
+                    queuePendingData(socketChannel, netBuffer);
+                }
+                case BUFFER_OVERFLOW -> {
+                    netBufferSize = Math.max(netBufferSize * 2, sslEngine.getSession().getPacketBufferSize());
+                    continue;
+                }
+                case CLOSED -> {
+                    closeChannel(socketChannel);
+                    return;
+                }
+                default -> {
+                    Log.logError("Unexpected SSL wrap status: " + result.getStatus(), null);
+                    return;
+                }
+            }
+
+            handleHandshakeStatus(socketChannel, sslEngine, result.getHandshakeStatus());
+        }
+
+        handleHandshakeStatus(socketChannel, sslEngine, sslEngine.getHandshakeStatus());
+    }
+
+    private void handleHandshakeStatus(SocketChannel channel, SSLEngine engine, SSLEngineResult.HandshakeStatus status) {
+        SSLEngineResult.HandshakeStatus current = status;
+
+        while (current != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING &&
+                current != SSLEngineResult.HandshakeStatus.NEED_UNWRAP) {
+            switch (current) {
+                case NEED_TASK -> {
+                    boolean ranTask = runHandshakeTasks(engine);
+                    SSLEngineResult.HandshakeStatus nextStatus = engine.getHandshakeStatus();
+                    if (!ranTask && nextStatus == SSLEngineResult.HandshakeStatus.NEED_TASK) {
+                        return;
+                    }
+                    current = nextStatus;
+                }
+                case NEED_WRAP -> {
+                    ByteBuffer emptySrc = ByteBuffer.allocate(0);
+                    int bufferSize = engine.getSession().getPacketBufferSize();
+
+                    while (true) {
+                        ByteBuffer netBuffer = ByteBuffer.allocate(bufferSize);
+
+                        try {
+                            SSLEngineResult wrapResult = engine.wrap(emptySrc, netBuffer);
+
+                            switch (wrapResult.getStatus()) {
+                                case OK -> {
+                                    if (netBuffer.position() > 0) {
+                                        netBuffer.flip();
+                                        queuePendingData(channel, netBuffer);
+                                    }
+                                    current = wrapResult.getHandshakeStatus();
+                                }
+                                case BUFFER_OVERFLOW -> {
+                                    bufferSize = Math.max(bufferSize * 2, engine.getSession().getPacketBufferSize());
+                                    continue;
+                                }
+                                case CLOSED -> {
+                                    closeChannel(channel);
+                                    return;
+                                }
+                                default -> {
+                                    Log.logError("Unexpected handshake wrap status: " + wrapResult.getStatus(), null);
+                                    return;
+                                }
+                            }
+                        } catch (SSLException e) {
+                            Log.logError("Error during handshake wrap: " + e.getMessage(), e);
+                            closeChannel(channel);
+                            return;
+                        }
+
+                        break;
+                    }
+                }
+                case FINISHED -> current = engine.getHandshakeStatus();
+                default -> {
+                    return;
+                }
+            }
+        }
+    }
+
+    private boolean isHandshakeComplete(SSLEngine engine) {
+        SSLEngineResult.HandshakeStatus status = engine.getHandshakeStatus();
+        return status == SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING ||
+                status == SSLEngineResult.HandshakeStatus.FINISHED;
     }
 
     private void sendSSLResponse(SocketChannel socketChannel, String response) {
@@ -374,22 +625,8 @@ public class NetworkRepository implements INetworkRepository {
             return;
         }
 
-        try {
-            ByteBuffer responseBuffer = ByteBuffer.wrap(response.getBytes());
-            ByteBuffer netBuffer = ByteBuffer.allocate(sslEngine.getSession().getPacketBufferSize());
-            SSLEngineResult result = sslEngine.wrap(responseBuffer, netBuffer);
-
-            if (result.getStatus() == SSLEngineResult.Status.OK) {
-                netBuffer.flip();
-                peerModel.getPendingData().put(socketChannel, netBuffer);
-                SelectionKey key = socketChannel.keyFor(peerModel.getSelector());
-                if (key != null) {
-                    key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
-                }
-            }
-        } catch (SSLException e) {
-            Log.logError("Error sending SSL response: " + e.getMessage(), e);
-        }
+        ByteBuffer responseBuffer = StandardCharsets.UTF_8.encode(response);
+        wrapAndQueue(socketChannel, sslEngine, responseBuffer);
     }
 
     private void sendSSLBinary(SocketChannel socketChannel, byte[] data) {
@@ -399,29 +636,18 @@ public class NetworkRepository implements INetworkRepository {
             return;
         }
 
-        try {
-            ByteBuffer responseBuffer = ByteBuffer.wrap(data);
-            ByteBuffer netBuffer = ByteBuffer.allocate(sslEngine.getSession().getPacketBufferSize());
-            SSLEngineResult result = sslEngine.wrap(responseBuffer, netBuffer);
-
-            if (result.getStatus() == SSLEngineResult.Status.OK) {
-                netBuffer.flip();
-                peerModel.getPendingData().put(socketChannel, netBuffer);
-                SelectionKey key = socketChannel.keyFor(peerModel.getSelector());
-                if (key != null) {
-                    key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
-                }
-            }
-        } catch (SSLException e) {
-            Log.logError("Error sending SSL binary: " + e.getMessage(), e);
-        }
+        ByteBuffer responseBuffer = ByteBuffer.wrap(data);
+        wrapAndQueue(socketChannel, sslEngine, responseBuffer);
     }
 
-    private void runHandshakeTasks(SSLEngine sslEngine) {
+    private boolean runHandshakeTasks(SSLEngine sslEngine) {
+        boolean ranTask = false;
         Runnable task;
         while ((task = sslEngine.getDelegatedTask()) != null) {
-            peerModel.getExecutor().submit(task);
+            ranTask = true;
+            executorService.submit(task);
         }
+        return ranTask;
     }
 
     private void resizeApplicationBuffer(SSLEngine sslEngine, Map<String, Object> connectionData) {
@@ -439,13 +665,19 @@ public class NetworkRepository implements INetworkRepository {
             SocketChannel channel = entry.getKey();
             SSLEngine engine = entry.getValue();
 
-            if (engine.getHandshakeStatus() != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
-                try {
-                    runHandshakeTasks(engine);
-                } catch (Exception e) {
-                    Log.logError("Error processing handshake tasks: " + e.getMessage(), e);
-                    closeChannel(channel);
+            try {
+                SSLEngineResult.HandshakeStatus status = engine.getHandshakeStatus();
+                if (status == SSLEngineResult.HandshakeStatus.NEED_TASK) {
+                    boolean ranTask = runHandshakeTasks(engine);
+                    status = engine.getHandshakeStatus();
+                    if (!ranTask && status == SSLEngineResult.HandshakeStatus.NEED_TASK) {
+                        continue;
+                    }
                 }
+                handleHandshakeStatus(channel, engine, status);
+            } catch (Exception e) {
+                Log.logError("Error processing handshake tasks: " + e.getMessage(), e);
+                closeChannel(channel);
             }
         }
     }
@@ -464,6 +696,7 @@ public class NetworkRepository implements INetworkRepository {
             String clientIP = socketChannel.getRemoteAddress().toString().split(":")[0].replace("/", "");
             PeerInfo clientIdentifier = new PeerInfo(clientIP, Config.PEER_PORT);
 
+            Log.logInfo("Received request: " + request);
             if (request.startsWith("SEARCH")) {
                 String fileName = request.split("\\|")[1];
                 Map<String, FileInfo> publicSharedFiles = peerModel.getPublicSharedFiles();
@@ -485,7 +718,16 @@ public class NetworkRepository implements INetworkRepository {
                 if (this.hasAccessToFile(clientIdentifier, fileHash)) {
                     data = getChunkData(fileHash, chunkIndex);
                 } else {
-                    data = "ACCESS_DENIED\n".getBytes();
+                    byte[] errorData = "ACCESS_DENIED".getBytes(StandardCharsets.UTF_8);
+
+                    try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                         DataOutputStream dos = new DataOutputStream(baos)) {
+                        dos.writeInt(-1); // Index lỗi
+                        dos.writeInt(errorData.length);
+                        dos.write(errorData);
+                        dos.flush();
+                        data = baos.toByteArray();
+                    }
                 }
                 sendSSLBinary(socketChannel, data);
             } else if (request.startsWith("CHAT_MESSAGE")) {

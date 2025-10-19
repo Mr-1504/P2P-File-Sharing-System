@@ -13,6 +13,7 @@ import main.java.utils.LogTag;
 
 import javax.net.ssl.SSLSocket;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -136,7 +137,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                 return LogTag.I_CANCELLED;
             }
 
-            while (((ThreadPoolExecutor) this.peerModel.getExecutor()).getActiveCount() >= 6) {
+            while (((ThreadPoolExecutor) executorService).getActiveCount() >= 6) {
                 Thread.sleep(50L);
                 if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
                     return LogTag.I_CANCELLED;
@@ -285,15 +286,17 @@ public class FileDownloadRepository implements IFileDownloadRepository {
 
                     DataInputStream dis = new DataInputStream(sslSocket.getInputStream());
 
-                    // Read chunk index (4 bytes)
                     int receivedIndex = dis.readInt();
+                    int chunkLength = dis.readInt();
 
-                    if (receivedIndex == chunkIndex) {
-                        int chunkLength = dis.readInt();
-
-                        // Read chunk data
+                    if (receivedIndex == chunkIndex && chunkLength > 0) {
                         byte[] chunkDataByteArray = new byte[chunkLength];
                         dis.readFully(chunkDataByteArray);
+
+                        if (new String(chunkDataByteArray, StandardCharsets.UTF_8).equals("ACCESS_DENIED")) {
+                            Log.logInfo("Access denied for chunk " + chunkIndex + " from peer " + peerInfo);
+                            return false;
+                        }
 
                         if (chunkLength > 0) {
                             synchronized (raf) {
@@ -314,6 +317,15 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                             }
                             Log.logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
                             return true;
+                        }
+
+                        if (receivedIndex == -1) {
+                            byte[] errorData = new byte[chunkLength];
+                            dis.readFully(errorData);
+                            String errorMsg = new String(errorData, StandardCharsets.UTF_8);
+                            Log.logInfo("Received error (" + errorMsg + ") for chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
+                        } else {
+                            Log.logInfo("Failed to receive valid chunk " + chunkIndex + " from peer " + peerInfo + ". Index received: " + receivedIndex + ", Length: " + chunkLength);
                         }
                     }
 

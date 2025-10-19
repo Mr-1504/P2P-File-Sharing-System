@@ -17,13 +17,17 @@ import javax.net.ssl.SSLSocket;
 import java.io.*;
 import java.lang.reflect.Type;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class FileShareRepository implements IFileShareRepository {
 
     private final IPeerRepository peerModel;
+    private final ExecutorService executorService;
 
     public FileShareRepository(IPeerRepository peerModel) {
         this.peerModel = peerModel;
+        this.executorService = Executors.newFixedThreadPool(8);
     }
 
     @Override
@@ -48,7 +52,7 @@ public class FileShareRepository implements IFileShareRepository {
             boolean result = shareFileList(fileInfos, new HashMap<>());
             if (!result) {
                 progress.setStatus(ProgressInfo.ProgressStatus.FAILED);
-                peerModel.getExecutor().submit(() -> AppPaths.removeSharedFile(fileName));
+                executorService.submit(() -> AppPaths.removeSharedFile(fileName));
                 return;
             }
             this.peerModel.getPublicSharedFiles().put(fileName, newFileInfo);
@@ -128,7 +132,7 @@ public class FileShareRepository implements IFileShareRepository {
 
         if (!result) {
             Log.logInfo("Failed to share file " + fileName + " to specific peers: " + peerList);
-            peerModel.getExecutor().submit(() -> AppPaths.removeSharedFile(fileName));
+            executorService.submit(() -> AppPaths.removeSharedFile(fileName));
             peerModel.getProcesses().get(progressId).setStatus(ProgressInfo.ProgressStatus.FAILED);
             return;
         }
