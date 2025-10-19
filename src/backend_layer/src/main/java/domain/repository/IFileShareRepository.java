@@ -13,7 +13,7 @@ public interface IFileShareRepository {
 
     boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles);
 
-    void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList);
+    void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<PeerInfo> peerList);
 
     int refreshFiles();
 

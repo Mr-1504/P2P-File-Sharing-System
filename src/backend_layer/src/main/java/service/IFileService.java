@@ -1,6 +1,7 @@
 package main.java.service;
 
 import main.java.domain.entity.FileInfo;
+import main.java.domain.entity.PeerInfo;
 import main.java.domain.entity.ProgressInfo;
 
 import java.util.List;
@@ -16,7 +17,7 @@ public interface IFileService {
 
     Set<FileInfo> getFiles();
 
-    String sharePrivateFile(String filePath, int isReplace, String fileName, List<String> peersList, String progressId);
+    String sharePrivateFile(String filePath, int isReplace, String fileName, List<PeerInfo> peersList, String progressId);
 
     void shareFileList();
 
