@@ -3,6 +3,21 @@ package main.java.infras.subrepo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.*;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.DelimiterBasedFrameDecoder;
+import io.netty.handler.codec.Delimiters;
+import io.netty.handler.codec.string.StringDecoder;
+import io.netty.handler.codec.string.StringEncoder;
+import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
+import io.netty.util.concurrent.GlobalEventExecutor;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import main.java.domain.adapter.FileInfoAdapter;
 import main.java.domain.entity.FileInfo;
 import main.java.domain.entity.PeerInfo;
@@ -22,16 +37,8 @@ import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.Arrays;
-
-import java.util.HashMap;
+import java.security.KeyStore;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,68 +50,75 @@ import java.util.concurrent.TimeUnit;
 public class NetworkRepository implements INetworkRepository {
 
     private final IPeerRepository peerModel;
-    private final ExecutorService executorService;
+    private EventLoopGroup bossGroup;
+    private EventLoopGroup workerGroup;
+    private ChannelGroup allChannels;
+    private SslContext sslContext;
     private boolean isRunning;
 
     public NetworkRepository(IPeerRepository peerModel) {
         this.isRunning = true;
         this.peerModel = peerModel;
-        this.executorService = Executors.newFixedThreadPool(20);
+        this.bossGroup = new NioEventLoopGroup(1);
+        this.workerGroup = new NioEventLoopGroup();
+        this.allChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     }
 
     @Override
     public void initializeServerSocket(String username) throws Exception {
         FileUtils.loadData(username, peerModel.getPublicSharedFiles(), peerModel.getPrivateSharedFiles());
-        peerModel.setSelector(Selector.open());
-        peerModel.setSslContext(SSLUtils.createSSLContext());
-        peerModel.setSslEngineMap(new ConcurrentHashMap<>());
-        peerModel.setPendingData(new ConcurrentHashMap<>());
-        peerModel.setChannelAttachments(new ConcurrentHashMap<>());
 
-        ServerSocketChannel serverChannel = ServerSocketChannel.open();
-        serverChannel.configureBlocking(false);
-        serverChannel.socket().bind(new InetSocketAddress(Config.SERVER_IP, Config.PEER_PORT));
-        serverChannel.register(peerModel.getSelector(), SelectionKey.OP_ACCEPT);
+        // Create Netty SSL context
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        File keyStoreFile = new java.io.File(SSLUtils.CERT_DIRECTORY.toFile().getAbsolutePath() + "/peer-keystore.jks");
+        try (FileInputStream fis = new FileInputStream(keyStoreFile)) {
+            keyStore.load(fis, SSLUtils.KEYSTORE_PASSWORD.toCharArray());
+        }
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, SSLUtils.KEYSTORE_PASSWORD.toCharArray());
 
-        Log.logInfo("Non-blocking SSL server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
+        KeyStore trustStore = KeyStore.getInstance("JKS");
+        File trustStoreFile = new java.io.File(SSLUtils.CERT_DIRECTORY.toFile().getAbsolutePath() + "/peer-truststore.jks");
+        try (FileInputStream fis = new FileInputStream(trustStoreFile)) {
+            trustStore.load(fis, SSLUtils.TRUSTSTORE_PASSWORD.toCharArray());
+        }
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+
+        this.sslContext = SslContextBuilder.forServer(kmf, tmf).build();
+
+        Log.logInfo("Netty SSL context initialized for server on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
     }
 
     @Override
     public void startServer() {
-        this.executorService.submit(() -> {
-            Log.logInfo("Starting non-blocking SSL server loop...");
-
-            try {
-                while (isRunning) {
-                    int readyChannels = peerModel.getSelector().select(1000L);
-
-                    if (readyChannels > 0 || peerModel.getPendingData().values().stream().anyMatch(buff -> buff != null && buff.hasRemaining())) {
-                        for (SelectionKey key : peerModel.getSelector().selectedKeys()) {
-                            try {
-                                if (key.isAcceptable()) {
-                                    acceptSSLConnection(key);
-                                } else if (key.isReadable()) {
-                                    handleSSLRead(key);
-                                } else if (key.isWritable()) {
-                                    handleSSLWrite(key);
-                                }
-                            } catch (Exception e) {
-                                Log.logError("Error handling key: " + e.getMessage(), e);
-                                closeChannel(key.channel());
-                                key.cancel();
-                            }
-                        }
-                        peerModel.getSelector().selectedKeys().clear();
-
-                        processPendingHandshakes();
-                    }
+        ServerBootstrap b = new ServerBootstrap();
+        b.group(bossGroup, workerGroup)
+            .channel(NioServerSocketChannel.class)
+            .childHandler(new ChannelInitializer<io.netty.channel.socket.SocketChannel>() {
+                @Override
+                protected void initChannel(io.netty.channel.socket.SocketChannel ch) throws Exception {
+                    ch.pipeline().addLast(sslContext.newHandler(ch.alloc()));
+                    ch.pipeline().addLast(new DelimiterBasedFrameDecoder(8192, Delimiters.lineDelimiter()));
+                    ch.pipeline().addLast(new StringDecoder(StandardCharsets.UTF_8));
+                    ch.pipeline().addLast(new StringEncoder(StandardCharsets.UTF_8));
+                    ch.pipeline().addLast(new ServerHandler(NetworkRepository.this));
                 }
-            } catch (IOException serverException) {
-                Log.logError("SSL server error: " + serverException.getMessage(), serverException);
-            } finally {
-                this.shutdown();
-            }
-        });
+            })
+            .option(ChannelOption.SO_BACKLOG, 128)
+            .childOption(ChannelOption.SO_KEEPALIVE, true);
+
+        try {
+            io.netty.channel.ChannelFuture f = b.bind(Config.PEER_PORT).sync();
+            Log.logInfo("Netty SSL server started on port " + Config.PEER_PORT);
+            allChannels.add(f.channel());
+            f.channel().closeFuture().sync();
+        } catch (InterruptedException e) {
+            Log.logError("Server interrupted: " + e.getMessage(), e);
+            Thread.currentThread().interrupt();
+        } finally {
+            shutdown();
+        }
     }
 
     @Override
@@ -196,18 +210,12 @@ public class NetworkRepository implements INetworkRepository {
         Log.logInfo("Shutting down SSL server...");
         isRunning = false;
 
-        executorService.shutdown();
+        // Close all channels
+        allChannels.close().awaitUninterruptibly();
 
-        try {
-            if (!executorService.awaitTermination(5L, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-                Log.logInfo("Executor service forcefully shut down.");
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-            Log.logError("Executor service interrupted during shutdown: " + e.getMessage(), e);
-        }
+        // Shutdown Netty groups
+        workerGroup.shutdownGracefully();
+        bossGroup.shutdownGracefully();
 
         Log.logInfo("SSL server shutdown complete.");
     }
@@ -691,9 +699,8 @@ public class NetworkRepository implements INetworkRepository {
     }
 
     @Override
-    public void processSSLRequest(SocketChannel socketChannel, String request) {
+    public void processRequest(String request, String clientIP, Channel channel) {
         try {
-            String clientIP = socketChannel.getRemoteAddress().toString().split(":")[0].replace("/", "");
             PeerInfo clientIdentifier = new PeerInfo(clientIP, Config.PEER_PORT);
 
             Log.logInfo("Received request: " + request);
@@ -709,7 +716,7 @@ public class NetworkRepository implements INetworkRepository {
                 } else {
                     response = "FILE_NOT_FOUND|" + fileName + "\n";
                 }
-                sendSSLResponse(socketChannel, response);
+                channel.writeAndFlush(Unpooled.copiedBuffer(response, StandardCharsets.UTF_8));
             } else if (request.startsWith("GET_CHUNK")) {
                 String[] requestParts = request.split("\\|");
                 String fileHash = requestParts[1];
@@ -727,24 +734,36 @@ public class NetworkRepository implements INetworkRepository {
                         dos.write(errorData);
                         dos.flush();
                         data = baos.toByteArray();
+                    } catch (Exception e) {
+                        Log.logError("Error creating error data: " + e.getMessage(), e);
+                        channel.close();
+                        return;
                     }
                 }
-                sendSSLBinary(socketChannel, data);
+                channel.writeAndFlush(Unpooled.wrappedBuffer(data));
             } else if (request.startsWith("CHAT_MESSAGE")) {
                 String[] messageParts = request.split("\\|", 3);
                 String response;
                 if (messageParts.length >= 3) {
-                    Log.logInfo("Processing SSL chat message from " + messageParts[1] + ": " + messageParts[2]);
+                    Log.logInfo("Processing chat message from " + messageParts[1] + ": " + messageParts[2]);
                     response = "CHAT_RECEIVED|" + messageParts[1] + "\n";
                 } else {
+                    Log.logError("Invalid chat format", null);
                     response = "ERROR|Invalid chat format\n";
                 }
-                sendSSLResponse(socketChannel, response);
+                channel.writeAndFlush(Unpooled.copiedBuffer(response, StandardCharsets.UTF_8));
             } else {
-                sendSSLResponse(socketChannel, "UNKNOWN_REQUEST\n");
+                Log.logError("Unknown request: " + request, null);
+                String response = "UNKNOWN_REQUEST\n";
+                channel.writeAndFlush(Unpooled.copiedBuffer(response, StandardCharsets.UTF_8));
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             Log.logError("Error processing request: " + e.getMessage(), e);
+            try {
+                channel.close();
+            } catch (Exception closeEx) {
+                Log.logError("Error closing channel: " + closeEx.getMessage(), closeEx);
+            }
         }
     }
 
@@ -806,5 +825,38 @@ public class NetworkRepository implements INetworkRepository {
         }
         List<PeerInfo> selectivePeers = peerModel.getSelectivePeers(fileHash);
         return selectivePeers.stream().anyMatch(p -> p.getIp().equals(clientIdentify.getIp()));
+    }
+
+    public static class ServerHandler extends SimpleChannelInboundHandler<String> {
+        private final NetworkRepository networkRepository;
+
+        public ServerHandler(NetworkRepository networkRepository) {
+            this.networkRepository = networkRepository;
+        }
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+            Log.logInfo("SSL connection established with: " + ctx.channel().remoteAddress());
+            networkRepository.allChannels.add(ctx.channel());
+            super.channelActive(ctx);
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            Log.logInfo("SSL connection closed: " + ctx.channel().remoteAddress());
+            super.channelInactive(ctx);
+        }
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, String msg) throws Exception {
+            String clientIP = ctx.channel().remoteAddress().toString().split(":")[0].replace("/", "");
+            networkRepository.processRequest(msg, clientIP, ctx.channel());
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            Log.logError("Exception in SSL channel handler: " + cause.getMessage(), cause);
+            ctx.close();
+        }
     }
 }

@@ -10,7 +10,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +48,6 @@ public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepo
 
     void setChannelAttachments(ConcurrentHashMap<SocketChannel, Map<String, Object>> channelAttachments);
 
-    void processSSLRequest(SocketChannel socketChannel, String request);
+    void processRequest(String request, String clientIP, io.netty.channel.Channel channel);
 
 }

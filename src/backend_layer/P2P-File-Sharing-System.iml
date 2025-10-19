@@ -14,5 +14,6 @@
     <orderEntry type="library" name="bcpkix-jdk18on-1.78.1" level="project" />
     <orderEntry type="library" name="bcprov-jdk18on-1.78.1" level="project" />
     <orderEntry type="library" name="bcutil-jdk18on-1.78.1" level="project" />
+    <orderEntry type="library" name="netty-all-4.1.115.Final" level="project" />
   </component>
 </module>
