@@ -78,7 +78,7 @@ public class FileService implements IFileService {
 
     @Override
     public String sharePrivateFile
-            (String filePath, int isReplace, String fileName, List<String> peersList, String progressId) {
+            (String filePath, int isReplace, String fileName, List<PeerInfo> peersList, String progressId) {
         File file = new File(filePath);
         ProgressInfo progressInfo = peerModel.getProgress().get(progressId);
 

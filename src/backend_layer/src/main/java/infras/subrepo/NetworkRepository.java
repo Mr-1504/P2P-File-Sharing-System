@@ -9,6 +9,7 @@ import main.java.domain.entity.PeerInfo;
 import main.java.domain.repository.INetworkRepository;
 import main.java.domain.repository.IPeerRepository;
 import main.java.infras.utils.FileUtils;
+import main.java.utils.AppPaths;
 import main.java.utils.Config;
 import main.java.utils.Log;
 import main.java.utils.LogTag;
@@ -419,10 +420,11 @@ public class NetworkRepository implements INetworkRepository {
     }
 
     private void sendPongResponse(DatagramSocket udpSocket, DatagramPacket receivedPacket) throws IOException {
-        byte[] pongData = "PONG".getBytes();
+        String response = "PONG|" + AppPaths.loadUsername();
+        byte[] pongData = response.getBytes();
         DatagramPacket pongPacket = new DatagramPacket(pongData, pongData.length, receivedPacket.getAddress(), receivedPacket.getPort());
         udpSocket.send(pongPacket);
-        Log.logInfo("Pong response sent to " + receivedPacket.getAddress() + ":" + receivedPacket.getPort());
+        Log.logInfo("Pong response: " + response + " sent to " + receivedPacket.getAddress() + ":" + receivedPacket.getPort());
     }
 
     @Override

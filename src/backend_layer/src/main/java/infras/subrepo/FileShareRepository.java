@@ -110,7 +110,7 @@ public class FileShareRepository implements IFileShareRepository {
     }
 
     @Override
-    public void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<String> peerList) {
+    public void sharePrivateFile(File file, FileInfo oldFileInfo, int isReplace, String progressId, List<PeerInfo> peerList) {
         if (isReplace == 1 && oldFileInfo != null) {
             this.unshareFile(oldFileInfo);
             peerModel.getPublicSharedFiles().remove(oldFileInfo.getFileName(), oldFileInfo);
@@ -123,18 +123,7 @@ public class FileShareRepository implements IFileShareRepository {
         long fileSize = file.length();
         FileInfo sharedFile = new FileInfo(fileName, fileSize, fileHash, new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername()), true);
 
-        Set<PeerInfo> peerInfos = new HashSet<>();
-        for (String peer : peerList) {
-            String[] parts = peer.split(":");
-            if (parts.length == 2) {
-                String ip = parts[0];
-                int port = Integer.parseInt(parts[1]);
-                peerInfos.add(new PeerInfo(ip, port));
-            } else {
-                Log.logInfo("Invalid peer format: " + peer);
-                return;
-            }
-        }
+        Set<PeerInfo> peerInfos = new HashSet<>(peerList);
         boolean result = shareFileList(new ArrayList<>(), Map.of(sharedFile, peerInfos));
 
         if (!result) {
@@ -175,32 +164,23 @@ public class FileShareRepository implements IFileShareRepository {
                     return -1;
                 } else {
                     int filesCount = Integer.parseInt(parts[1]);
-                    String[] fileParts = parts[2].split(",");
-                    if (fileParts.length != filesCount) {
-                        Log.logInfo("File count mismatch: expected " + filesCount + ", got " + fileParts.length);
+                    Type setType = new TypeToken<Set<FileInfo>>() {
+                    }.getType();
+                    Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter()).create();
+
+                    Set<FileInfo> files = gson.fromJson(parts[2], setType);
+                    if (filesCount != files.size()) {
+                        Log.logInfo("File count mismatch: expected " + filesCount + ", got " + files.size());
                         return -1;
-                    } else {
-                        this.peerModel.getFiles().clear();
-
-                        for (String file : fileParts) {
-                            String[] f = file.split("'");
-                            if (f.length != 6) {
-                                Log.logInfo("Invalid file info format: " + file);
-                            } else {
-                                String fileName = f[0];
-                                long fileSize = Long.parseLong(f[1]);
-                                String fileHash = f[2];
-                                PeerInfo peerInfo = new PeerInfo(f[3], Integer.parseInt(f[4]), f[5]);
-                                FileInfo fileInfo = new FileInfo(fileName, fileSize, fileHash, peerInfo, false);
-                                boolean isSharedByMe = this.peerModel.getPublicSharedFiles().containsKey(fileName) || this.peerModel.getPrivateSharedFiles().containsKey(fileInfo);
-                                fileInfo.setSharedByMe(isSharedByMe);
-                                this.peerModel.getFiles().add(fileInfo);
-                            }
-                        }
-
-                        Log.logInfo("Refreshed shared file names from tracker: " + this.peerModel.getFiles().size() + " files found.");
-                        return 1;
                     }
+                    PeerInfo peerInfo = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT);
+                    this.peerModel.getFiles().clear();
+                    for (FileInfo file : files) {
+                        boolean isSharedByMe = file.getPeerInfo().equals(peerInfo);
+                        file.setSharedByMe(isSharedByMe);
+                        this.peerModel.getFiles().add(file);
+                    }
+                    return 1;
                 }
             } else {
                 Log.logInfo("Invalid response from tracker: " + response);
@@ -235,32 +215,37 @@ public class FileShareRepository implements IFileShareRepository {
 
     @Override
     public int stopSharingFile(String fileName) {
+        for (FileInfo file : this.peerModel.getPrivateSharedFiles().keySet()) {
+            if (file.getFileName().equals(fileName)) {
+                this.peerModel.getPrivateSharedFiles().remove(file);
+                this.peerModel.getFiles().removeIf((f) -> f.getFileName().equals(fileName));
+                return this.unshareFile(file);
+            }
+        }
         if (!this.peerModel.getPublicSharedFiles().containsKey(fileName)) {
             Log.logInfo("File not found in shared files: " + fileName);
             return 2;
-        } else {
-            FileInfo fileInfo = this.peerModel.getPublicSharedFiles().get(fileName);
-            this.peerModel.getPublicSharedFiles().remove(fileName);
-            this.peerModel.getFiles().removeIf((file) -> file.getFileName().equals(fileName));
-            String appPath = AppPaths.getAppDataDirectory();
-            String filePath = appPath + "/shared_files/" + fileName;
-            File file = new File(filePath);
-            if (file.exists() && file.delete()) {
-                Log.logInfo("Removed shared file: " + filePath);
-            } else {
-                Log.logInfo("Failed to remove shared file: " + filePath);
-            }
-
-            Log.logInfo("Stopped sharing file: " + fileName);
-            return this.unshareFile(fileInfo);
         }
+        FileInfo fileInfo = this.peerModel.getPublicSharedFiles().get(fileName);
+        this.peerModel.getPublicSharedFiles().remove(fileName);
+        this.peerModel.getFiles().removeIf((file) -> file.getFileName().equals(fileName));
+        String appPath = AppPaths.getAppDataDirectory();
+        String filePath = appPath + "/shared_files/" + fileName;
+        File file = new File(filePath);
+        if (file.exists() && file.delete()) {
+            Log.logInfo("Removed shared file: " + filePath);
+        } else {
+            Log.logInfo("Failed to remove shared file: " + filePath);
+        }
+
+        Log.logInfo("Stopped sharing file: " + fileName);
+        return this.unshareFile(fileInfo);
     }
 
     @Override
     public List<FileInfo> getPublicFiles() {
         return new ArrayList<>(peerModel.getPublicSharedFiles().values());
     }
-
 
     private int unshareFile(FileInfo fileInfo) {
         if (!SSLUtils.isSSLSupported()) {
@@ -273,7 +258,12 @@ public class FileShareRepository implements IFileShareRepository {
         try (SSLSocket sslSocket = SSLUtils.createSecureSocket(sslTrackerHost)) {
             Log.logInfo("Established SSL connection to tracker for unsharing file");
 
-            String query = "UNSHARED_FILE" + "|" + fileInfo.getFileName() + "|" + fileInfo.getFileSize() + "|" + fileInfo.getFileHash() + "|" + Config.SERVER_IP + "|" + Config.PEER_PORT;
+            Type fileInfoType = new TypeToken<FileInfo>() {
+            }.getType();
+            Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter()).create();
+            String fileInfoJson = gson.toJson(fileInfo, fileInfoType);
+
+            String query = "UNSHARED_FILE" + "|" + fileInfoJson + "\n";
             sslSocket.getOutputStream().write(query.getBytes());
             Log.logInfo("Notified tracker about shared file: " + fileInfo.getFileName() + " via SSL, message: " + query);
 

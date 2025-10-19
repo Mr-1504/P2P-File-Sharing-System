@@ -306,7 +306,7 @@ public class P2PController {
         updateApiFiles();
     }
 
-    public List<String> getKnownPeers() {
+    public Set<PeerInfo> getKnownPeers() {
         return networkService.queryOnlinePeerList();
     }
 
