@@ -1,9 +1,11 @@
 package main.java.service;
 
+import main.java.domain.entity.PeerInfo;
 import main.java.domain.repository.IPeerRepository;
 import main.java.utils.AppPaths;
 
 import java.util.List;
+import java.util.Set;
 
 public class NetworkService implements INetworkService {
     private final IPeerRepository peerModel;
@@ -34,7 +36,7 @@ public class NetworkService implements INetworkService {
     }
 
     @Override
-    public List<String> queryOnlinePeerList() {
+    public Set<PeerInfo> queryOnlinePeerList() {
         return peerModel.queryOnlinePeerList();
     }
 }

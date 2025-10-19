@@ -23,12 +23,15 @@ public class NetworkUtils {
                 NetworkInterface ni = ifaces.nextElement();
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
                 String nameLower = ni.getName().toLowerCase();
-                // Optionally skip common virtual/container adapters
-                if (nameLower.startsWith("vmnet") || nameLower.startsWith("vbox")
-                        || nameLower.startsWith("docker") || nameLower.startsWith("br-")
-                        || nameLower.startsWith("wg") || nameLower.startsWith("zt")) {
+                String displayLower = ni.getDisplayName().toLowerCase();
+
+                if (nameLower.contains("vmnet") || displayLower.contains("vmware")
+                        || displayLower.contains("virtualbox") || displayLower.contains("docker")
+                        || displayLower.contains("hyper-v") || displayLower.contains("bridge")
+                        || displayLower.contains("tap") || displayLower.contains("loopback")) {
                     continue;
                 }
+
 
                 Enumeration<InetAddress> addrs = ni.getInetAddresses();
                 while (addrs.hasMoreElements()) {
@@ -92,9 +95,14 @@ public class NetworkUtils {
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
 
                 String nameLower = ni.getName().toLowerCase();
-                if (nameLower.startsWith("vmnet") || nameLower.startsWith("vbox")
-                        || nameLower.startsWith("docker") || nameLower.startsWith("br-")
-                        || nameLower.startsWith("wg") || nameLower.startsWith("zt")) {
+                String displayLower = ni.getDisplayName().toLowerCase();
+
+                // Bỏ qua mấy interface ảo
+                if (nameLower.contains("vmnet") || displayLower.contains("vmware")
+                        || displayLower.contains("virtualbox") || displayLower.contains("docker")
+                        || displayLower.contains("hyper-v") || displayLower.contains("bridge")
+                        || displayLower.contains("tap") || displayLower.contains("wsl")
+                        || displayLower.contains("loopback") || displayLower.contains("virtual")) {
                     continue;
                 }
 
@@ -112,4 +120,5 @@ public class NetworkUtils {
         }
         return null;
     }
+
 }
