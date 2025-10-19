@@ -275,11 +275,13 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                     Log.logInfo("Process cancelled by user while downloading chunk " + chunkIndex + " from peer " + peerInfo.toString());
                     return false;
                 }
-
-                try (SSLSocket sslSocket = SSLUtils.createSecureSocket(peerInfo)) {
+                SSLSocket sslSocket = null;
+                try {
+                    sslSocket = SSLUtils.createSecureSocket(peerInfo);
                     String fileHash = file.getFileHash();
                     String request = "GET_CHUNK|" + fileHash + "|" + chunkIndex + "\n";
                     sslSocket.getOutputStream().write(request.getBytes());
+                    sslSocket.getOutputStream().flush();
 
                     DataInputStream dis = new DataInputStream(sslSocket.getInputStream());
 
@@ -329,6 +331,13 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                 } catch (Exception e) {
                     Log.logError("SSL Unexpected error downloading chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + "): " + e.getMessage(), e);
                     return false;
+                } finally {
+                    if (sslSocket != null) {
+                        try {
+                            sslSocket.close();
+                        } catch (IOException ignore) {
+                        }
+                    }
                 }
             }
 

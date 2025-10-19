@@ -233,12 +233,20 @@ public class NetworkRepository implements INetworkRepository {
                 sslEngine.setUseClientMode(false);
                 sslEngine.setNeedClientAuth(false);
 
+                sslEngine.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
+                sslEngine.setEnabledCipherSuites(sslEngine.getSupportedCipherSuites()); // enable all supported
+
+// Tăng buffer size nếu cần
                 SSLSession session = sslEngine.getSession();
-                int netBufferSize = session.getPacketBufferSize();
-                int appBufferSize = session.getApplicationBufferSize();
+                int netBufferSize = Math.max(session.getPacketBufferSize(), 16 * 1024);
+                int appBufferSize = Math.max(session.getApplicationBufferSize(), 16 * 1024);
 
                 ByteBuffer netInBuffer = ByteBuffer.allocate(netBufferSize);
                 ByteBuffer appInBuffer = ByteBuffer.allocate(appBufferSize);
+
+// Log thêm status
+                Log.logInfo("SSLEngine protocols: " + Arrays.toString(sslEngine.getEnabledProtocols()));
+                Log.logInfo("SSLEngine ciphers: " + Arrays.toString(sslEngine.getEnabledCipherSuites()));
 
                 Map<String, Object> connectionData = new HashMap<>();
                 connectionData.put("netInBuffer", netInBuffer);
