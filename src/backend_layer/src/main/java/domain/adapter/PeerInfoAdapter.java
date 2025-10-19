@@ -17,6 +17,15 @@ public class PeerInfoAdapter extends TypeAdapter<PeerInfo> {
     public PeerInfo read(JsonReader jsonReader) throws IOException {
         String value = jsonReader.nextString();
         String[] parts = value.split(":");
-        return new PeerInfo(parts[0], Integer.parseInt(parts[1]), parts[2]);
+        if (parts.length < 3) {
+            throw new IOException("Invalid PeerInfo format: expected 'ip:port:username', got '" + value + "'");
+        }
+        int port;
+        try {
+            port = Integer.parseInt(parts[1]);
+        } catch (NumberFormatException e) {
+            throw new IOException("Invalid port in PeerInfo: '" + parts[1] + "'", e);
+        }
+        return new PeerInfo(parts[0], port, parts[2]);
     }
 }

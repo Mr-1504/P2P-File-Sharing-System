@@ -174,6 +174,7 @@ public class FileShareRepository implements IFileShareRepository {
                         return -1;
                     }
                     PeerInfo peerInfo = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT);
+                    this.peerModel.getFiles().clear();
                     for (FileInfo file : files) {
                         boolean isSharedByMe = file.getPeerInfo().equals(peerInfo);
                         file.setSharedByMe(isSharedByMe);
@@ -216,6 +217,8 @@ public class FileShareRepository implements IFileShareRepository {
     public int stopSharingFile(String fileName) {
         for (FileInfo file : this.peerModel.getPrivateSharedFiles().keySet()) {
             if (file.getFileName().equals(fileName)) {
+                this.peerModel.getPrivateSharedFiles().remove(file);
+                this.peerModel.getFiles().removeIf((f) -> f.getFileName().equals(fileName));
                 return this.unshareFile(file);
             }
         }

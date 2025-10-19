@@ -94,7 +94,7 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
         try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
             Log.logInfo("Established SSL connection to tracker for getting peers with file hash");
 
-            String request = RequestInfor.GET_PEERS + fileHash + "|" + Config.SERVER_IP + "|" + Config.PEER_PORT + "\n";
+            String request = RequestInfor.GET_PEERS + "|" + fileHash + "|" + Config.SERVER_IP + "|" + Config.PEER_PORT + "\n";
             sslSocket.getOutputStream().write(request.getBytes());
             Log.logInfo("SSL Requesting peers with file hash: " + fileHash + ", message: " + request);
             BufferedReader buff = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
