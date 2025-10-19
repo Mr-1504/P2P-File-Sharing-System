@@ -97,7 +97,6 @@ public class NetworkUtils {
                 String nameLower = ni.getName().toLowerCase();
                 String displayLower = ni.getDisplayName().toLowerCase();
 
-                // Bỏ qua mấy interface ảo
                 if (nameLower.contains("vmnet") || displayLower.contains("vmware")
                         || displayLower.contains("virtualbox") || displayLower.contains("docker")
                         || displayLower.contains("hyper-v") || displayLower.contains("bridge")
