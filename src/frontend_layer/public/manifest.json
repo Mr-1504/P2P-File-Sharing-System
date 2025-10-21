@@ -1,0 +1,15 @@
+{
+  "short_name": "P2P File Sharing",
+  "name": "P2P File Sharing System",
+  "icons": [
+    {
+      "src": "logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
