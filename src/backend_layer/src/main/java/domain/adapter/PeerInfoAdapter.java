@@ -1,9 +1,9 @@
-package main.java.domain.adapter;
+package domain.adapter;
 
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import main.java.domain.entity.PeerInfo;
+import domain.entity.PeerInfo;
 
 import java.io.IOException;
 

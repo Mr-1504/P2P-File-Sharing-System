@@ -1,4 +1,4 @@
-package main.java.infras.utils;
+package infras.utils;
 
 import java.net.*;
 import java.util.ArrayList;

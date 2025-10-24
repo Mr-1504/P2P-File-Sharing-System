@@ -1,6 +1,6 @@
-package main.java.utils;
+package utils;
 
-import main.java.infras.utils.NetworkUtils;
+import infras.utils.NetworkUtils;
 
 /**
  * This interface defines constants for server and tracker configurations.

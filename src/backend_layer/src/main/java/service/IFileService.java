@@ -1,8 +1,8 @@
-package main.java.service;
+package service;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
 
 import java.util.List;
 import java.util.Map;

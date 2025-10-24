@@ -1,21 +1,21 @@
-package main.java.infras.repository;
+package infras.repository;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.domain.repository.*;
-import main.java.infras.subrepo.*;
-import main.java.infras.utils.FileUtils;
-import main.java.utils.AppPaths;
-import main.java.utils.Config;
-import main.java.utils.Log;
-import main.java.infras.utils.SSLUtils;
+import domain.repository.*;
+import io.netty.channel.socket.SocketChannel;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import infras.subrepo.*;
+import infras.utils.FileUtils;
+import utils.AppPaths;
+import utils.Config;
+import utils.Log;
+import infras.utils.SSLUtils;
 
 import javax.net.ssl.*;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
@@ -69,7 +69,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
 
         Log.logInfo("Server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
         startTimeoutMonitor();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> FileUtils.saveData(this.publicSharedFiles, this.privateSharedFiles)) );
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> FileUtils.saveData(this.publicSharedFiles, this.privateSharedFiles)));
     }
 
     private void startTimeoutMonitor() {
@@ -282,8 +282,8 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         this.channelAttachments = channelAttachments;
     }
 
-    public String processSSLRequest(SocketChannel socketChannel, String request) {
-        return networkModel.processSSLRequest(socketChannel, request);
+    public void processRequest(String request, String clientIP, io.netty.channel.Channel channel) {
+        networkModel.processRequest(request, clientIP, channel);
     }
 
     @Override

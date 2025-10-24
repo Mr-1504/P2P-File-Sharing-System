@@ -1,8 +1,7 @@
-package main.java.service;
+package service;
 
-import main.java.domain.entity.PeerInfo;
+import domain.entity.PeerInfo;
 
-import java.util.List;
 import java.util.Set;
 
 public interface INetworkService {

@@ -1,16 +1,14 @@
-package main.java.domain.repository;
+package domain.repository;
 
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
+import io.netty.channel.socket.SocketChannel;
+import domain.entity.ProgressInfo;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSocket;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +47,6 @@ public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepo
 
     void setChannelAttachments(ConcurrentHashMap<SocketChannel, Map<String, Object>> channelAttachments);
 
-    String processSSLRequest(SocketChannel socketChannel, String request);
+    void processRequest(String request, String clientIP, io.netty.channel.Channel channel);
 
 }

@@ -1,10 +1,9 @@
-package main.java.service;
+package service;
 
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.repository.IPeerRepository;
-import main.java.utils.AppPaths;
+import domain.entity.PeerInfo;
+import domain.repository.IPeerRepository;
+import utils.AppPaths;
 
-import java.util.List;
 import java.util.Set;
 
 public class NetworkService implements INetworkService {

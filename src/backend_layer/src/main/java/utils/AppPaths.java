@@ -1,6 +1,6 @@
-package main.java.utils;
+package utils;
 
-import main.java.domain.entity.ProgressInfo;
+import domain.entity.ProgressInfo;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.regex.Pattern;
 
-import static main.java.utils.Log.logInfo;
+import static utils.Log.logInfo;
 
 public class AppPaths {
     private static final String APP_NAME = EnvUtils.getEnv("APP_NAME", "p2p-file-sharing");

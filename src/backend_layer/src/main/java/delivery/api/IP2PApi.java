@@ -1,9 +1,9 @@
-package main.java.delivery.api;
+package delivery.api;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.delivery.dto.CleanupRequest;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import delivery.dto.CleanupRequest;
 
 import java.util.List;
 import java.util.Map;
