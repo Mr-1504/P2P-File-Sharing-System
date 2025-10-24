@@ -196,12 +196,6 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
 
     // Determine if task is sharing or downloading
     const getTaskType = (task) => {
-        // ✅ Ưu tiên taskType từ task object
-        if (task.taskType) {
-            return task.taskType === 'share' ? 'sharing' : 'downloading';
-        }
-        
-        // Fallback: dựa vào status để xác định (logic cũ)
         if (task.status === 'sharing' || task.taskType === 'sharing') {
             return 'sharing';
         }
@@ -219,9 +213,10 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
             switch (status) {
                 case 'starting': return t('preparing_share');
                 case 'sharing':
-                case 'downloading': // Backend có thể trả về 'downloading' cho share task
                 case 'uploading':
                     return t('sharing');
+                case 'downloading': // Backend có thể trả về 'downloading' cho share task
+                    return t('downloading');
                 case 'completed': return t('share_completed');
                 case 'failed': return t('share_failed');
                 case 'canceled': return t('share_canceled');
