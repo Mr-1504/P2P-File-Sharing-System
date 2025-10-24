@@ -9,6 +9,7 @@ import Notification from './components/Notification';
 import UsernameDialog from './components/UsernameDialog';
 import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
+import { Globe2, Clock } from 'lucide-react';
 // import './styles/App.css';
 
 import { buildApiUrl } from './utils/config';
@@ -21,8 +22,6 @@ function App() {
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [language, setLanguage] = useState('vi');
-    const [messages, setMessages] = useState({});
-    const [selectedPeer, setSelectedPeer] = useState(null);
     const [isNewTask, setIsNewTask] = useState(false);
     const [showUsernameDialog, setShowUsernameDialog] = useState(false);
 
@@ -139,31 +138,13 @@ function App() {
         fetchFiles();
     };
 
-
-
-    const handleSendMessage = (peerId, text) => {
-        const newMessage = { sender: 'You', text, timestamp: new Date().toLocaleTimeString() };
-        setMessages(prev => ({
-            ...prev,
-            [peerId]: [...(prev[peerId] || []), newMessage]
-        }));
-        addNotification(t('message_sent'), false);
-        setTimeout(() => {
-            const responseMessage = { sender: `Peer ${peerId}`, text: 'Tin nhắn nhận được!', timestamp: new Date().toLocaleTimeString() };
-            setMessages(prev => ({
-                ...prev,
-                [peerId]: [...prev[peerId], responseMessage]
-            }));
-        }, 1000);
-    };
-
     return (
         <>
             {showSplash && (
                 <div className="fixed inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 bg-opacity-95 flex flex-col items-center justify-center z-50 animate-fade-in backdrop-blur-sm">
                     <div className="relative">
-                        <svg className="w-24 h-24 mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        <svg className="w-[55px] h-[55px] mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
                         <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30 animate-ping"></div>
                     </div>
@@ -171,46 +152,89 @@ function App() {
                     <div className="w-16 h-16 border-4 border-t-transparent border-white rounded-full animate-spin shadow-lg"></div>
                 </div>
             )}
-            <div className={`container mx-auto p-8 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-700`}>
+            <div className={`container mx-auto p-8 max-w-7xl bg-white ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-700`}>
                 <div className="flex justify-between items-center mb-10">
-                    <div className="flex items-center space-x-4">
-                        <img src={logo} alt="P2P File Sharing Logo" className="w-12 h-12 rounded-xl shadow-lg" />
-                        <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">{t('title')}</h1>
+                    <div className="flex items-center space-x-4 ml-[62px]">
+                        <img src={logo} alt="P2P File Sharing Logo" className="w-12 h-12 rounded-xl shadow-lg ml-[-4px]" />
+                        <h1
+                            className="
+                                text-[28px] leading-[125%]
+                                font-semibold italic
+                                bg-gradient-to-r from-[#1A73FF] via-[#27A1DD] to-[#35D0BA]
+                                bg-clip-text text-transparent
+                                tracking-tight
+                            "
+                            style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}
+                        >
+                            {t('title')}
+                        </h1>
                     </div>
-                    <button
-                        onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
-                        className={`p-4 rounded-xl transition-all duration-300 relative ${activeTab === 'tasks' ? 'modern-button' : 'bg-white hover:bg-blue-50 shadow-md border border-gray-200'} ${isNewTask ? 'animate-pulse' : ''}`}
-                        title={t('tasks')}
-                    >
-                        <svg className={`w-6 h-6 ${activeTab === 'tasks' ? 'text-white' : 'text-blue-600'} ${isNewTask ? 'animate-bounce' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        {tasks.length > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold shadow-md animate-pulse">
-                                {tasks.length}
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
+                            className={`
+                                rounded-md bg-[#C9DEEF] border border-[#1A73FF33] flex items-center justify-center shadow-sm hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A73FF]
+                                relative
+                                transition-all duration-300
+                                ${isNewTask ? 'animate-pulse' : ''}
+                            `}
+                            title={t('tasks')}
+                            aria-label="Tasks"
+                            style={{ width: '55px', height: '55px' }}
+                        >
+                            <Clock className="w-5 h-5 text-[#1A73FF]" aria-hidden />
+                            {tasks.length > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold shadow-md animate-pulse">
+                                    {tasks.length}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => changeLanguage(language === 'vi' ? 'en' : 'vi')}
+                            className="p-3 rounded-xl bg-white hover:bg-blue-50 shadow-md border border-gray-200 flex items-center justify-center gap-2"
+                            title={language === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
+                            aria-label="Toggle language"
+                            style={{ width: '150px' }}
+                        >
+                            <span className="whitespace-nowrap" style={{ color: '#196BAD', fontFamily: 'DM Sans', fontWeight: 'bold', fontSize: '15px' }}>
+                                {language === 'vi' ? 'Tiếng Việt' : 'English'}
                             </span>
-                        )}
-                    </button>
+                            <Globe2 className="w-9 h-9 text-[#1A73FF]" />
+                        </button>
+                    </div>
                 </div>
-                <div className="modern-tab flex space-x-2 mb-8 p-3">
-                    <button
+                {/* Tabs (Pill style) */}
+                <div className="w-full max-w-[763px] mx-auto mb-8">
+                  {/* Nền xanh pill */}
+                  <div className="bg-[#196BAD] rounded-full p-1 border-2 border-[#196BAD] shadow-sm">
+                    <div className="flex">
+                      {/* FILE */}
+                      <button
                         onClick={() => setActiveTab('files')}
-                        className={`modern-tab-button flex-1 py-4 text-lg font-semibold flex items-center justify-center space-x-3 ${activeTab === 'files' ? 'active' : 'text-gray-700 hover:text-blue-600'}`}
-                    >
-                        <svg className={`w-5 h-5 ${activeTab === 'files' ? 'text-white' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                        <span>{t('files')}</span>
-                    </button>
-                    <button
+                        aria-pressed={activeTab === 'files'}
+                        className={`flex-1 py-[9px] text-[18px] font-semibold tracking-tight rounded-full transition-all duration-200 focus:outline-none ${
+                          activeTab === 'files'
+                            ? 'bg-white text-[#196BAD] ring-2 ring-[#196BAD]' // ACTIVE: nền trắng viền xanh
+                            : 'text-white'                            // INACTIVE: chữ trắng trên nền xanh
+                        }`}
+                      >
+                        {t('files')}
+                      </button>
+
+                      {/* CHAT */}
+                      <button
                         onClick={() => setActiveTab('chat')}
-                        className={`modern-tab-button flex-1 py-4 text-lg font-semibold flex items-center justify-center space-x-3 ${activeTab === 'chat' ? 'active' : 'text-gray-700 hover:text-blue-600'}`}
-                    >
-                        <svg className={`w-5 h-5 ${activeTab === 'chat' ? 'text-white' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                        </svg>
-                        <span>{t('chat')}</span>
-                    </button>
+                        aria-pressed={activeTab === 'chat'}
+                        className={`flex-1 py-[9px] text-[18px] font-semibold tracking-tight rounded-full transition-all duration-200 focus:outline-none ${
+                          activeTab === 'chat'
+                            ? 'bg-white text-[#196BAD] ring-2 ring-[#196BAD]'
+                            : 'text-white'
+                        }`}
+                      >
+                        {t('chat')}
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 {/* Tab Content */}
                 {activeTab === 'files' && (
@@ -234,10 +258,6 @@ function App() {
                 {activeTab === 'chat' && (
                     <ChatPage
                         addNotification={addNotification}
-                        messages={messages}
-                        onSendMessage={handleSendMessage}
-                        selectedPeer={selectedPeer}
-                        setSelectedPeer={setSelectedPeer}
                     />
                 )}
                 {activeTab === 'tasks' && (
