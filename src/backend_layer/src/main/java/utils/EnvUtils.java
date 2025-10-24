@@ -1,4 +1,4 @@
-package main.java.utils;
+package utils;
 
 import io.github.cdimascio.dotenv.Dotenv;
 

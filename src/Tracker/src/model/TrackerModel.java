@@ -3,6 +3,7 @@ package src.model;
 import java.io.*;
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import src.adapter.FileInfoAdapter;
+import src.adapter.PeerInfoAdapter;
 import src.utils.*;
 
 import javax.net.ssl.SSLServerSocket;
@@ -38,7 +40,7 @@ public class TrackerModel {
         knownPeers = new CopyOnWriteArraySet<>();
         selector = Selector.open();
         pingExecutor = Executors.newScheduledThreadPool(1);
-        pingExecutor.scheduleAtFixedRate(this::pingPeers, 0, 60, TimeUnit.SECONDS);
+        pingExecutor.scheduleAtFixedRate(this::pingPeers, 0, 10, TimeUnit.SECONDS);
     }
 
     public void startTracker() {
@@ -190,7 +192,7 @@ public class TrackerModel {
 
         String[] parts = request.split("\\|");
         if (request.startsWith(RequestInfor.REGISTER)) {
-            if (parts.length == 5) {
+            if (parts.length == 4) {
                 return registerPeer(parts);
             }
             logInfo("[TRACKER]: Invalid REGISTER request [" + parts.length + "]: " + request + " on " + getCurrentTime());
@@ -208,14 +210,14 @@ public class TrackerModel {
             logInfo("[TRACKER]: Invalid QUERY request: " + request + " on " + getCurrentTime());
             return "Định dạng yêu cầu QUERY không hợp lệ. Sử dụng: QUERY|<fileName>";
         } else if (request.startsWith(RequestInfor.UNSHARED_FILE)) {
-            if (parts.length == 6) {
+            if (parts.length == 2) {
                 return unshareFile(parts);
             }
         } else if (request.startsWith(RequestInfor.REFRESH)) {
             if (parts.length == 3) {
                 String peerIp = parts[1];
                 int peerPort = Integer.parseInt(parts[2]);
-                return sendShareList(peerIp, peerPort, true);
+                return sendShareList(new PeerInfo(peerIp, peerPort), true);
             }
         } else if (request.startsWith(RequestInfor.GET_PEERS)) {
             if (parts.length == 4) {
@@ -239,10 +241,10 @@ public class TrackerModel {
     }
 
     private String sendPeerList(String fileHash, PeerInfo requester) {
-        List<String> peers = new ArrayList<>();
+        Set<PeerInfo> peers = new HashSet<>();
         publicFiles.values().forEach(fileInfos -> fileInfos.forEach(fileInfo -> {
             if (fileInfo.getFileHash().equals(fileHash)) {
-                peers.add(fileInfo.getPeerInfo().getIp() + "'" + fileInfo.getPeerInfo().getPort());
+                peers.add(fileInfo.getPeerInfo());
             }
         }));
 
@@ -251,7 +253,7 @@ public class TrackerModel {
             if (fileInfo.getFileHash().equals(fileHash)) {
                 Set<PeerInfo> peerInfos = entry.getValue();
                 if (peerInfos.contains(requester)) {
-                    peers.add(fileInfo.getPeerInfo().getIp() + "'" + fileInfo.getPeerInfo().getPort());
+                    peers.add(fileInfo.getPeerInfo());
                 }
             }
         }
@@ -261,34 +263,29 @@ public class TrackerModel {
             return RequestInfor.NOT_FOUND + "|No peers found for file hash: " + fileHash;
         }
 
-        StringBuilder response = new StringBuilder(RequestInfor.GET_PEERS + "|" + peers.size() + "|");
-        for (String peer : peers) {
-            response.append(peer).append(Config.LIST_SEPARATOR);
-        }
-        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
-            response.deleteCharAt(response.length() - 1);
-        }
+        Type setType = new TypeToken<Set<PeerInfo>>() {
+        }.getType();
+        Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+        String peersJson = gson.toJson(peers, setType);
         logInfo("[TRACKER]: Sending peer list for file hash: " + fileHash + " on " + getCurrentTime());
-        return response.toString();
+        return RequestInfor.GET_PEERS + "|" + peers.size() + "|" + peersJson;
     }
 
     private String unshareFile(String[] parts) {
-        String fileName = parts[1];
-        long fileSize = Long.parseLong(parts[2]);
-        String fileHash = parts[3];
-        String peerIp = parts[4];
-        String peerPort = parts[5];
-        FileInfo fileInfo = new FileInfo(fileName, fileSize, fileHash, new PeerInfo(peerIp, Integer.parseInt(peerPort)));
-        Set<FileInfo> fileInfos = publicFiles.get(fileName);
+        Type fileInfoType = new TypeToken<FileInfo>() {
+        }.getType();
+        Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter()).create();
+        FileInfo fileInfo = gson.fromJson(parts[1], fileInfoType);
+        Set<FileInfo> fileInfos = publicFiles.get(fileInfo.getFileName());
         if (fileInfos != null) {
             fileInfos.remove(fileInfo);
             if (fileInfos.isEmpty()) {
-                publicFiles.remove(fileName);
+                publicFiles.remove(fileInfo.getFileName());
             }
         }
         privateSharedFiles.remove(fileInfo);
 
-        logInfo("[TRACKER]: File " + fileName + " unshared by " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+        logInfo("[TRACKER]: File " + fileInfo.getFileName() + " unshared by " + fileInfo.getPeerInfo().toString() + " on " + getCurrentTime());
         logInfo(publicFiles.toString());
         logInfo(privateSharedFiles.toString());
         return LogTag.S_SUCCESS;
@@ -364,30 +361,25 @@ public class TrackerModel {
     }
 
     private String registerPeer(String[] parts) {
-        if (parts.length != 5) {
+        if (parts.length != 4) {
             logInfo("[TRACKER]: Invalid REGISTER request format: expected at least 6 parts, got " + parts.length + " on " + getCurrentTime());
             return LogTag.S_INVALID;
         }
 
-        String peerIp = parts[1];
-        String peerPort;
-        try {
-            peerPort = parts[2];
-            Integer.parseInt(peerPort);
-        } catch (NumberFormatException e) {
-            logInfo("[TRACKER]: Invalid Port in REGISTER: " + parts[2] + " on " + getCurrentTime());
-            return LogTag.S_INVALID;
-        }
+        Type peerType = new TypeToken<PeerInfo>() {
+        }.getType();
+        Gson peerGson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+        PeerInfo registeringPeer = peerGson.fromJson(parts[1], peerType);
 
-        knownPeers.add(new PeerInfo(peerIp, Integer.parseInt(peerPort)));
-        logInfo("[TRACKER]: Peer registered: " + peerIp + " on " + getCurrentTime());
+        knownPeers.add(registeringPeer);
+        logInfo("[TRACKER]: Peer registered: " + registeringPeer.getIp() + " on " + getCurrentTime());
 
         // Deserialize the data structures
         try {
             // Assuming parts[3] is publicFileToPeers JSON, parts[4] privateSharedFile JSON, parts[5] selectiveSharedFiles JSON
             // For simplicity, we'll just log them for now
-            String publicFileToPeersJson = parts[3];
-            String privateSharedFileJson = parts[4];
+            String publicFileToPeersJson = parts[2];
+            String privateSharedFileJson = parts[3];
 
             logInfo("[TRACKER]: Received publicFileToPeers: " + publicFileToPeersJson + " on " + getCurrentTime());
             logInfo("[TRACKER]: Received privateSharedFile: " + privateSharedFileJson + " on " + getCurrentTime());
@@ -412,12 +404,12 @@ public class TrackerModel {
             if (receivedPrivateSharedFile != null) {
                 privateSharedFiles.putAll(receivedPrivateSharedFile);
             }
-            logInfo("[TRACKER]: Updated data structures from peer " + peerIp + " on " + getCurrentTime());
+            logInfo("[TRACKER]: Updated data structures from peer " + registeringPeer.getIp() + " on " + getCurrentTime());
         } catch (Exception e) {
             logInfo("[TRACKER]: Error processing REGISTER data structures: " + e.getMessage() + " on " + getCurrentTime());
         }
 
-        String shareListResponse = sendShareList(peerIp, Integer.parseInt(peerPort), false);
+        String shareListResponse = sendShareList(registeringPeer, false);
         if (!shareListResponse.startsWith(RequestInfor.SHARED_LIST)) {
             return RequestInfor.REGISTERED;
         }
@@ -428,44 +420,55 @@ public class TrackerModel {
     private void pingPeers() {
         try (DatagramChannel channel = DatagramChannel.open()) {
             channel.configureBlocking(false);
+            channel.setOption(StandardSocketOptions.SO_BROADCAST, true);
             channel.socket().setSoTimeout(Config.SOCKET_TIMEOUT_MS);
 
             for (int i = 0; i < 3; i++) {
-
-                // ping to all peers with broadcast message
                 String pingMessage = RequestInfor.PING;
-                ByteBuffer buffer = ByteBuffer.wrap(pingMessage.getBytes());
-                channel.send(buffer, new InetSocketAddress(Config.BROADCAST_IP, Config.PEER_PORT));
-                logInfo("[TRACKER]: Sent ping to broadcast address on " + Config.BROADCAST_IP);
+                ByteBuffer sendBuffer = ByteBuffer.wrap(pingMessage.getBytes());
 
-                // Collect alive peers
+                InetSocketAddress broadcastAddr = new InetSocketAddress(Config.BROADCAST_IP, Config.PEER_PORT);
+                channel.send(sendBuffer, broadcastAddr);
+                logInfo("[TRACKER]: Sent PING broadcast to " + Config.BROADCAST_IP + ":" + Config.PEER_PORT);
+
                 Set<PeerInfo> alivePeers = ConcurrentHashMap.newKeySet();
                 long startTime = System.currentTimeMillis();
-                while (System.currentTimeMillis() - startTime < Config.SOCKET_TIMEOUT_MS) {
-                    buffer.clear();
-                    InetSocketAddress responder;
 
-                    try {
-                        responder = (InetSocketAddress) channel.receive(buffer);
-                        if (responder != null) {
-                            String response = new String(buffer.array(), 0, buffer.position());
-                            alivePeers.add(new PeerInfo(responder.getAddress().getHostAddress(), responder.getPort()));
-                            logInfo("[TRACKER]: Received response from " + responder + ": " + response + " on " + getCurrentTime());
+                ByteBuffer recvBuffer = ByteBuffer.allocate(1024);
+
+                while (System.currentTimeMillis() - startTime < Config.SOCKET_TIMEOUT_MS) {
+                    recvBuffer.clear();
+                    InetSocketAddress responder = (InetSocketAddress) channel.receive(recvBuffer);
+
+                    if (responder != null) {
+                        recvBuffer.flip();
+                        String response = new String(recvBuffer.array(), 0, recvBuffer.limit()).trim();
+
+                        if (response.startsWith(RequestInfor.PONG)) {
+                            String[] parts = response.split("\\|", 2);
+                            String username = parts.length > 1 ? parts[1] : "unknown";
+
+                            PeerInfo peer = new PeerInfo(responder.getAddress().getHostAddress(), responder.getPort(), username);
+                            alivePeers.add(peer);
+
+                            logInfo("[TRACKER]: Received PONG from " + responder.getAddress().getHostAddress()
+                                    + " (" + username + ") at " + getCurrentTime());
                         }
-                    } catch (IOException e) {
-                        logError("[TRACKER]: Error receiving response: " + e.getMessage() + " on " + getCurrentTime(), e);
                     }
+
+                    Thread.sleep(50);
                 }
 
                 updateKnownPeers(alivePeers);
-                logInfo("[TRACKER]: Ping completed. Alive peers: " + alivePeers.size() + " on " + getCurrentTime());
+                logInfo("[TRACKER]: Ping round " + (i + 1) + " completed. Alive peers: " + alivePeers.size()
+                        + " on " + getCurrentTime());
             }
-        } catch (
-                IOException e) {
+
+        } catch (IOException | InterruptedException e) {
             logError("[TRACKER]: Ping error: " + e.getMessage() + " on " + getCurrentTime(), e);
         }
-
     }
+
 
     private void updateKnownPeers(Set<PeerInfo> alivePeers) {
         synchronized (this) {
@@ -492,16 +495,13 @@ public class TrackerModel {
             logInfo("[TRACKER]: No known peers found on " + getCurrentTime());
             return RequestInfor.NOT_FOUND + "|No known peers found";
         }
+        Type setType = new TypeToken<Set<PeerInfo>>() {
+        }.getType();
+        Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+        String knownPeersJson = gson.toJson(knownPeers, setType);
 
-        StringBuilder response = new StringBuilder(RequestInfor.GET_KNOWN_PEERS + "|" + knownPeers.size() + "|");
-        for (PeerInfo peer : knownPeers) {
-            response.append(peer.toString().replace('|', ':')).append(Config.LIST_SEPARATOR);
-        }
-        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
-            response.deleteCharAt(response.length() - 1);
-        }
         logInfo("[TRACKER]: Sending known peers list on " + getCurrentTime());
-        return response.toString();
+        return RequestInfor.GET_KNOWN_PEERS + "|" + knownPeers.size() + "|" + knownPeersJson;
     }
 
     private String getSharedPeers(String fileHash) {
@@ -522,15 +522,14 @@ public class TrackerModel {
             return RequestInfor.NOT_FOUND + "|No selective peers found for file hash: " + fileHash;
         }
 
-        StringBuilder response = new StringBuilder(RequestInfor.GET_SHARED_PEERS + "|" + peers.size() + "|");
-        for (PeerInfo peer : peers) {
-            response.append(peer).append(Config.LIST_SEPARATOR);
-        }
-        if (response.charAt(response.length() - 1) == Config.LIST_SEPARATOR.charAt(0)) {
-            response.deleteCharAt(response.length() - 1);
-        }
+        Type setType = new TypeToken<Set<PeerInfo>>() {
+        }.getType();
+        Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+        String peersJson = gson.toJson(peers, setType);
+
         logInfo("[TRACKER]: Sending selective peer list for file hash: " + fileHash + " on " + getCurrentTime());
-        return response.toString();
+
+        return RequestInfor.GET_SHARED_PEERS + "|" + peers.size() + "|" + peersJson;
     }
 
     String getCurrentTime() {
@@ -561,7 +560,7 @@ public class TrackerModel {
         }
     }
 
-    String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
+    String sendShareList(PeerInfo peerInfo, boolean isRefresh) {
         Set<FileInfo> filesToSend = new HashSet<>();
 
         // Add all public shared files
@@ -570,7 +569,6 @@ public class TrackerModel {
         }
 
 
-        PeerInfo peerInfo = new PeerInfo(peerIp, peerPort);
         for (Map.Entry<FileInfo, Set<PeerInfo>> entry : privateSharedFiles.entrySet()) {
             FileInfo fileInfo = entry.getKey();
             Set<PeerInfo> allowedPeers = entry.getValue();
@@ -580,21 +578,17 @@ public class TrackerModel {
         }
 
         if (filesToSend.isEmpty()) {
-            logInfo("[TRACKER]: No shared files to send to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+            logInfo("[TRACKER]: No shared files to send to " + peerInfo.getIp() + "|" + peerInfo.getPort() + " on " + getCurrentTime());
             return RequestInfor.FILE_NOT_FOUND;
         }
 
-        StringBuilder msgBuilder = new StringBuilder();
-        for (FileInfo file : filesToSend) {
-            msgBuilder.append(file.getFileName()).append("'").append(file.getFileSize()).append("'").append(file.getFileHash()).append("'").append(file.getPeerInfo().getIp()).append("'").append(file.getPeerInfo().getPort()).append("'").append(file.getPeerInfo().getUsername()).append(Config.LIST_SEPARATOR);
-        }
+        Type setType = new TypeToken<Set<FileInfo>>() {
+        }.getType();
+        Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter()).create();
 
-        if (msgBuilder.charAt(msgBuilder.length() - 1) == ',') {
-            msgBuilder.deleteCharAt(msgBuilder.length() - 1);
-        }
-        String shareList = msgBuilder.toString();
-        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
-        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + filesToSend.size() + "|" + shareList;
+        String peers = gson.toJson(filesToSend, setType);
+        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerInfo.getIp() + "|" + peerInfo.getPort() + " on " + getCurrentTime());
+        return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + filesToSend.size() + "|" + peers;
     }
 
 }

@@ -9,7 +9,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b2bb62cf-70b5-49fc-8479-f8b1e4642a6b" name="Changes" comment="" />
+    <list default="true" id="b2bb62cf-70b5-49fc-8479-f8b1e4642a6b" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -41,8 +43,11 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Application.BE.executor": "Run",
     "Application.Main.executor": "Run",
+    "Application.Tracker.executor": "Run",
     "Downloaded.Files.Path.Enabled": "true",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
     "Repository.Attach.Annotations": "false",
     "Repository.Attach.JavaDocs": "false",
     "Repository.Attach.Sources": "true",
@@ -50,8 +55,10 @@
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
     "RunOnceActivity.git.unshallow": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "implement-react-for-ui",
-    "last_opened_file_path": "D:/Code/Java/P2P-File-Sharing-System/resources",
+    "git-widget-placeholder": "main",
+    "ignore.virus.scanning.warn.message": "true",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "D:/Hoctrentruong/Project1/P2P-File-Sharing-System/src/Tracker/src",
     "project.structure.last.edited": "Project",
     "project.structure.proportion": "0.15",
     "project.structure.side.proportion": "0.2",
@@ -60,6 +67,7 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\Hoctrentruong\Project1\P2P-File-Sharing-System\src\Tracker\src" />
       <recent name="D:\Code\Java\P2P-File-Sharing-System\resources" />
       <recent name="D:\Code\Java\P2P-File-Sharing-System\resources\icons" />
       <recent name="D:\Code\Java\P2P-File-Sharing-System" />
@@ -74,15 +82,43 @@
       <recent name="" />
     </key>
   </component>
-  <component name="RunManager">
-    <configuration name="Main" type="Application" factoryName="Application">
-      <option name="MAIN_CLASS_NAME" value="main.java.main.Main" />
+  <component name="RunManager" selected="Application.Tracker">
+    <configuration name="BE" type="Application" factoryName="Application" activateToolWindowBeforeRun="false">
+      <envs>
+        <env name="KEYSTORE_PASSWORD" value="p2ppassword " />
+        <env name="KEYSTORE_PATH" value="C:\Users\AnhKim\AppData\Roaming\P2P Tracker\certificates\new-tracker-keystore.jks" />
+        <env name="TRUSTSTORE_PASSWORD" value="p2ppassword " />
+        <env name="TRUSTSTORE_PATH" value="C:\Users\AnhKim\AppData\Roaming\P2P Tracker\certificates\tracker-truststore.jks" />
+      </envs>
+      <option name="envFilePaths">
+        <option value="$PROJECT_DIR$/.env" />
+      </option>
+      <option name="MAIN_CLASS_NAME" value="Main" />
       <module name="P2P-File-Sharing-System" />
-      <option name="VM_PARAMETERS" value="--module-path &quot;D:\Code\Java\P2P-File-Sharing-System\lib\win&quot; --add-modules javafx.controls,javafx.fxml,javafx.base,javafx.graphics" />
       <method v="2">
         <option name="Make" enabled="true" />
       </method>
     </configuration>
+    <configuration name="Tracker" type="Application" factoryName="Application">
+      <envs>
+        <env name="KEYSTORE_PASSWORD" value="p2ppassword " />
+        <env name="KEYSTORE_PATH" value="&quot;C:\Users\AnhKim\AppData\Roaming\P2P Tracker\certificates\new-tracker-keystore.jks&quot;" />
+        <env name="TRUSTSTORE_PASSWORD" value="p2ppassword " />
+        <env name="TRUSTSTORE_PATH" value="C:\Users\AnhKim\AppData\Roaming\P2P Tracker\certificates\tracker-truststore.jks" />
+      </envs>
+      <option name="envFilePaths">
+        <option value="$PROJECT_DIR$/.env" />
+      </option>
+      <option name="MAIN_CLASS_NAME" value="src.Main" />
+      <module name="P2P-File-Sharing-System" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <list>
+      <item itemvalue="Application.BE" />
+      <item itemvalue="Application.Tracker" />
+    </list>
   </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">

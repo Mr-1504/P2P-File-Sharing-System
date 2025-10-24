@@ -196,12 +196,6 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
 
     // Determine if task is sharing or downloading
     const getTaskType = (task) => {
-        // ✅ Ưu tiên taskType từ task object
-        if (task.taskType) {
-            return task.taskType === 'share' ? 'sharing' : 'downloading';
-        }
-        
-        // Fallback: dựa vào status để xác định (logic cũ)
         if (task.status === 'sharing' || task.taskType === 'sharing') {
             return 'sharing';
         }
@@ -219,9 +213,10 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
             switch (status) {
                 case 'starting': return t('preparing_share');
                 case 'sharing':
-                case 'downloading': // Backend có thể trả về 'downloading' cho share task
                 case 'uploading':
                     return t('sharing');
+                case 'downloading': // Backend có thể trả về 'downloading' cho share task
+                    return t('downloading');
                 case 'completed': return t('share_completed');
                 case 'failed': return t('share_failed');
                 case 'canceled': return t('share_canceled');
@@ -258,13 +253,13 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                         const sharingTasks = tasks.filter(task => getTaskType(task) === 'sharing');
                         return sharingTasks.length > 0 ? (
                             <div>
-                                <h3 className="text-xl font-bold text-blue-900 mb-4 flex items-center">
+                                <h3 className="sticky top-0 bg-white z-10 text-xl font-bold text-blue-900 mb-4 flex items-center">
                                     <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
                                     </svg>
                                     {t('sharing_files')}
                                 </h3>
-                                <div className="space-y-4">
+                                <div className="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto">
                                     {sharingTasks.map(task => {
                                         const taskType = getTaskType(task);
                                         const colors = getStatusColor(task.status);
@@ -350,13 +345,8 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                         const downloadingTasks = tasks.filter(task => getTaskType(task) === 'downloading');
                         return downloadingTasks.length > 0 ? (
                             <div>
-                                <h3 className="text-xl font-bold text-blue-900 mb-4 flex items-center">
-                                    <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                    </svg>
-                                    {t('downloading_files')}
-                                </h3>
-                                <div className="space-y-4">
+                                
+                                <div className="space-y-4 max-h-[calc(100vh-300px)] overflow-y-auto">
                                     {downloadingTasks.map(task => {
                                         const taskType = getTaskType(task);
                                         const colors = getStatusColor(task.status);
