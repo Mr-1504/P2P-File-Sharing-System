@@ -20,18 +20,19 @@ public class P2PController {
     private final INetworkService networkService;
     private final IP2PApi api;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
-    private boolean isConnected = false;
-    private boolean isLoadSharedFiles = false;
-    private boolean isRetrying = false;
+    private volatile boolean isConnected = false;
+    private volatile boolean isLoadSharedFiles = false;
+    private volatile boolean isRetrying = false;
 
     // Username state management - blocks full initialization until set
     private String username = null;
-    private boolean isInitialized = false;
+    private volatile boolean isInitialized = false;
 
     public P2PController(IFileService service, INetworkService networkService, IP2PApi api) {
         this.service = service;
         this.networkService = networkService;
         this.api = api;
+        this.username = AppPaths.loadUsername();
         setupApiRoutes();
     }
 
@@ -49,15 +50,7 @@ public class P2PController {
     }
 
     public synchronized boolean setUsername(String inputUsername) {
-        if (this.username != null) {
-            return false; // Already set
-        }
-
-        if (inputUsername == null || inputUsername.trim().isEmpty()) {
-            return false; // Invalid username
-        }
-
-        this.username = inputUsername.trim();
+        this.username = inputUsername;
 
         // Save to backend
         if (!AppPaths.saveUsername(this.username)) {
@@ -76,7 +69,9 @@ public class P2PController {
     public synchronized boolean checkUsernameExists() {
         if (this.username == null) {
             this.username = AppPaths.loadUsername();
+            System.out.println("Loaded " + username);
         }
+        System.out.println(username);
         return this.username != null;
     }
 
