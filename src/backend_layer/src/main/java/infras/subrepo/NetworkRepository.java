@@ -3,6 +3,7 @@ package infras.subrepo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import domain.adapter.PeerInfoAdapter;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.group.ChannelGroup;
@@ -165,9 +166,14 @@ public class NetworkRepository implements INetworkRepository {
                 String publicFileToPeersJson = gson.toJson(peerModel.getPublicSharedFiles(), publicFileType);
                 Type privateFileType = new TypeToken<Map<FileInfo, Set<PeerInfo>>>() {
                 }.getType();
+
                 String privateSharedFileJson = gson.toJson(peerModel.getPrivateSharedFiles(), privateFileType);
 
-                String message = "REGISTER|" + Config.SERVER_IP + "|" + Config.PEER_PORT +
+                Type peerType = new TypeToken<PeerInfo>() {
+                }.getType();
+                Gson peerGson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+                String peerInfoJson = peerGson.toJson(new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername()), peerType);
+                String message = "REGISTER|" + peerInfoJson +
                         "|" + publicFileToPeersJson +
                         "|" + privateSharedFileJson +
                         "\n";
