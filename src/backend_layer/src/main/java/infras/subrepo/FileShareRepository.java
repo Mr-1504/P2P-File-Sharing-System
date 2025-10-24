@@ -12,10 +12,6 @@ import domain.repository.IPeerRepository;
 import infras.utils.FileUtils;
 import infras.utils.SSLUtils;
 import utils.*;
-import utils.AppPaths;
-import utils.Config;
-import utils.Log;
-import utils.LogTag;
 
 import javax.net.ssl.SSLSocket;
 import java.io.*;

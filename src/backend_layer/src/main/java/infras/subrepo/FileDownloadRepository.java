@@ -329,7 +329,6 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                         }
                     }
 
-                    Log.logInfo("Failed to receive valid chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
                 } catch (InterruptedException | IOException e) {
                     Log.logError("SSL Error downloading chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + "): " + e.getMessage(), e);
 

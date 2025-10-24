@@ -5,8 +5,6 @@ import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import delivery.api.IP2PApi;
 import service.*;
-import service.IFileService;
-import service.INetworkService;
 import utils.AppPaths;
 import utils.LogTag;
 

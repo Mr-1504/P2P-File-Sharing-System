@@ -327,7 +327,6 @@ public class NetworkRepository implements INetworkRepository {
                     dos.writeInt(chunkIndex);
                     dos.writeInt(actualData.length);
                     dos.write(actualData);
-                    dos.flush();
                     return baos.toByteArray();
                 }
             } catch (IOException e) {

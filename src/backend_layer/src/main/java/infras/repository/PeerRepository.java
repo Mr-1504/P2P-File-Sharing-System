@@ -1,15 +1,10 @@
 package infras.repository;
 
 import domain.repository.*;
-import infras.subrepo.FileDownloadRepository;
-import infras.subrepo.FileShareRepository;
-import infras.subrepo.NetworkRepository;
-import infras.subrepo.PeerDiscoveryRepository;
 import io.netty.channel.socket.SocketChannel;
 import domain.entity.FileInfo;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
-import domain.repository.*;
 import infras.subrepo.*;
 import infras.utils.FileUtils;
 import utils.AppPaths;
@@ -74,7 +69,7 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
 
         Log.logInfo("Server socket initialized on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
         startTimeoutMonitor();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> FileUtils.saveData(this.publicSharedFiles, this.privateSharedFiles)) );
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> FileUtils.saveData(this.publicSharedFiles, this.privateSharedFiles)));
     }
 
     private void startTimeoutMonitor() {
