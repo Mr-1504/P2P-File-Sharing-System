@@ -1,5 +1,3 @@
-package src;
-
 import java.io.IOException;
 
 import src.model.TrackerModel;
