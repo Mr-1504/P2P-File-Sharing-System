@@ -5,9 +5,30 @@ import Chat from '../components/Chat';
 const ChatPage = ({ addNotification }) => {
     const { t } = useTranslation();
     const [peers, setPeers] = useState([
-        { id: 1, name: 'Peer 1', ip: '172.16.201.135.5000', status: 'Online' },
+        { id: 1, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
         { id: 2, name: 'Peer 2', ip: '192.168.1.100', status: 'Online' },
-        { id: 3, name: 'Peer 3', ip: '10.0.0.50', status: 'Offline' }
+        { id: 3, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 4, name: 'Peer 1', ip: '172.16.201.112', status: 'Online' },
+        { id: 5, name: 'Peer 1', ip: '172.16.201.111', status: 'Online' },
+        { id: 6, name: 'Peer 1', ip: '172.16.201.145', status: 'Online' },
+        { id: 7, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 8, name: 'Peer 1', ip: '172.16.201.137', status: 'Online' },
+        { id: 9, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 10, name: 'Peer 1', ip: '172.16.201.145', status: 'Online' },
+        { id: 11, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 12, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 13, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 14, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 15, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 16, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 17, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 18, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 19, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 20, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 21, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 22, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 23, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
+        { id: 24, name: 'Peer 3', ip: '10.0.0.50', status: 'Offline' }
     ]);
     const [messages, setMessages] = useState({
         1: [

@@ -155,7 +155,7 @@ function App() {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <img src={logo} alt="logo" className="w-14 h-14 rounded-2xl shadow" />
-            <h1 className="text-2xl font-extrabold tracking-wide text-sky-700">P2P FILE SHARING</h1>
+            <h1 className="text-2xl font-extrabold tracking-wide text-sky-700">{t('title')}</h1>
           </div>
 
           <div className="flex items-center gap-2">

@@ -32,25 +32,28 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                     <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                         <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{t('peerList')}</h3>
                     </div>
-                    <div className="flex-1 overflow-y-auto">
+                    <div className="flex-1 overflow-y-auto p-2">
                         {peers.map(peer => (
                             <div
                                 key={peer.id}
                                 onClick={() => setSelectedPeer(peer)}
-                                className={`p-3 cursor-pointer transition-all duration-200 border-b border-gray-100 ${
+                                className={`p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg ${
                                     selectedPeer?.id === peer.id
-                                        ? 'bg-blue-50'
-                                        : 'hover:bg-gray-50'
+                                        ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                                        : 'hover:bg-gray-50 hover:shadow-sm'
                                 }`}
                             >
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-[#4F4F4F]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{peer.ip}</span>
+                                    <span className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{peer.name}</span>
                                     {peer.status === 'Online' && (
                                         <div className="flex items-center space-x-1">
                                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                            <span className="text-xs text-[#4F4F4F]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>Online</span>
+                                            <span className="text-xs text-green-600 font-medium" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>Online</span>
                                         </div>
                                     )}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                    {peer.ip}
                                 </div>
                             </div>
                         ))}
@@ -171,7 +174,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                         </>
                     ) : (
                         <div className="flex-1 flex items-center justify-center">
-                            <p className="text-gray-500 text-lg">Chọn một peer để bắt đầu chat</p>
+                            <p className="text-gray-500 text-lg">{t('select_peer')}</p>
                         </div>
                     )}
                 </div>
