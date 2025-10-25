@@ -27,15 +27,28 @@ import java.util.function.Consumer;
 import static utils.Log.logError;
 import static utils.Log.logInfo;
 
+/**
+ * P2PApi class implements the IP2PApi interface to provide a RESTful API for P2P file sharing operations.
+ * It uses an embedded HTTP server to handle various routes for checking usernames, setting usernames,
+ * checking file existence, refreshing file lists, sharing files, removing files, downloading files,
+ * getting progress information, cleaning up progress, cancelling tasks, resuming tasks, sharing private files,
+ * and getting known peers.
+ */
 public class P2PApi implements IP2PApi {
     private HttpServer server;
     private List<FileInfo> files = new ArrayList<>();
     private static final Gson gson = new Gson();
 
+    /**
+     * Constructor to initialize the P2PApi and start the API server.
+     */
     public P2PApi() {
         initApiServer();
     }
 
+    /**
+     * Initializes the API server and sets up the executor and default context.
+     */
     private void initApiServer() {
         try {
             server = HttpServer.create(new InetSocketAddress(8080), 0);

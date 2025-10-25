@@ -3,6 +3,9 @@ package domain.entity;
 import java.util.Set;
 import java.util.HashSet;
 
+/**
+ * Class representing the progress information of a file transfer task.
+ */
 public class ProgressInfo {
     private String id;
     private String status;
@@ -17,6 +20,14 @@ public class ProgressInfo {
     private long lastProgressUpdateTime = System.currentTimeMillis();
     private long timeoutThresholdMs = 120000; // 2 minutes default
 
+    /**
+     * Constructor to initialize ProgressInfo with essential details.
+     *
+     * @param id       Unique identifier for the progress task.
+     * @param status   Current status of the task.
+     * @param fileName Name of the file being transferred.
+     * @param taskType Type of the task (download/share).
+     */
     public ProgressInfo(String id, String status, String fileName, String taskType) {
         this.id = id;
         this.status = status;
@@ -24,34 +35,56 @@ public class ProgressInfo {
         this.taskType = taskType;
     }
 
+    /**
+     * Get the unique identifier of the progress task.
+     *
+     * @return The progress task ID.
+     */
     public String getId() {
         return id;
     }
 
-    public void setId(String id) {
-        this.id = id;
-    }
-
+    /**
+     * Get the current status of the task.
+     *
+     * @return The task status.
+     */
     public String getStatus() {
         return status;
     }
 
+    /**
+     * Set the current status of the task.
+     *
+     * @param status The new task status.
+     */
     public void setStatus(String status) {
         this.status = status;
     }
 
-    public int getProgressPercentage() {
-        return progressPercentage;
-    }
-
+    /**
+     * Set progress percentage.
+     *
+     * @param progressPercentage The progress percentage to set.
+     */
     public void setProgressPercentage(int progressPercentage) {
         this.progressPercentage = progressPercentage;
     }
 
+    /**
+     * Get Bytes transferred so far.
+     *
+     * @return The number of bytes transferred.
+     */
     public long getBytesTransferred() {
         return bytesTransferred;
     }
 
+    /**
+     * Set Bytes transferred so far.
+     *
+     * @param bytesTransferred The number of bytes transferred.
+     */
     public void setBytesTransferred(long bytesTransferred) {
         this.bytesTransferred = bytesTransferred;
     }
@@ -76,56 +109,12 @@ public class ProgressInfo {
         this.fileName = fileName;
     }
 
-    public Set<Integer> getDownloadedChunks() {
-        return downloadedChunks;
-    }
-
-    public void setDownloadedChunks(Set<Integer> downloadedChunks) {
-        this.downloadedChunks = downloadedChunks;
-    }
-
-    public void addDownloadedChunk(int chunkIndex) {
-        this.downloadedChunks.add(chunkIndex);
-    }
-
-    public boolean isChunkDownloaded(int chunkIndex) {
-        return this.downloadedChunks.contains(chunkIndex);
-    }
-
-    public String getFileHash() {
-        return fileHash;
-    }
-
-    public void setFileHash(String fileHash) {
-        this.fileHash = fileHash;
-    }
-
-    public String getSavePath() {
-        return savePath;
-    }
-
-    public void setSavePath(String savePath) {
-        this.savePath = savePath;
-    }
-
     public long getLastProgressUpdateTime() {
         return lastProgressUpdateTime;
     }
 
-    public void setLastProgressUpdateTime(long lastProgressUpdateTime) {
-        this.lastProgressUpdateTime = lastProgressUpdateTime;
-    }
-
     public void updateProgressTime() {
         this.lastProgressUpdateTime = System.currentTimeMillis();
-    }
-
-    public long getTimeoutThresholdMs() {
-        return timeoutThresholdMs;
-    }
-
-    public void setTimeoutThresholdMs(long timeoutThresholdMs) {
-        this.timeoutThresholdMs = timeoutThresholdMs;
     }
 
     public boolean isTimedOut() {
