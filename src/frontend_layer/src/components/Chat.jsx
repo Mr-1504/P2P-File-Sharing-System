@@ -26,7 +26,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                     style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
                 >
                     <div className="p-4 border-b border-gray-200">
-                        <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>Danh sách peer</h3>
+                        <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{t('peerList')}</h3>
                     </div>
                     <div className="flex-1 overflow-y-auto">
                         {peers.map(peer => (
@@ -146,7 +146,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                                         value={messageInput}
                                         onChange={(e) => setMessageInput(e.target.value)}
                                         onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                                        placeholder="Type a message"
+                                        placeholder={t('enter_message')}
                                         className="flex-1 outline-none text-black placeholder-gray-400"
                                     />
                                     <button

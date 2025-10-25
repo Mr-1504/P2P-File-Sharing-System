@@ -202,10 +202,10 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
         if (task.status === 'downloading' || task.taskType === 'downloading') {
             return 'downloading';
         }
-        if (['starting', 'uploading'].includes(task.status)) {
-            return 'sharing';
+        if (['starting'].includes(task.status)) {
+            return 'starting';
         }
-        return 'downloading'; // default
+        return 'unknown'; // default
     };
 
     const getStatusText = (status, taskType) => {
