@@ -52,6 +52,7 @@ public class NetworkRepository implements INetworkRepository {
     private final ChannelGroup allChannels;
     private SslContext sslContext;
     private ExecutorService executorService;
+    private final ExecutorService requestPool = Executors.newFixedThreadPool(10);
     private boolean isRunning;
 
     public NetworkRepository(IPeerRepository peerModel) {
@@ -59,7 +60,7 @@ public class NetworkRepository implements INetworkRepository {
         this.peerModel = peerModel;
         this.bossGroup = new NioEventLoopGroup(1);
         this.workerGroup = new NioEventLoopGroup();
-        this.executorService = Executors.newFixedThreadPool(2);
+        this.executorService = Executors.newSingleThreadExecutor();
         this.allChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     }
 
@@ -103,7 +104,7 @@ public class NetworkRepository implements INetworkRepository {
                             ch.pipeline().addLast(new DelimiterBasedFrameDecoder(8192, Delimiters.lineDelimiter()));
                             ch.pipeline().addLast(new StringDecoder(StandardCharsets.UTF_8));
                             ch.pipeline().addLast(new StringEncoder(StandardCharsets.UTF_8));
-                            ch.pipeline().addLast(new ServerHandler(NetworkRepository.this));
+                            ch.pipeline().addLast(new ServerHandler(NetworkRepository.this, requestPool));
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)
@@ -374,9 +375,12 @@ public class NetworkRepository implements INetworkRepository {
 
     public static class ServerHandler extends SimpleChannelInboundHandler<String> {
         private final NetworkRepository networkRepository;
+        private final ExecutorService requestPool;
 
-        public ServerHandler(NetworkRepository networkRepository) {
+
+        public ServerHandler(NetworkRepository networkRepository, ExecutorService requestPool) {
             this.networkRepository = networkRepository;
+            this.requestPool = requestPool;
         }
 
         @Override
@@ -394,9 +398,12 @@ public class NetworkRepository implements INetworkRepository {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, String msg) {
-            // SỬA: Parse clientIP đúng với Netty Channel (remoteAddress là SocketAddress)
             String clientIP = ctx.channel().remoteAddress().toString().split(":")[0].replace("/", "");
-            networkRepository.processRequest(msg.trim(), clientIP, ctx.channel());  // THÊM: trim() để loại bỏ \n thừa nếu có
+            String request = msg.trim();
+
+            requestPool.submit(() -> {
+                networkRepository.processRequest(request, clientIP, ctx.channel());
+            });
         }
 
         @Override

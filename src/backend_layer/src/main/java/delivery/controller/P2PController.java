@@ -304,14 +304,12 @@ public class P2PController {
     }
 
     private void refreshFileList() {
-        executor.submit(() -> {
-            try {
-                service.refreshFiles();
-                updateApiFiles();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        try {
+            service.refreshFiles();
+            updateApiFiles();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void updateApiFiles() {
