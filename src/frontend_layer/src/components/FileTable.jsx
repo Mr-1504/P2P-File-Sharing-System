@@ -14,7 +14,7 @@ const FileTable = ({ files, onDownload, onStopSharing, onShareToPeers, isLoading
     return (
         <div className="overflow-x-auto bg-white rounded-xl shadow-lg border border-gray-100">
             <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-700 text-white">
+                <thead className="bg-sky-700 text-white">
                     <tr>
                         <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">{t('fileName')}</th>
                         <th className="px-6 py-4 text-left text-sm font-semibold tracking-wide">{t('fileSize')}</th>

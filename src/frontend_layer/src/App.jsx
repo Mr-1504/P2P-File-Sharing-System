@@ -102,7 +102,6 @@ function App() {
             } catch (error) {
                 console.error('Error during app initialization:', error);
                 addNotification('Lỗi khởi tạo ứng dụng', true);
-                // Show dialog anyway if can't check
                 setShowUsernameDialog(true);
                 setShowSplash(false);
             }
@@ -172,47 +171,106 @@ function App() {
                 </div>
             )}
             <div className={`container mx-auto p-8 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-700`}>
-                <div className="flex justify-between items-center mb-10">
-                    <div className="flex items-center space-x-4">
-                        <img src={logo} alt="P2P File Sharing Logo" className="w-12 h-12 rounded-xl shadow-lg" />
-                        <h1 className="text-4xl font-extrabold text-gray-800 tracking-tight">{t('title')}</h1>
-                    </div>
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <img src={logo} alt="logo" className="w-14 h-14 rounded-2xl shadow" />
+                    <h1 className="text-2xl font-extrabold tracking-wide text-sky-700">P2P FILE SHARING</h1>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          title={t('tasks')}
+                          onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
+                          className="
+                            h-10 w-10 rounded-full
+                            grid place-items-center
+                            border border-gray-200 bg-white hover:bg-gray-50 shadow-sm
+                            focus:outline-none focus:ring-2 focus:ring-sky-300
+                          "
+                          aria-label={t('tasks')}
+                        >
+                          <svg className="w-5 h-5 text-sky-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </button>
+
                     <button
-                        onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
-                        className={`p-4 rounded-xl transition-all duration-300 relative ${activeTab === 'tasks' ? 'modern-button' : 'bg-white hover:bg-blue-50 shadow-md border border-gray-200'} ${isNewTask ? 'animate-pulse' : ''}`}
-                        title={t('tasks')}
+                      type="button"
+                      onClick={() => changeLanguage(language === 'vi' ? 'en' : 'vi')}
+                      className="
+                        relative h-12 w-40 rounded-full p-1 text-white
+                        shadow-[inset_0_-2px_6px_rgba(0,0,0,.25)]
+                        bg-gradient-to-r from-[#1a74fd] via-[#23a1f0] to-[#3aceb2]
+                        focus:outline-none focus:ring-2 focus:ring-white/70
+                      "
+                      role="switch"
+                      aria-checked={language === 'en'}
+                      title={language === 'vi' ? 'Chuyển sang English' : 'Switch to Vietnamese'}
                     >
-                        <svg className={`w-6 h-6 ${activeTab === 'tasks' ? 'text-white' : 'text-blue-600'} ${isNewTask ? 'animate-bounce' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      <span
+                        className={`
+                          absolute left-1 top-1 h-10 w-10 rounded-full bg-white
+                          ring-1 ring-black/10 shadow-md grid place-items-center
+                          transition-transform duration-300 ease-out
+                          ${language === 'en' ? 'translate-x-[113px]' : 'translate-x-0'}
+                        `}
+                      >
+                        <svg width="36" height="36" viewBox="0 0 38 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M32 7L29.038 9.26683C28.6891 9.53387 28.2619 9.67857 27.8225 9.67857H20.9972C20.2339 9.67857 19.5371 10.1131 19.2012 10.7985L18.6906 11.8406C18.2852 12.668 18.4975 13.6654 19.2048 14.2559L25.1576 19.2258C26.6989 20.5126 27.4944 22.485 27.2771 24.4811L26.8401 28.4942C26.7802 29.0442 26.6634 29.5865 26.4916 30.1124L25.875 32" stroke="#196BAD" stroke-width="2"/>
+                            <path d="M2 15.75L9.90349 14.4533C11.2577 14.2312 12.4283 15.4077 12.1992 16.7608L11.3866 21.5601C11.0913 23.3044 11.9769 25.0355 13.5641 25.8167L15.8186 26.9264C17.0903 27.5523 17.7504 28.9827 17.4015 30.3565L16.2222 35" stroke="#196BAD" stroke-width="2"/>
+                            <circle cx="19" cy="18" r="17" stroke="#196BAD" stroke-width="2"/>
                         </svg>
-                        {tasks.length > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold shadow-md animate-pulse">
-                                {tasks.length}
-                            </span>
-                        )}
+                      </span>
+
+                      <span
+                        className={`
+                          absolute left-14 top-1/2 -translate-y-1/2 font-semibold tracking-wide
+                          transition-opacity duration-200
+                          ${language === 'en' ? 'opacity-0' : 'opacity-100'}
+                        `}
+                      >
+                        Tiếng Việt
+                      </span>
+
+                      <span
+                        className={`
+                          absolute right-14 top-1/2 -translate-y-1/2 font-semibold tracking-wide
+                          transition-opacity duration-200
+                          ${language === 'en' ? 'opacity-100' : 'opacity-0'}
+                        `}
+                      >
+                        English
+                      </span>
                     </button>
+
+                  </div>
                 </div>
-                <div className="modern-tab flex space-x-2 mb-8 p-3">
-                    <button
+
+                <div className="flex justify-center mb-6">
+                  <div className="bg-sky-800 rounded-full p-1 w-[520px]">
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
                         onClick={() => setActiveTab('files')}
-                        className={`modern-tab-button flex-1 py-4 text-lg font-semibold flex items-center justify-center space-x-3 ${activeTab === 'files' ? 'active' : 'text-gray-700 hover:text-blue-600'}`}
-                    >
-                        <svg className={`w-5 h-5 ${activeTab === 'files' ? 'text-white' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                        <span>{t('files')}</span>
-                    </button>
-                    <button
+                        className={`rounded-full py-2 font-semibold ${
+                          activeTab === 'files' ? 'bg-white text-[#196BAD]' : 'text-white hover:text-white'
+                        }`}
+                      >
+                        File
+                      </button>
+                      <button
                         onClick={() => setActiveTab('chat')}
-                        className={`modern-tab-button flex-1 py-4 text-lg font-semibold flex items-center justify-center space-x-3 ${activeTab === 'chat' ? 'active' : 'text-gray-700 hover:text-blue-600'}`}
-                    >
-                        <svg className={`w-5 h-5 ${activeTab === 'chat' ? 'text-white' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                        </svg>
-                        <span>{t('chat')}</span>
-                    </button>
+                        className={`rounded-full py-2 font-semibold ${
+                          activeTab === 'chat' ? 'bg-white/90 text-[#196BAD]' : 'text-white/90 hover:text-white'
+                        }`}
+                      >
+                        Chat
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                {/* Tab Content */}
+
                 {activeTab === 'files' && (
                     <FilesPage
                         isLoading={isLoading}
@@ -248,7 +306,7 @@ function App() {
                     />
                 )}
             </div>
-            {/* Notifications */}
+
             <div className="fixed top-4 right-4 z-50 space-y-2">
                 {notifications.map((notification) => (
                     <Notification
