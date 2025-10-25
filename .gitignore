@@ -7,3 +7,4 @@ desktop.ini
 *.env
 /src/Tracker/out
 /.idea
+/src/Tracker/.idea
