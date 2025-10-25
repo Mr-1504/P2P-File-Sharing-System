@@ -212,6 +212,7 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPol
     };
 
     const handleRefresh = () => {
+        setSearchTerm('');
         fetchFiles();
     };
 
