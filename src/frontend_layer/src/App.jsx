@@ -26,7 +26,7 @@ function App() {
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
 
   const { notifications, addNotification, removeNotification } = useNotifications();
-  const { tasks, setTasks, taskMap, handleResume } = useTasks(addNotification);
+  const { tasks, setTasks, taskMap, handleResume, startPolling } = useTasks(addNotification);
 
   const prevTasksLength = useRef(0);
 
@@ -282,6 +282,7 @@ function App() {
             setIsLoading={setIsLoading}
             addNotification={addNotification}
             taskMap={taskMap}
+            startPolling={startPolling}
             files={files}
             setFiles={setFiles}
             searchTerm={searchTerm}

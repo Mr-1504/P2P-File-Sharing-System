@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { buildApiUrl } from '../utils/config';
 
@@ -7,9 +7,27 @@ export const useTasks = (addNotification) => {
     const [tasks, setTasks] = useState([]);
     const [taskTimeouts, setTaskTimeouts] = useState({});
     const [taskMap] = useState(new Map());
+    const [progressIntervalId, setProgressIntervalId] = useState(null);
+
+    const startPolling = useCallback(() => {
+        if (!progressIntervalId) {
+            const id = setInterval(queryProgress, 2000);
+            setProgressIntervalId(id);
+        }
+    }, [progressIntervalId]);
+
+    const stopPolling = useCallback(() => {
+        if (progressIntervalId) {
+            clearInterval(progressIntervalId);
+            setProgressIntervalId(null);
+        }
+    }, [progressIntervalId]);
 
     const queryProgress = async () => {
-        if (taskMap.size === 0) return;
+        if (taskMap.size === 0) {
+            stopPolling();
+            return;
+        }
 
         let allCompleted = true;
         taskMap.forEach((info, id) => {
@@ -18,7 +36,10 @@ export const useTasks = (addNotification) => {
             }
         });
 
-        if (allCompleted) return;
+        if (allCompleted) {
+            stopPolling();
+            return;
+        }
 
         try {
             const response = await fetch(buildApiUrl('/api/progress'), {
@@ -161,14 +182,19 @@ export const useTasks = (addNotification) => {
     };
 
     useEffect(() => {
-        const interval = setInterval(queryProgress, 2000);
-        return () => clearInterval(interval);
-    }, []);
+        // Không cần polling tự động nữa, sẽ start khi có tasks
+        return () => {
+            if (progressIntervalId) {
+                clearInterval(progressIntervalId);
+            }
+        };
+    }, [progressIntervalId]);
 
     return {
         tasks,
         setTasks,
         taskMap,
-        handleResume
+        handleResume,
+        startPolling
     };
 };

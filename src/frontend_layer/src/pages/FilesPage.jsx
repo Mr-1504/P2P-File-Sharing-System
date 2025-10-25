@@ -8,7 +8,7 @@ import IconClip from '../assets/link_icon.svg';
 import IconSearch from '../assets/search_icon.svg';
 import IconRefresh from '../assets/refresh_icon.svg';
 
-const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
+const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPolling }) => {
     const { t, i18n } = useTranslation();
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -161,6 +161,7 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
                 status: 'starting',
                 taskType: 'downloading'
             });
+            startPolling();
         } catch (error) {
             addNotification(t('error_downloading_file', { error: error.message }), true);
             console.error('Error in handleDownload:', error);
@@ -238,6 +239,7 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
                 status: 'starting',
                 taskType: 'sharing'
             });
+            startPolling();
             addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
         } catch (error) {
             addNotification(t('error_sharing_file', { error: error.message }), true);
@@ -269,6 +271,7 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
                     status: 'starting',
                     taskType: 'sharing'
                 });
+                startPolling();
                 fetchFiles();
             } else {
                 const errorData = await response.json();
@@ -288,7 +291,6 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
 
     return (
         <div>
-
             <div className="text-center mb-6">
               <div
                 role="button"
