@@ -10,3 +10,6 @@ desktop.ini
 /src/Tracker/.idea
 src/Tracker/Tracker.iml
 src/Tracker/backend_layer.iml
+/out
+P2P-File-Sharing-System.iml
+*.jar
