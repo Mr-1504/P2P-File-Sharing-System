@@ -1,4 +1,4 @@
-package src.model;
+package model;
 
 import java.io.*;
 import java.lang.reflect.Type;
@@ -16,14 +16,14 @@ import java.util.Scanner;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import src.adapter.FileInfoAdapter;
-import src.adapter.PeerInfoAdapter;
-import src.utils.*;
+import adapter.FileInfoAdapter;
+import adapter.PeerInfoAdapter;
+import utils.*;
 
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
 
-import static src.utils.Log.*;
+import static utils.Log.*;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<PeerInfo> knownPeers;
