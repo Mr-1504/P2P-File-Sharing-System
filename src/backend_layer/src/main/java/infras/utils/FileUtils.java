@@ -1,13 +1,13 @@
-package main.java.infras.utils;
+package infras.utils;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.utils.AppPaths;
-import main.java.utils.Config;
-import main.java.utils.Log;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import utils.AppPaths;
+import utils.Config;
+import utils.Log;
 
 import java.io.*;
 import java.lang.reflect.Type;

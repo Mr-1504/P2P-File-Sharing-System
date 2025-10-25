@@ -9,6 +9,7 @@ import Notification from './components/Notification';
 import UsernameDialog from './components/UsernameDialog';
 import { useNotifications } from './hooks/useNotifications';
 import { useTasks } from './hooks/useTasks';
+import { Globe2, Clock } from 'lucide-react';
 // import './styles/App.css';
 
 import { buildApiUrl } from './utils/config';
@@ -21,8 +22,6 @@ function App() {
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [language, setLanguage] = useState('vi');
-    const [messages, setMessages] = useState({});
-    const [selectedPeer, setSelectedPeer] = useState(null);
     const [isNewTask, setIsNewTask] = useState(false);
     const [showUsernameDialog, setShowUsernameDialog] = useState(false);
 
@@ -138,31 +137,13 @@ function App() {
         fetchFiles();
     };
 
-
-
-    const handleSendMessage = (peerId, text) => {
-        const newMessage = { sender: 'You', text, timestamp: new Date().toLocaleTimeString() };
-        setMessages(prev => ({
-            ...prev,
-            [peerId]: [...(prev[peerId] || []), newMessage]
-        }));
-        addNotification(t('message_sent'), false);
-        setTimeout(() => {
-            const responseMessage = { sender: `Peer ${peerId}`, text: 'Tin nhắn nhận được!', timestamp: new Date().toLocaleTimeString() };
-            setMessages(prev => ({
-                ...prev,
-                [peerId]: [...prev[peerId], responseMessage]
-            }));
-        }, 1000);
-    };
-
     return (
         <>
             {showSplash && (
                 <div className="fixed inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 bg-opacity-95 flex flex-col items-center justify-center z-50 animate-fade-in backdrop-blur-sm">
                     <div className="relative">
-                        <svg className="w-24 h-24 mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        <svg className="w-[55px] h-[55px] mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
                         <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30 animate-ping"></div>
                     </div>
@@ -292,10 +273,6 @@ function App() {
                 {activeTab === 'chat' && (
                     <ChatPage
                         addNotification={addNotification}
-                        messages={messages}
-                        onSendMessage={handleSendMessage}
-                        selectedPeer={selectedPeer}
-                        setSelectedPeer={setSelectedPeer}
                     />
                 )}
                 {activeTab === 'tasks' && (

@@ -1,17 +1,17 @@
-package main.java.infras.subrepo;
+package infras.subrepo;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import main.java.domain.adapter.PeerInfoAdapter;
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.repository.IPeerDiscoveryRepository;
-import main.java.domain.repository.IPeerRepository;
-import main.java.utils.Config;
-import main.java.utils.Log;
-import main.java.infras.utils.SSLUtils;
-import main.java.utils.RequestInfor;
+import domain.adapter.PeerInfoAdapter;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.repository.IPeerDiscoveryRepository;
+import domain.repository.IPeerRepository;
+import utils.Config;
+import utils.Log;
+import infras.utils.SSLUtils;
+import utils.RequestInfor;
 
 import javax.net.ssl.SSLSocket;
 import java.io.BufferedReader;

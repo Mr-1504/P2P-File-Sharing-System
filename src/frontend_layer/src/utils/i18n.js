@@ -5,7 +5,7 @@ i18n.use(initReactI18next).init({
   resources: {
     vi: {
       translation: {
-        title: "P2P File Sharing",
+        title: "P2P FILE SHARING",
         files: "Tệp",
         tasks: "Tác vụ",
         chat: "Chat",
@@ -90,7 +90,7 @@ i18n.use(initReactI18next).init({
     },
     en: {
       translation: {
-        title: "P2P File Sharing",
+        title: "P2P FILE SHARING",
         files: "Files",
         tasks: "Tasks",
         chat: "Chat",

@@ -1,12 +1,12 @@
-package main.java.delivery.controller;
+package delivery.controller;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.delivery.api.IP2PApi;
-import main.java.service.*;
-import main.java.utils.AppPaths;
-import main.java.utils.LogTag;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import delivery.api.IP2PApi;
+import service.*;
+import utils.AppPaths;
+import utils.LogTag;
 
 import java.io.File;
 import java.util.List;
@@ -20,18 +20,19 @@ public class P2PController {
     private final INetworkService networkService;
     private final IP2PApi api;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
-    private boolean isConnected = false;
-    private boolean isLoadSharedFiles = false;
-    private boolean isRetrying = false;
+    private volatile boolean isConnected = false;
+    private volatile boolean isLoadSharedFiles = false;
+    private volatile boolean isRetrying = false;
 
     // Username state management - blocks full initialization until set
     private String username = null;
-    private boolean isInitialized = false;
+    private volatile boolean isInitialized = false;
 
     public P2PController(IFileService service, INetworkService networkService, IP2PApi api) {
         this.service = service;
         this.networkService = networkService;
         this.api = api;
+        this.username = AppPaths.loadUsername();
         setupApiRoutes();
     }
 
@@ -49,15 +50,7 @@ public class P2PController {
     }
 
     public synchronized boolean setUsername(String inputUsername) {
-        if (this.username != null) {
-            return false; // Already set
-        }
-
-        if (inputUsername == null || inputUsername.trim().isEmpty()) {
-            return false; // Invalid username
-        }
-
-        this.username = inputUsername.trim();
+        this.username = inputUsername;
 
         // Save to backend
         if (!AppPaths.saveUsername(this.username)) {
@@ -76,7 +69,9 @@ public class P2PController {
     public synchronized boolean checkUsernameExists() {
         if (this.username == null) {
             this.username = AppPaths.loadUsername();
+            System.out.println("Loaded " + username);
         }
+        System.out.println(username);
         return this.username != null;
     }
 
@@ -249,9 +244,7 @@ public class P2PController {
                 retryConnectToTracker();
                 return "Not connected";
             }
-            // Convert model FileInfor to domain FileInfo
-            FileInfo domainFile = convertToDomainFileInfo(file);
-            return downloadFile(domainFile, savePath);
+            return downloadFile(file, savePath);
         });
 
         api.setRouteForCheckFile(fileName -> {

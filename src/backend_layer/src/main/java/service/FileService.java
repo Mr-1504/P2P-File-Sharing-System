@@ -1,11 +1,12 @@
-package main.java.service;
+package service;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.infras.repository.PeerRepository;
-import main.java.utils.AppPaths;
-import main.java.utils.LogTag;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import infras.repository.PeerRepository;
+import utils.AppPaths;
+import utils.Log;
+import utils.LogTag;
 
 import java.io.File;
 import java.util.List;
@@ -26,14 +27,17 @@ public class FileService implements IFileService {
             File saveFile = new File(savePath);
 
             if (!saveFile.getParentFile().exists()) {
+                Log.logError("Save directory does not exist", null);
                 return "Save directory does not exist";
             }
             if (!saveFile.getParentFile().canWrite()) {
+                Log.logError("No write permission for save directory", null);
                 return "No write permission for save directory";
             }
 
             List<PeerInfo> peers = peerModel.getPeersWithFile(fileInfo.getFileHash());
             if (peers == null || peers.isEmpty()) {
+                Log.logError("No peers found with this file", null);
                 return "No peers found with this file";
             }
 

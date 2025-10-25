@@ -1,11 +1,9 @@
-package main.java.domain.repository;
-
-import java.nio.channels.SocketChannel;
+package domain.repository;
 
 public interface INetworkRepository {
     void initializeServerSocket(String username) throws Exception;
     void startServer();
     void startUDPServer();
     int registerWithTracker();
-    String processSSLRequest(SocketChannel socketChannel, String request);
+    void processRequest(String request, String clientIP, io.netty.channel.Channel channel);
 }

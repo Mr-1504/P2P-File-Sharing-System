@@ -1,17 +1,15 @@
-package main.java.delivery.api;
+package delivery.api;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.google.gson.reflect.TypeToken;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.delivery.dto.CleanupRequest;
-import main.java.utils.LogTag;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import delivery.dto.CleanupRequest;
+import utils.LogTag;
 
-import java.lang.reflect.Type;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 
@@ -26,8 +24,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-import static main.java.utils.Log.logError;
-import static main.java.utils.Log.logInfo;
+import static utils.Log.logError;
+import static utils.Log.logInfo;
 
 public class P2PApi implements IP2PApi {
     private HttpServer server;
@@ -329,7 +327,7 @@ public class P2PApi implements IP2PApi {
                                             jsonError(LogTag.S_NOT_CONNECTION));
                                     return;
                                 }
-                                String response = gson.toJson(Collections.singletonMap("status", "downloaded"));
+                                String response = gson.toJson(Collections.singletonMap("status", "starting"));
                                 logInfo(response);
                                 sendResponse(exchange, LogTag.OK, response);
                                 return;

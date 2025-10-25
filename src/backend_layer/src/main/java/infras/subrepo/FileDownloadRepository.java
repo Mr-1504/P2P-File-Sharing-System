@@ -1,38 +1,38 @@
-package main.java.infras.subrepo;
+package infras.subrepo;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
-import main.java.domain.entity.ProgressInfo;
-import main.java.domain.repository.IFileDownloadRepository;
-import main.java.domain.repository.IPeerRepository;
-import main.java.infras.utils.FileUtils;
-import main.java.infras.utils.SSLUtils;
-import main.java.utils.Config;
-import main.java.utils.Log;
-import main.java.utils.LogTag;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
+import domain.entity.ProgressInfo;
+import domain.repository.IFileDownloadRepository;
+import domain.repository.IPeerRepository;
+import infras.utils.FileUtils;
+import infras.utils.SSLUtils;
+import utils.Config;
+import utils.Log;
+import utils.LogTag;
 
 import javax.net.ssl.SSLSocket;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class FileDownloadRepository implements IFileDownloadRepository {
 
     private final IPeerRepository peerModel;
+    private final ExecutorService executorService;
 
     public FileDownloadRepository(IPeerRepository peerModel) {
         this.peerModel = peerModel;
+        this.executorService = Executors.newFixedThreadPool(10);
     }
 
     @Override
     public void downloadFile(FileInfo fileInfo, File file, List<PeerInfo> peerInfos, String progressId) {
-        this.peerModel.getExecutor().submit(() -> this.processDownload(fileInfo, file, progressId, peerInfos));
+        this.executorService.submit(() -> this.processDownload(fileInfo, file, progressId, peerInfos));
     }
 
     @Override
@@ -137,7 +137,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                 return LogTag.I_CANCELLED;
             }
 
-            while (((ThreadPoolExecutor) this.peerModel.getExecutor()).getActiveCount() >= 6) {
+            while (((ThreadPoolExecutor) executorService).getActiveCount() >= 6) {
                 Thread.sleep(50L);
                 if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
                     return LogTag.I_CANCELLED;
@@ -192,7 +192,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                 Log.logInfo("Retrying to download chunk " + chunkIndex + " from peer " + peerInfo.getIp() + ":" + peerInfo.getPort() + " (attempt " + (i + 1) + ")");
                 peerInfo.addTaskForDownload();
                 peerOfChunk.computeIfAbsent(chunkIndex, (v) -> new ArrayList<>()).add(peerInfo);
-                Future<Boolean> future = this.peerModel.getExecutor().submit(() -> {
+                Future<Boolean> future = this.executorService.submit(() -> {
                     this.peerModel.getFileLock().lock();
 
                     boolean result;
@@ -276,43 +276,29 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                     Log.logInfo("Process cancelled by user while downloading chunk " + chunkIndex + " from peer " + peerInfo.toString());
                     return false;
                 }
-
-                try (SSLSocket sslSocket = SSLUtils.createSecureSocket(peerInfo)) {
+                SSLSocket sslSocket = null;
+                try {
+                    sslSocket = SSLUtils.createSecureSocket(peerInfo);
                     String fileHash = file.getFileHash();
                     String request = "GET_CHUNK|" + fileHash + "|" + chunkIndex + "\n";
                     sslSocket.getOutputStream().write(request.getBytes());
+                    sslSocket.getOutputStream().flush();
 
                     DataInputStream dis = new DataInputStream(sslSocket.getInputStream());
 
-                    // Read chunk index (4 bytes)
                     int receivedIndex = dis.readInt();
+                    int chunkLength = dis.readInt();
 
-                    if (receivedIndex == chunkIndex) {
-                        // Read chunk data
-                        ByteArrayOutputStream chunkData = new ByteArrayOutputStream();
-                        byte[] buffer = new byte[8192];
-                        int bytesRead;
-                        long startTime = System.currentTimeMillis();
+                    if (receivedIndex == chunkIndex && chunkLength > 0) {
+                        byte[] chunkDataByteArray = new byte[chunkLength];
+                        dis.readFully(chunkDataByteArray);
 
-                        while (System.currentTimeMillis() - startTime < 5000L) {
-                            if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) || Thread.currentThread().isInterrupted()) {
-                                Log.logInfo("Process cancelled by user while reading chunk data from peer " + peerInfo);
-                                return false;
-                            }
-
-                            if (dis.available() > 0) {
-                                bytesRead = dis.read(buffer);
-                                if (bytesRead == -1) {
-                                    break;
-                                }
-                                chunkData.write(buffer, 0, bytesRead);
-                            } else {
-                                Thread.sleep(100L);
-                            }
+                        if (new String(chunkDataByteArray, StandardCharsets.UTF_8).equals("ACCESS_DENIED")) {
+                            Log.logInfo("Access denied for chunk " + chunkIndex + " from peer " + peerInfo);
+                            return false;
                         }
 
-                        byte[] chunkDataByteArray = chunkData.toByteArray();
-                        if (chunkDataByteArray.length != 0) {
+                        if (chunkLength > 0) {
                             synchronized (raf) {
                                 raf.seek((long) chunkIndex * (long) Config.CHUNK_SIZE);
                                 raf.write(chunkDataByteArray);
@@ -324,7 +310,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                             ProgressInfo progress = peerModel.getProcesses().get(progressId);
                             if (progress != null) {
                                 synchronized (progress) {
-                                    progress.addBytesTransferred(chunkDataByteArray.length);
+                                    progress.addBytesTransferred(chunkLength);
                                     progress.setProgressPercentage(percent);
                                     progress.updateProgressTime();
                                 }
@@ -332,9 +318,17 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                             Log.logInfo("Successfully downloaded chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
                             return true;
                         }
+
+                        if (receivedIndex == -1) {
+                            byte[] errorData = new byte[chunkLength];
+                            dis.readFully(errorData);
+                            String errorMsg = new String(errorData, StandardCharsets.UTF_8);
+                            Log.logInfo("Received error (" + errorMsg + ") for chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
+                        } else {
+                            Log.logInfo("Failed to receive valid chunk " + chunkIndex + " from peer " + peerInfo + ". Index received: " + receivedIndex + ", Length: " + chunkLength);
+                        }
                     }
 
-                    Log.logInfo("Failed to receive valid chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + ")");
                 } catch (InterruptedException | IOException e) {
                     Log.logError("SSL Error downloading chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + "): " + e.getMessage(), e);
 
@@ -348,6 +342,13 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                 } catch (Exception e) {
                     Log.logError("SSL Unexpected error downloading chunk " + chunkIndex + " from peer " + peerInfo + " (attempt " + i + "): " + e.getMessage(), e);
                     return false;
+                } finally {
+                    if (sslSocket != null) {
+                        try {
+                            sslSocket.close();
+                        } catch (IOException ignore) {
+                        }
+                    }
                 }
             }
 

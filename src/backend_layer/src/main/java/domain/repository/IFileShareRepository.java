@@ -1,7 +1,7 @@
-package main.java.domain.repository;
+package domain.repository;
 
-import main.java.domain.entity.FileInfo;
-import main.java.domain.entity.PeerInfo;
+import domain.entity.FileInfo;
+import domain.entity.PeerInfo;
 
 import java.io.File;
 import java.util.List;

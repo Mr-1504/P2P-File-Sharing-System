@@ -1,6 +1,6 @@
-package main.java.domain.repository;
+package domain.repository;
 
-import main.java.domain.entity.PeerInfo;
+import domain.entity.PeerInfo;
 
 import java.util.List;
 import java.util.Set;
