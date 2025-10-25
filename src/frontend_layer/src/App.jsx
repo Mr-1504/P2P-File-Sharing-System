@@ -101,7 +101,6 @@ function App() {
             } catch (error) {
                 console.error('Error during app initialization:', error);
                 addNotification('Lỗi khởi tạo ứng dụng', true);
-                // Show dialog anyway if can't check
                 setShowUsernameDialog(true);
                 setShowSplash(false);
             }
@@ -152,91 +151,107 @@ function App() {
                     <div className="w-16 h-16 border-4 border-t-transparent border-white rounded-full animate-spin shadow-lg"></div>
                 </div>
             )}
-            <div className={`container mx-auto p-8 max-w-7xl bg-white ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-700`}>
-                <div className="flex justify-between items-center mb-10">
-                    <div className="flex items-center space-x-4 ml-[62px]">
-                        <img src={logo} alt="P2P File Sharing Logo" className="w-12 h-12 rounded-xl shadow-lg ml-[-4px]" />
-                        <h1
-                            className="
-                                text-[28px] leading-[125%]
-                                font-semibold italic
-                                bg-gradient-to-r from-[#1A73FF] via-[#27A1DD] to-[#35D0BA]
-                                bg-clip-text text-transparent
-                                tracking-tight
-                            "
-                            style={{ fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}
-                        >
-                            {t('title')}
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-4">
+            <div className={`container mx-auto p-8 max-w-7xl ${showSplash ? 'opacity-0' : 'opacity-100'} transition-opacity duration-700`}>
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <img src={logo} alt="logo" className="w-14 h-14 rounded-2xl shadow" />
+                    <h1 className="text-2xl font-extrabold tracking-wide text-sky-700">P2P FILE SHARING</h1>
+                  </div>
+
+                  <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
-                            className={`
-                                rounded-md bg-[#C9DEEF] border border-[#1A73FF33] flex items-center justify-center shadow-sm hover:brightness-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A73FF]
-                                relative
-                                transition-all duration-300
-                                ${isNewTask ? 'animate-pulse' : ''}
-                            `}
-                            title={t('tasks')}
-                            aria-label="Tasks"
-                            style={{ width: '55px', height: '55px' }}
+                          type="button"
+                          title={t('tasks')}
+                          onClick={() => setActiveTab(activeTab === 'tasks' ? 'files' : 'tasks')}
+                          className="
+                            h-10 w-10 rounded-full
+                            grid place-items-center
+                            border border-gray-200 bg-white hover:bg-gray-50 shadow-sm
+                            focus:outline-none focus:ring-2 focus:ring-sky-300
+                          "
+                          aria-label={t('tasks')}
                         >
-                            <Clock className="w-5 h-5 text-[#1A73FF]" aria-hidden />
-                            {tasks.length > 0 && (
-                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold shadow-md animate-pulse">
-                                    {tasks.length}
-                                </span>
-                            )}
+                          <svg className="w-5 h-5 text-sky-700" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
                         </button>
-                        <button
-                            onClick={() => changeLanguage(language === 'vi' ? 'en' : 'vi')}
-                            className="p-3 rounded-xl bg-white hover:bg-blue-50 shadow-md border border-gray-200 flex items-center justify-center gap-2"
-                            title={language === 'vi' ? 'Switch to English' : 'Chuyển sang Tiếng Việt'}
-                            aria-label="Toggle language"
-                            style={{ width: '150px' }}
-                        >
-                            <span className="whitespace-nowrap" style={{ color: '#196BAD', fontFamily: 'DM Sans', fontWeight: 'bold', fontSize: '15px' }}>
-                                {language === 'vi' ? 'Tiếng Việt' : 'English'}
-                            </span>
-                            <Globe2 className="w-9 h-9 text-[#1A73FF]" />
-                        </button>
-                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => changeLanguage(language === 'vi' ? 'en' : 'vi')}
+                      className="
+                        relative h-12 w-40 rounded-full p-1 text-white
+                        shadow-[inset_0_-2px_6px_rgba(0,0,0,.25)]
+                        bg-gradient-to-r from-[#1a74fd] via-[#23a1f0] to-[#3aceb2]
+                        focus:outline-none focus:ring-2 focus:ring-white/70
+                      "
+                      role="switch"
+                      aria-checked={language === 'en'}
+                      title={language === 'vi' ? 'Chuyển sang English' : 'Switch to Vietnamese'}
+                    >
+                      <span
+                        className={`
+                          absolute left-1 top-1 h-10 w-10 rounded-full bg-white
+                          ring-1 ring-black/10 shadow-md grid place-items-center
+                          transition-transform duration-300 ease-out
+                          ${language === 'en' ? 'translate-x-[113px]' : 'translate-x-0'}
+                        `}
+                      >
+                        <svg width="36" height="36" viewBox="0 0 38 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M32 7L29.038 9.26683C28.6891 9.53387 28.2619 9.67857 27.8225 9.67857H20.9972C20.2339 9.67857 19.5371 10.1131 19.2012 10.7985L18.6906 11.8406C18.2852 12.668 18.4975 13.6654 19.2048 14.2559L25.1576 19.2258C26.6989 20.5126 27.4944 22.485 27.2771 24.4811L26.8401 28.4942C26.7802 29.0442 26.6634 29.5865 26.4916 30.1124L25.875 32" stroke="#196BAD" stroke-width="2"/>
+                            <path d="M2 15.75L9.90349 14.4533C11.2577 14.2312 12.4283 15.4077 12.1992 16.7608L11.3866 21.5601C11.0913 23.3044 11.9769 25.0355 13.5641 25.8167L15.8186 26.9264C17.0903 27.5523 17.7504 28.9827 17.4015 30.3565L16.2222 35" stroke="#196BAD" stroke-width="2"/>
+                            <circle cx="19" cy="18" r="17" stroke="#196BAD" stroke-width="2"/>
+                        </svg>
+                      </span>
+
+                      <span
+                        className={`
+                          absolute left-14 top-1/2 -translate-y-1/2 font-semibold tracking-wide
+                          transition-opacity duration-200
+                          ${language === 'en' ? 'opacity-0' : 'opacity-100'}
+                        `}
+                      >
+                        Tiếng Việt
+                      </span>
+
+                      <span
+                        className={`
+                          absolute right-14 top-1/2 -translate-y-1/2 font-semibold tracking-wide
+                          transition-opacity duration-200
+                          ${language === 'en' ? 'opacity-100' : 'opacity-0'}
+                        `}
+                      >
+                        English
+                      </span>
+                    </button>
+
+                  </div>
                 </div>
-                {/* Tabs (Pill style) */}
-                <div className="w-full max-w-[763px] mx-auto mb-8">
-                  {/* Nền xanh pill */}
-                  <div className="bg-[#196BAD] rounded-full p-1 border-2 border-[#196BAD] shadow-sm">
-                    <div className="flex">
-                      {/* FILE */}
+
+                <div className="flex justify-center mb-6">
+                  <div className="bg-sky-800 rounded-full p-1 w-[520px]">
+                    <div className="grid grid-cols-2 gap-1">
                       <button
                         onClick={() => setActiveTab('files')}
-                        aria-pressed={activeTab === 'files'}
-                        className={`flex-1 py-[9px] text-[18px] font-semibold tracking-tight rounded-full transition-all duration-200 focus:outline-none ${
-                          activeTab === 'files'
-                            ? 'bg-white text-[#196BAD] ring-2 ring-[#196BAD]' // ACTIVE: nền trắng viền xanh
-                            : 'text-white'                            // INACTIVE: chữ trắng trên nền xanh
+                        className={`rounded-full py-2 font-semibold ${
+                          activeTab === 'files' ? 'bg-white text-[#196BAD]' : 'text-white hover:text-white'
                         }`}
                       >
-                        {t('files')}
+                        File
                       </button>
-
-                      {/* CHAT */}
                       <button
                         onClick={() => setActiveTab('chat')}
-                        aria-pressed={activeTab === 'chat'}
-                        className={`flex-1 py-[9px] text-[18px] font-semibold tracking-tight rounded-full transition-all duration-200 focus:outline-none ${
-                          activeTab === 'chat'
-                            ? 'bg-white text-[#196BAD] ring-2 ring-[#196BAD]'
-                            : 'text-white'
+                        className={`rounded-full py-2 font-semibold ${
+                          activeTab === 'chat' ? 'bg-white/90 text-[#196BAD]' : 'text-white/90 hover:text-white'
                         }`}
                       >
-                        {t('chat')}
+                        Chat
                       </button>
                     </div>
                   </div>
                 </div>
-                {/* Tab Content */}
+
                 {activeTab === 'files' && (
                     <FilesPage
                         isLoading={isLoading}
@@ -268,7 +283,7 @@ function App() {
                     />
                 )}
             </div>
-            {/* Notifications */}
+
             <div className="fixed top-4 right-4 z-50 space-y-2">
                 {notifications.map((notification) => (
                     <Notification
