@@ -1,4 +1,4 @@
-package src.utils;
+package utils;
 
 public interface LogTag {
     String S_ERROR = "ERROR";

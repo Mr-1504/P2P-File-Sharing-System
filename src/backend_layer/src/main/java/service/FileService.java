@@ -42,7 +42,7 @@ public class FileService implements IFileService {
             }
 
             String progressId = ProgressInfo.generateProgressId();
-            ProgressInfo progressInfo = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileInfo.getFileName());
+            ProgressInfo progressInfo = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileInfo.getFileName(), ProgressInfo.TaskType.DOWNLOAD);
             peerModel.setProgress(progressInfo);
 
             peerModel.downloadFile(fileInfo, saveFile, peers, progressId);

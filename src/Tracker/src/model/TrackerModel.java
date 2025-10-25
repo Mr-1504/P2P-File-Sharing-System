@@ -1,10 +1,9 @@
-package src.model;
+package model;
 
 import java.io.*;
 import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.net.StandardSocketOptions;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
@@ -17,14 +16,14 @@ import java.util.Scanner;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
-import src.adapter.FileInfoAdapter;
-import src.adapter.PeerInfoAdapter;
-import src.utils.*;
+import adapter.FileInfoAdapter;
+import adapter.PeerInfoAdapter;
+import utils.*;
 
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLSocket;
 
-import static src.utils.Log.*;
+import static utils.Log.*;
 
 public class TrackerModel {
     private final CopyOnWriteArraySet<PeerInfo> knownPeers;
@@ -193,7 +192,7 @@ public class TrackerModel {
 
         String[] parts = request.split("\\|");
         if (request.startsWith(RequestInfor.REGISTER)) {
-            if (parts.length == 5) {
+            if (parts.length == 4) {
                 return registerPeer(parts);
             }
             logInfo("[TRACKER]: Invalid REGISTER request [" + parts.length + "]: " + request + " on " + getCurrentTime());
@@ -218,7 +217,7 @@ public class TrackerModel {
             if (parts.length == 3) {
                 String peerIp = parts[1];
                 int peerPort = Integer.parseInt(parts[2]);
-                return sendShareList(peerIp, peerPort, true);
+                return sendShareList(new PeerInfo(peerIp, peerPort), true);
             }
         } else if (request.startsWith(RequestInfor.GET_PEERS)) {
             if (parts.length == 4) {
@@ -362,30 +361,25 @@ public class TrackerModel {
     }
 
     private String registerPeer(String[] parts) {
-        if (parts.length != 5) {
+        if (parts.length != 4) {
             logInfo("[TRACKER]: Invalid REGISTER request format: expected at least 6 parts, got " + parts.length + " on " + getCurrentTime());
             return LogTag.S_INVALID;
         }
 
-        String peerIp = parts[1];
-        String peerPort;
-        try {
-            peerPort = parts[2];
-            Integer.parseInt(peerPort);
-        } catch (NumberFormatException e) {
-            logInfo("[TRACKER]: Invalid Port in REGISTER: " + parts[2] + " on " + getCurrentTime());
-            return LogTag.S_INVALID;
-        }
+        Type peerType = new TypeToken<PeerInfo>() {
+        }.getType();
+        Gson peerGson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+        PeerInfo registeringPeer = peerGson.fromJson(parts[1], peerType);
 
-        knownPeers.add(new PeerInfo(peerIp, Integer.parseInt(peerPort)));
-        logInfo("[TRACKER]: Peer registered: " + peerIp + " on " + getCurrentTime());
+        knownPeers.add(registeringPeer);
+        logInfo("[TRACKER]: Peer registered: " + registeringPeer.getIp() + " on " + getCurrentTime());
 
         // Deserialize the data structures
         try {
             // Assuming parts[3] is publicFileToPeers JSON, parts[4] privateSharedFile JSON, parts[5] selectiveSharedFiles JSON
             // For simplicity, we'll just log them for now
-            String publicFileToPeersJson = parts[3];
-            String privateSharedFileJson = parts[4];
+            String publicFileToPeersJson = parts[2];
+            String privateSharedFileJson = parts[3];
 
             logInfo("[TRACKER]: Received publicFileToPeers: " + publicFileToPeersJson + " on " + getCurrentTime());
             logInfo("[TRACKER]: Received privateSharedFile: " + privateSharedFileJson + " on " + getCurrentTime());
@@ -410,12 +404,12 @@ public class TrackerModel {
             if (receivedPrivateSharedFile != null) {
                 privateSharedFiles.putAll(receivedPrivateSharedFile);
             }
-            logInfo("[TRACKER]: Updated data structures from peer " + peerIp + " on " + getCurrentTime());
+            logInfo("[TRACKER]: Updated data structures from peer " + registeringPeer.getIp() + " on " + getCurrentTime());
         } catch (Exception e) {
             logInfo("[TRACKER]: Error processing REGISTER data structures: " + e.getMessage() + " on " + getCurrentTime());
         }
 
-        String shareListResponse = sendShareList(peerIp, Integer.parseInt(peerPort), false);
+        String shareListResponse = sendShareList(registeringPeer, false);
         if (!shareListResponse.startsWith(RequestInfor.SHARED_LIST)) {
             return RequestInfor.REGISTERED;
         }
@@ -566,7 +560,7 @@ public class TrackerModel {
         }
     }
 
-    String sendShareList(String peerIp, int peerPort, boolean isRefresh) {
+    String sendShareList(PeerInfo peerInfo, boolean isRefresh) {
         Set<FileInfo> filesToSend = new HashSet<>();
 
         // Add all public shared files
@@ -575,7 +569,6 @@ public class TrackerModel {
         }
 
 
-        PeerInfo peerInfo = new PeerInfo(peerIp, peerPort);
         for (Map.Entry<FileInfo, Set<PeerInfo>> entry : privateSharedFiles.entrySet()) {
             FileInfo fileInfo = entry.getKey();
             Set<PeerInfo> allowedPeers = entry.getValue();
@@ -585,7 +578,7 @@ public class TrackerModel {
         }
 
         if (filesToSend.isEmpty()) {
-            logInfo("[TRACKER]: No shared files to send to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+            logInfo("[TRACKER]: No shared files to send to " + peerInfo.getIp() + "|" + peerInfo.getPort() + " on " + getCurrentTime());
             return RequestInfor.FILE_NOT_FOUND;
         }
 
@@ -594,7 +587,7 @@ public class TrackerModel {
         Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter()).create();
 
         String peers = gson.toJson(filesToSend, setType);
-        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerIp + "|" + peerPort + " on " + getCurrentTime());
+        logInfo("[TRACKER]: Sending share list (" + filesToSend.size() + " files) to " + peerInfo.getIp() + "|" + peerInfo.getPort() + " on " + getCurrentTime());
         return (isRefresh ? RequestInfor.REFRESHED : RequestInfor.SHARED_LIST) + "|" + filesToSend.size() + "|" + peers;
     }
 

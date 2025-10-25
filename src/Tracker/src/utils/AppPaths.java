@@ -1,4 +1,4 @@
-package src.utils;
+package utils;
 
 
 import java.io.*;
@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.regex.Pattern;
 
 public class AppPaths {
     private static final String APP_NAME = EnvUtils.getEnv("APP_NAME", "P2P Tracker");

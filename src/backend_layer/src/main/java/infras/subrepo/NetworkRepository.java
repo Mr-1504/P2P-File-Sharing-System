@@ -3,6 +3,7 @@ package infras.subrepo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import domain.adapter.PeerInfoAdapter;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.group.ChannelGroup;
@@ -50,15 +51,16 @@ public class NetworkRepository implements INetworkRepository {
     private final EventLoopGroup workerGroup;
     private final ChannelGroup allChannels;
     private SslContext sslContext;
+    private ExecutorService executorService;
+    private final ExecutorService requestPool = Executors.newFixedThreadPool(10);
     private boolean isRunning;
-    private final ExecutorService executorService;
 
     public NetworkRepository(IPeerRepository peerModel) {
         this.isRunning = true;
         this.peerModel = peerModel;
-        this.executorService = Executors.newFixedThreadPool(8);
         this.bossGroup = new NioEventLoopGroup(1);
         this.workerGroup = new NioEventLoopGroup();
+        this.executorService = Executors.newSingleThreadExecutor();
         this.allChannels = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE);
     }
 
@@ -66,7 +68,6 @@ public class NetworkRepository implements INetworkRepository {
     public void initializeServerSocket(String username) throws Exception {
         FileUtils.loadData(username, peerModel.getPublicSharedFiles(), peerModel.getPrivateSharedFiles());
 
-        // Create Netty SSL context - SỬA: Chain trustManager đúng cách
         KeyStore keyStore = KeyStore.getInstance("JKS");
         File keyStoreFile = new java.io.File(SSLUtils.CERT_DIRECTORY.toFile().getAbsolutePath() + "/peer-keystore.jks");
         try (FileInputStream fis = new FileInputStream(keyStoreFile)) {
@@ -83,7 +84,6 @@ public class NetworkRepository implements INetworkRepository {
         TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(trustStore);
 
-        // SỬA: Sử dụng .trustManager(tmf) sau forServer(kmf)
         this.sslContext = SslContextBuilder.forServer(kmf)
                 .trustManager(tmf)
                 .build();
@@ -93,38 +93,41 @@ public class NetworkRepository implements INetworkRepository {
 
     @Override
     public void startServer() {
-        ServerBootstrap b = new ServerBootstrap();
-        b.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
-                .childHandler(new ChannelInitializer<SocketChannel>() {  // SỬA: Import đúng SocketChannel của Netty
-                    @Override
-                    protected void initChannel(SocketChannel ch) {
-                        ch.pipeline().addLast(sslContext.newHandler(ch.alloc()));
-                        ch.pipeline().addLast(new DelimiterBasedFrameDecoder(8192, Delimiters.lineDelimiter()));
-                        ch.pipeline().addLast(new StringDecoder(StandardCharsets.UTF_8));
-                        ch.pipeline().addLast(new StringEncoder(StandardCharsets.UTF_8));
-                        ch.pipeline().addLast(new ServerHandler(NetworkRepository.this));
-                    }
-                })
-                .option(ChannelOption.SO_BACKLOG, 128)
-                .childOption(ChannelOption.SO_KEEPALIVE, true);
+        executorService.submit(() -> {
+            ServerBootstrap b = new ServerBootstrap();
+            b.group(bossGroup, workerGroup)
+                    .channel(NioServerSocketChannel.class)
+                    .childHandler(new ChannelInitializer<SocketChannel>() {  // SỬA: Import đúng SocketChannel của Netty
+                        @Override
+                        protected void initChannel(SocketChannel ch) {
+                            ch.pipeline().addLast(sslContext.newHandler(ch.alloc()));
+                            ch.pipeline().addLast(new DelimiterBasedFrameDecoder(8192, Delimiters.lineDelimiter()));
+                            ch.pipeline().addLast(new StringDecoder(StandardCharsets.UTF_8));
+                            ch.pipeline().addLast(new StringEncoder(StandardCharsets.UTF_8));
+                            ch.pipeline().addLast(new ServerHandler(NetworkRepository.this, requestPool));
+                        }
+                    })
+                    .option(ChannelOption.SO_BACKLOG, 128)
+                    .childOption(ChannelOption.SO_KEEPALIVE, true);
 
-        try {
-            ChannelFuture f = b.bind(Config.PEER_PORT).sync();
-            Log.logInfo("Netty SSL server started on port " + Config.PEER_PORT);
-            allChannels.add(f.channel());
-            f.channel().closeFuture().sync();
-        } catch (InterruptedException e) {
-            Log.logError("Server interrupted: " + e.getMessage(), e);
-            Thread.currentThread().interrupt();
-        } finally {
-            shutdown();
-        }
+            try {
+                ChannelFuture f = b.bind(Config.PEER_PORT).sync();
+                Log.logInfo("Netty SSL server started on port " + Config.PEER_PORT);
+                allChannels.add(f.channel());
+                f.channel().closeFuture().sync();
+            } catch (InterruptedException e) {
+                Log.logError("Server interrupted: " + e.getMessage(), e);
+                Thread.currentThread().interrupt();
+            } finally {
+                shutdown();
+            }
+        });
     }
 
     @Override
     public void startUDPServer() {
-        this.executorService.submit(() -> {
+        ExecutorService exec = Executors.newSingleThreadExecutor();
+        exec.submit(() -> {
             try (DatagramSocket udpSocket = new DatagramSocket(Config.PEER_PORT)) {
                 byte[] buffer = new byte[1024];
                 Log.logInfo("UDP server started on " + Config.SERVER_IP + ":" + Config.PEER_PORT);
@@ -159,12 +162,19 @@ public class NetworkRepository implements INetworkRepository {
 
                 Gson gson = new GsonBuilder().registerTypeAdapter(FileInfo.class, new FileInfoAdapter())
                         .enableComplexMapKeySerialization().create();
-                Type publicFileType = new TypeToken<Map<String, FileInfo>>() {}.getType();
+                Type publicFileType = new TypeToken<Map<String, FileInfo>>() {
+                }.getType();
                 String publicFileToPeersJson = gson.toJson(peerModel.getPublicSharedFiles(), publicFileType);
-                Type privateFileType = new TypeToken<Map<FileInfo, Set<PeerInfo>>>() {}.getType();
+                Type privateFileType = new TypeToken<Map<FileInfo, Set<PeerInfo>>>() {
+                }.getType();
+
                 String privateSharedFileJson = gson.toJson(peerModel.getPrivateSharedFiles(), privateFileType);
 
-                String message = "REGISTER|" + Config.SERVER_IP + "|" + Config.PEER_PORT +
+                Type peerType = new TypeToken<PeerInfo>() {
+                }.getType();
+                Gson peerGson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+                String peerInfoJson = peerGson.toJson(new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername()), peerType);
+                String message = "REGISTER|" + peerInfoJson +
                         "|" + publicFileToPeersJson +
                         "|" + privateSharedFileJson +
                         "\n";
@@ -365,9 +375,12 @@ public class NetworkRepository implements INetworkRepository {
 
     public static class ServerHandler extends SimpleChannelInboundHandler<String> {
         private final NetworkRepository networkRepository;
+        private final ExecutorService requestPool;
 
-        public ServerHandler(NetworkRepository networkRepository) {
+
+        public ServerHandler(NetworkRepository networkRepository, ExecutorService requestPool) {
             this.networkRepository = networkRepository;
+            this.requestPool = requestPool;
         }
 
         @Override
@@ -385,9 +398,12 @@ public class NetworkRepository implements INetworkRepository {
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, String msg) {
-            // SỬA: Parse clientIP đúng với Netty Channel (remoteAddress là SocketAddress)
             String clientIP = ctx.channel().remoteAddress().toString().split(":")[0].replace("/", "");
-            networkRepository.processRequest(msg.trim(), clientIP, ctx.channel());  // THÊM: trim() để loại bỏ \n thừa nếu có
+            String request = msg.trim();
+
+            requestPool.submit(() -> {
+                networkRepository.processRequest(request, clientIP, ctx.channel());
+            });
         }
 
         @Override

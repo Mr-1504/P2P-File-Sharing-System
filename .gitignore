@@ -6,3 +6,7 @@ desktop.ini
 *.csr
 *.env
 /src/Tracker/out
+/.idea
+/src/Tracker/.idea
+src/Tracker/Tracker.iml
+src/Tracker/backend_layer.iml

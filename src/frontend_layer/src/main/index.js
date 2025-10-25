@@ -167,21 +167,35 @@ app.whenReady().then(() => {
                 modalWin.focus();
             });
 
+            let modalHandled = false;
+
             // Handle modal responses
             ipcMain.once('modal-select', (event, filePath) => {
+                if (modalHandled) return;
+                modalHandled = true;
                 modalWin.close();
-                parentWin.setEnabled(true);
+                if (!parentWin.isDestroyed()) {
+                    parentWin.setEnabled(true);
+                }
                 resolve(filePath);
             });
 
             ipcMain.once('modal-cancel', () => {
+                if (modalHandled) return;
+                modalHandled = true;
                 modalWin.close();
-                parentWin.setEnabled(true);
+                if (!parentWin.isDestroyed()) {
+                    parentWin.setEnabled(true);
+                }
                 resolve(null);
             });
 
             modalWin.on('closed', () => {
-                parentWin.setEnabled(true);
+                if (modalHandled) return;
+                modalHandled = true;
+                if (!parentWin.isDestroyed()) {
+                    parentWin.setEnabled(true);
+                }
                 resolve(null);
             });
         });
@@ -310,21 +324,35 @@ app.whenReady().then(() => {
                 modalWin.focus();
             });
 
+            let modalHandled = false;
+
             // Handle modal responses
             ipcMain.once('save-modal-select', (event, filePath) => {
+                if (modalHandled) return;
+                modalHandled = true;
                 modalWin.close();
-                parentWin.setEnabled(true);
+                if (!parentWin.isDestroyed()) {
+                    parentWin.setEnabled(true);
+                }
                 resolve(filePath);
             });
 
             ipcMain.once('save-modal-cancel', () => {
+                if (modalHandled) return;
+                modalHandled = true;
                 modalWin.close();
-                parentWin.setEnabled(true);
+                if (!parentWin.isDestroyed()) {
+                    parentWin.setEnabled(true);
+                }
                 resolve(null);
             });
 
             modalWin.on('closed', () => {
-                parentWin.setEnabled(true);
+                if (modalHandled) return;
+                modalHandled = true;
+                if (!parentWin.isDestroyed()) {
+                    parentWin.setEnabled(true);
+                }
                 resolve(null);
             });
         });

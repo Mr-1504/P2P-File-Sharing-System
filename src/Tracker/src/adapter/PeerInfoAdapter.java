@@ -1,9 +1,9 @@
-package src.adapter;
+package adapter;
 
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import src.model.PeerInfo;
+import model.PeerInfo;
 
 import java.io.IOException;
 

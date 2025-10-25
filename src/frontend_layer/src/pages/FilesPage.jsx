@@ -4,8 +4,11 @@ import FileTable from '../components/FileTable';
 import ShareModal from '../components/ShareModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { buildApiUrl } from '../utils/config';
+import IconClip from '../assets/link_icon.svg';
+import IconSearch from '../assets/search_icon.svg';
+import IconRefresh from '../assets/refresh_icon.svg';
 
-const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
+const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPolling }) => {
     const { t, i18n } = useTranslation();
     const [files, setFiles] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -21,32 +24,38 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
     };
 
     const fetchFiles = async () => {
-        setIsLoading(true);
-        try {
-            const response = await fetch(buildApiUrl('/api/files/refresh'), {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Lỗi khi tải danh sách tệp: ${response.status}`);
-            }
-            
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                throw new Error('Server trả về dữ liệu không phải JSON');
-            }
-            
-            const data = await response.json();
-            setFiles(data);
-            addNotification('Đã tải danh sách tệp', false);
-        } catch (error) {
-            addNotification('Lỗi khi tải danh sách tệp', true);
-            console.error(error);
-        } finally {
-            setIsLoading(false);
+      setIsLoading(true);
+      try {
+        const response = await fetch(buildApiUrl('/api/files/refresh'), {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!response.ok) throw new Error(`Lỗi khi tải danh sách tệp: ${response.status}`);
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Server trả về dữ liệu không phải JSON');
         }
+
+        const data = await response.json();
+
+        setAllFiles(data);
+        setFiles(activeFilter === 'my' ? data.filter(f => f.isSharedByMe) : data);
+
+        addNotification('Đã tải danh sách tệp', false);
+      } catch (error) {
+        addNotification('Lỗi khi tải danh sách tệp', true);
+        console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
     };
+
+
+    // thêm
+    const [activeFilter, setActiveFilter] = useState('all'); // 'my' | 'all'
+    const [allFiles, setAllFiles] = useState([]);
+
 
     useEffect(() => {
         fetchFiles();
@@ -147,12 +156,12 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
                 savePath
             });
             console.log('Progress ID:', progressId);
-            // ✅ Thêm taskType: 'download'
-            taskMap.set(progressId, { 
-                fileName: file.fileName.trim(), 
+            taskMap.set(progressId, {
+                fileName: file.fileName.trim(),
                 status: 'starting',
-                taskType: 'download'
+                taskType: 'downloading'
             });
+            startPolling();
         } catch (error) {
             addNotification(t('error_downloading_file', { error: error.message }), true);
             console.error('Error in handleDownload:', error);
@@ -203,17 +212,21 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
     };
 
     const handleRefresh = () => {
+        setSearchTerm('');
         fetchFiles();
     };
 
     const handleMyFiles = () => {
-        setFiles(files.filter(file => file.isSharedByMe));
+        setActiveFilter('my');
+        setFiles(allFiles.filter(f => f.isSharedByMe));
         addNotification(t('show_my_files'), false);
-    };
+        };
 
     const handleAllFiles = () => {
+        setActiveFilter('all');
+        setFiles(allFiles);
         fetchFiles();
-    };
+        };
 
     const handleShareAll = async (file) => {
         setIsLoading(true);
@@ -222,12 +235,12 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
             console.log('Replace option:', file.isReplace);
             const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace);
             console.log('Progress ID:', progressId);
-            // ✅ Thêm taskType: 'share'
-            taskMap.set(progressId, { 
-                fileName: file.fileName, 
+            taskMap.set(progressId, {
+                fileName: file.fileName,
                 status: 'starting',
-                taskType: 'share'
+                taskType: 'sharing'
             });
+            startPolling();
             addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
         } catch (error) {
             addNotification(t('error_sharing_file', { error: error.message }), true);
@@ -254,12 +267,12 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
 
             if (response.ok) {
                 const progressId = await response.json();
-                // ✅ Thêm taskType: 'share'
-                taskMap.set(progressId, { 
-                    fileName: file.fileName, 
+                taskMap.set(progressId, {
+                    fileName: file.fileName,
                     status: 'starting',
-                    taskType: 'share'
+                    taskType: 'sharing'
                 });
+                startPolling();
                 fetchFiles();
             } else {
                 const errorData = await response.json();
@@ -279,98 +292,78 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
 
     return (
         <div>
-            <div className="modern-card p-8 mb-8">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-8 space-y-6 md:space-y-0">
-                    <div className="flex items-center space-x-4">
-                        <button
-                            onClick={handleFileUpload}
-                            className="modern-button flex items-center px-6 py-3"
-                            disabled={isLoading}
-                        >
-                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                            </svg>
-                            <span className="font-semibold">{t('selectFile')}</span>
-                        </button>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <label className="text-sm font-semibold text-gray-700">{t('language')}:</label>
-                        <select
-                            value={language}
-                            onChange={(e) => changeLanguage(e.target.value)}
-                            className="modern-input px-4 py-2"
-                            disabled={isLoading}
-                        >
-                            <option>Tiếng Việt</option>
-                            <option>English</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div className="flex flex-col md:flex-row items-center space-x-0 md:space-x-4 mb-8 space-y-4 md:space-y-0">
-                    <div className="flex-1 w-full md:w-auto">
-                        <input
-                            type="text"
-                            placeholder="Tìm kiếm tệp..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                            className="modern-input px-4 py-3 w-full"
-                            disabled={isLoading}
-                        />
-                    </div>
-                    <button
-                        onClick={handleSearch}
-                        className="modern-button flex items-center px-6 py-3 whitespace-nowrap"
-                        disabled={isLoading}
-                    >
-                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
-                        <span className="font-semibold">{t('search')}</span>
-                    </button>
-                </div>
-
-                <div className="flex flex-wrap gap-4">
-                    <button
-                        onClick={handleMyFiles}
-                        className="modern-button flex items-center px-6 py-3"
-                        disabled={isLoading}
-                    >
-                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                        </svg>
-                        <span className="font-semibold">{t('myFiles')}</span>
-                    </button>
-                    <button
-                        onClick={handleAllFiles}
-                        className="modern-button flex items-center px-6 py-3"
-                        disabled={isLoading}
-                    >
-                        <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                        </svg>
-                        <span className="font-semibold">{t('allFiles')}</span>
-                    </button>
-                    <button
-                        onClick={handleRefresh}
-                        className="modern-button flex items-center px-6 py-3"
-                        disabled={isLoading}
-                    >
-                        {isLoading ? (
-                            <svg className="w-5 h-5 mr-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                            </svg>
-                        ) : (
-                            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                            </svg>
-                        )}
-                        <span className="font-semibold">{t('refresh')}</span>
-                    </button>
-                </div>
+            <div className="text-center mb-6">
+              <div
+                role="button"
+                onClick={handleFileUpload}
+                className="inline-block rounded-2xl border-2 border-dashed border-[#196BAD] px-10 py-6 hover:bg-sky-50 transition"
+                style={{ minWidth: 520 }}
+                title="Chọn tệp để tải lên"
+              >
+                <img src={IconClip} alt="" className="inline-block h-4 w-5 mr-2 align-[-2px]" />
+                <span className="font-semibold text-sky-700">{t('selectFile')}</span>
+              </div>
             </div>
-            
+
+            <div className="flex gap-3 mb-4">
+              <input
+                type="text"
+                placeholder="Nhập tên file cần tìm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="flex-1 h-11 rounded-xl border border-gray-200 px-4 outline-none focus:border-sky-400"
+                disabled={isLoading}
+              />
+              <button
+                 onClick={handleSearch}
+                 className="h-11 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center gap-2"
+                 disabled={isLoading}
+              >
+                 <img src={IconSearch} alt="" className="h-5 w-5" />
+                 <span className="font-semibold">{t('search')}</span>
+              </button>
+              <button
+                onClick={handleRefresh}
+                className="h-11 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center gap-2"
+                disabled={isLoading}
+              >
+                 {isLoading ? (
+                    <img src={IconRefresh} alt="" className="h-5 w-5 animate-spin" />
+                 ) : (
+                    <img src={IconRefresh} alt="" className="h-5 w-5" />
+                 )}
+                <span className="font-semibold">{t('refresh')}</span>
+              </button>
+            </div>
+
+            <div className="mb-4 flex justify-end">
+              <div className="inline-flex items-center rounded-2xl bg-slate-200 p-1">
+                <button
+                  onClick={handleMyFiles}
+                  disabled={isLoading}
+                  className={`px-4 py-2 text-sm font-semibold rounded-xl transition
+                    ${activeFilter === 'my'
+                      ? 'bg-white text-slate-800 shadow ring-1 ring-slate-300'
+                      : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <span className="font-semibold">{t('myFiles')}</span>
+                </button>
+
+                <button
+                  onClick={handleAllFiles}
+                  disabled={isLoading}
+                  className={`ml-1 px-4 py-2 text-sm font-semibold rounded-xl transition
+                    ${activeFilter === 'all'
+                      ? 'bg-white text-slate-800 shadow ring-1 ring-slate-300'
+                      : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <span className="font-semibold">{t('allFiles')}</span>
+                </button>
+              </div>
+            </div>
+
+
             <FileTable 
                 files={files} 
                 onDownload={handleDownload} 

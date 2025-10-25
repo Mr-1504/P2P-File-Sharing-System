@@ -5,7 +5,7 @@ i18n.use(initReactI18next).init({
   resources: {
     vi: {
       translation: {
-        title: "P2P File Sharing",
+        title: "P2P FILE SHARING",
         files: "Tệp",
         tasks: "Tác vụ",
         chat: "Chat",
@@ -15,6 +15,7 @@ i18n.use(initReactI18next).init({
         myFiles: "Tệp của tôi",
         allFiles: "Tất cả tệp",
         peerList: "Danh sách Peer",
+        enter_message: "Nhập tin nhắn",
         refresh: "Làm mới",
         chat_with: "Chat với",
         send: "Gửi",
@@ -90,7 +91,7 @@ i18n.use(initReactI18next).init({
     },
     en: {
       translation: {
-        title: "P2P File Sharing",
+        title: "P2P FILE SHARING",
         files: "Files",
         tasks: "Tasks",
         chat: "Chat",
@@ -107,6 +108,7 @@ i18n.use(initReactI18next).init({
         cancel: "Cancel",
         continue: "Continue",
         replace: "Replace",
+        enter_message: "Enter message",
         fileName: "File Name",
         fileSize: "File Size",
         peer: "Peer",

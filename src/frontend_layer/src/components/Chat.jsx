@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer }) => {
     const [messageInput, setMessageInput] = useState('');
     const { t } = useTranslation();
+    const messagesEndRef = useRef(null);
 
     const handleSend = () => {
         if (messageInput.trim() && selectedPeer) {
@@ -12,59 +13,171 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
         }
     };
 
+    useEffect(() => {
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, selectedPeer]);
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="md:col-span-1 bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('peerList')}</h3>
-                <ul className="space-y-3">
-                    {peers.map(peer => (
-                        <li
-                            key={peer.id}
-                            onClick={() => setSelectedPeer(peer)}
-                            className={`p-4 rounded-lg cursor-pointer transition-all duration-200 ${selectedPeer?.id === peer.id ? 'bg-blue-100 text-blue-800 shadow-md' : 'hover:bg-gray-100'}`}
-                        >
-                            <div className="flex justify-between items-center">
-                                <span className="font-medium">{peer.name} ({peer.ip})</span>
-                                <span className={`text-sm font-semibold ${peer.status === 'Online' ? 'text-green-600' : 'text-red-600'}`}>{peer.status}</span>
+        <div
+            className="fixed top-[180px] left-0 right-0 bottom-0 bg-white p-4 flex"
+        >
+            <div className="flex flex-col sm:flex-row gap-4 h-full w-full">
+                {/* Left Panel - Peer List */}
+                <div
+                    className="w-full sm:w-1/4 bg-white rounded-[10px] border border-[#00000040] flex flex-col ml-0 sm:ml-[15px]"
+                    style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
+                >
+                    <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+                        <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{t('peerList')}</h3>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2">
+                        {peers.map(peer => (
+                            <div
+                                key={peer.id}
+                                onClick={() => setSelectedPeer(peer)}
+                                className={`p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg ${
+                                    selectedPeer?.id === peer.id
+                                        ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                                        : 'hover:bg-gray-50 hover:shadow-sm'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{peer.name}</span>
+                                    {peer.status === 'Online' && (
+                                        <div className="flex items-center space-x-1">
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span className="text-xs text-green-600 font-medium" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>Online</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                    {peer.ip}
+                                </div>
                             </div>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            <div className="md:col-span-3 bg-white rounded-xl shadow-lg border border-gray-100 p-6 flex flex-col">
-                {selectedPeer ? (
-                    <>
-                        <h3 className="text-xl font-bold mb-4 text-gray-800">{t('chat_with')} {selectedPeer.name}</h3>
-                        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 rounded-lg space-y-4 max-h-[400px]">
-                            {(messages[selectedPeer.id] || []).map((msg, index) => (
-                                <div key={index} className={`flex ${msg.sender === 'You' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-xs p-3 rounded-xl shadow-sm ${msg.sender === 'You' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
-                                        <p className="text-sm">{msg.text}</p>
-                                        <p className="text-xs mt-1 opacity-75">{msg.timestamp}</p>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Right Panel - Chat Interface */}
+                <div
+                    className="flex-1 bg-white rounded-[10px] border border-[#00000040] flex flex-col overflow-hidden"
+                    style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
+                >
+                    {selectedPeer ? (
+                        <>
+                            {/* Chat Header */}
+                            <div className="p-4 border-b border-gray-200 bg-white sticky top-0 z-10">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
+                                        <svg
+                                            className="w-6 h-6 text-gray-600"
+                                            fill="currentColor"
+                                            viewBox="0 0 20 20"
+                                        >
+                                            <path
+                                                fillRule="evenodd"
+                                                d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                                clipRule="evenodd"
+                                            />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold text-black">{selectedPeer.name}</h3>
+                                        <div className="flex items-center space-x-1">
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span className="text-sm text-black font-normal">Online</span>
+                                        </div>
                                     </div>
                                 </div>
-                            ))}
+                            </div>
+
+                            {/* Chat Messages */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+                                {(messages[selectedPeer.id] || []).map((msg, index) => (
+                                    <div
+                                        key={index}
+                                        className={`flex items-end ${
+                                            msg.sender === 'You' ? 'justify-end' : 'justify-start'
+                                        }`}
+                                    >
+                                        {msg.sender !== 'You' && (
+                                            <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center mr-2 flex-shrink-0">
+                                                <svg
+                                                    className="w-5 h-5 text-gray-600"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 20 20"
+                                                >
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                                        clipRule="evenodd"
+                                                    />
+                                                </svg>
+                                            </div>
+                                        )}
+                                        <div
+                                            className={`max-w-xs px-4 py-2 rounded-2xl ${
+                                                msg.sender === 'You'
+                                                    ? 'bg-[#D1E7FF] text-black'
+                                                    : 'bg-[#F0F0F0] text-black'
+                                            }`}
+                                        >
+                                            <p className="text-sm">{msg.text}</p>
+                                        </div>
+                                        {msg.sender === 'You' && (
+                                            <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center ml-2 flex-shrink-0">
+                                                <svg
+                                                    className="w-5 h-5 text-gray-600"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 20 20"
+                                                >
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                                        clipRule="evenodd"
+                                                    />
+                                                </svg>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+
+                            {/* Message Input */}
+                            <div className="p-4 border-t border-gray-200 bg-white">
+                                <div className="flex items-center bg-white border border-gray-300 rounded-lg px-4 py-2">
+                                    <input
+                                        type="text"
+                                        value={messageInput}
+                                        onChange={(e) => setMessageInput(e.target.value)}
+                                        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                                        placeholder={t('enter_message')}
+                                        className="flex-1 outline-none text-black placeholder-gray-400"
+                                    />
+                                    <button
+                                        onClick={handleSend}
+                                        className="ml-2 p-1 text-[#196BAD] hover:text-[#1669A6] transition-colors duration-200"
+                                    >
+                                        <svg
+                                            className="w-5 h-5 rotate-45"
+                                            fill="currentColor"
+                                            viewBox="0 0 20 20"
+                                        >
+                                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center">
+                            <p className="text-gray-500 text-lg">{t('select_peer')}</p>
                         </div>
-                        <div className="mt-4 flex">
-                            <input
-                                type="text"
-                                value={messageInput}
-                                onChange={(e) => setMessageInput(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                                placeholder="Nhập tin nhắn..."
-                                className="flex-1 border border-gray-200 rounded-l-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                            <button
-                                onClick={handleSend}
-                                className="px-6 py-3 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition-colors duration-200"
-                            >
-                                {t('send')}
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <p className="text-center text-gray-500 flex-1 flex items-center justify-center text-lg">{t('select_peer')}</p>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );

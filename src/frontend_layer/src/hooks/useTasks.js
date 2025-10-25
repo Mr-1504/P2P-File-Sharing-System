@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { buildApiUrl } from '../utils/config';
 
@@ -7,9 +7,27 @@ export const useTasks = (addNotification) => {
     const [tasks, setTasks] = useState([]);
     const [taskTimeouts, setTaskTimeouts] = useState({});
     const [taskMap] = useState(new Map());
+    const [progressIntervalId, setProgressIntervalId] = useState(null);
+
+    const startPolling = useCallback(() => {
+        if (!progressIntervalId) {
+            const id = setInterval(queryProgress, 2000);
+            setProgressIntervalId(id);
+        }
+    }, [progressIntervalId]);
+
+    const stopPolling = useCallback(() => {
+        if (progressIntervalId) {
+            clearInterval(progressIntervalId);
+            setProgressIntervalId(null);
+        }
+    }, [progressIntervalId]);
 
     const queryProgress = async () => {
-        if (taskMap.size === 0) return;
+        if (taskMap.size === 0) {
+            stopPolling();
+            return;
+        }
 
         let allCompleted = true;
         taskMap.forEach((info, id) => {
@@ -18,7 +36,10 @@ export const useTasks = (addNotification) => {
             }
         });
 
-        if (allCompleted) return;
+        if (allCompleted) {
+            stopPolling();
+            return;
+        }
 
         try {
             const response = await fetch(buildApiUrl('/api/progress'), {
@@ -40,8 +61,8 @@ export const useTasks = (addNotification) => {
                             const taskId = String(id);
                             const taskIndex = updated.findIndex(t => t.id === taskId);
 
-                            const taskMapInfo = taskMap.get(taskId);
-                            const taskType = taskMapInfo?.taskType || 'share';
+                                const taskMapInfo = taskMap.get(taskId);
+                                const taskType = info.taskType || 'sharing';
 
                             if (taskIndex === -1) {
                                 updated.push({
@@ -51,7 +72,7 @@ export const useTasks = (addNotification) => {
                                     bytesTransferred: info.bytesTransferred || 0,
                                     totalBytes: info.totalBytes || 1,
                                     status: info.status,
-                                    taskType: taskType
+                                    taskType: info.taskType
                                 });
                             } else {
                                 const currentTask = updated[taskIndex];
@@ -99,7 +120,7 @@ export const useTasks = (addNotification) => {
                                     taskType: taskType
                                 };
 
-                                taskMap.set(taskId, { ...taskMapInfo, status: newStatus });
+                                taskMap.set(taskId, { ...taskMapInfo, status: newStatus, taskType: info.taskType });
 
                                 if (['completed', 'failed', 'canceled', 'timeout'].includes(newStatus)) {
                                     completedTasks.push(taskId);
@@ -161,14 +182,19 @@ export const useTasks = (addNotification) => {
     };
 
     useEffect(() => {
-        const interval = setInterval(queryProgress, 2000);
-        return () => clearInterval(interval);
-    }, []);
+        // Không cần polling tự động nữa, sẽ start khi có tasks
+        return () => {
+            if (progressIntervalId) {
+                clearInterval(progressIntervalId);
+            }
+        };
+    }, [progressIntervalId]);
 
     return {
         tasks,
         setTasks,
         taskMap,
-        handleResume
+        handleResume,
+        startPolling
     };
 };
