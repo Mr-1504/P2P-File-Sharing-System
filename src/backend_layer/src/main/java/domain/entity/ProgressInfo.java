@@ -13,13 +13,15 @@ public class ProgressInfo {
     private Set<Integer> downloadedChunks = new HashSet<>();
     private String fileHash;
     private String savePath;
+    private String taskType;
     private long lastProgressUpdateTime = System.currentTimeMillis();
     private long timeoutThresholdMs = 120000; // 2 minutes default
 
-    public ProgressInfo(String id, String status, String fileName) {
+    public ProgressInfo(String id, String status, String fileName, String taskType) {
         this.id = id;
         this.status = status;
         this.fileName = fileName;
+        this.taskType = taskType;
     }
 
     public String getId() {
@@ -146,5 +148,10 @@ public class ProgressInfo {
         String STALLED = "stalled";
         String TIMEOUT = "timeout";
         String RESUMABLE = "resumable";
+    }
+
+    public interface TaskType {
+        String DOWNLOAD = "download";
+        String SHARE = "share";
     }
 }

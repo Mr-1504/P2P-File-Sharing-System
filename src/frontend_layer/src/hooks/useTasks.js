@@ -40,8 +40,8 @@ export const useTasks = (addNotification) => {
                             const taskId = String(id);
                             const taskIndex = updated.findIndex(t => t.id === taskId);
 
-                            const taskMapInfo = taskMap.get(taskId);
-                            const taskType = taskMapInfo?.taskType || 'share';
+                                const taskMapInfo = taskMap.get(taskId);
+                                const taskType = info.taskType || 'sharing';
 
                             if (taskIndex === -1) {
                                 updated.push({
@@ -51,7 +51,7 @@ export const useTasks = (addNotification) => {
                                     bytesTransferred: info.bytesTransferred || 0,
                                     totalBytes: info.totalBytes || 1,
                                     status: info.status,
-                                    taskType: taskType
+                                    taskType: info.taskType
                                 });
                             } else {
                                 const currentTask = updated[taskIndex];
@@ -99,7 +99,7 @@ export const useTasks = (addNotification) => {
                                     taskType: taskType
                                 };
 
-                                taskMap.set(taskId, { ...taskMapInfo, status: newStatus });
+                                taskMap.set(taskId, { ...taskMapInfo, status: newStatus, taskType: info.taskType });
 
                                 if (['completed', 'failed', 'canceled', 'timeout'].includes(newStatus)) {
                                     completedTasks.push(taskId);

@@ -221,7 +221,7 @@ public class P2PController {
                 fileName = AppPaths.incrementFileName(file.getName());
             }
             String progressId = ProgressInfo.generateProgressId();
-            ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
+            ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName, ProgressInfo.TaskType.SHARE);
             service.setProgress(newProgress);
             String finalFileName = fileName;
             executor.submit(() -> {
@@ -275,7 +275,7 @@ public class P2PController {
                 fileName = AppPaths.incrementFileName(file.getName());
             }
             String progressId = ProgressInfo.generateProgressId();
-            ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName);
+            ProgressInfo newProgress = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileName, ProgressInfo.TaskType.SHARE);
             service.setProgress(newProgress);
             String finalFileName = fileName;
             executor.submit(() -> {

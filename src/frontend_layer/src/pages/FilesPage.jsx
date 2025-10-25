@@ -156,10 +156,10 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
                 savePath
             });
             console.log('Progress ID:', progressId);
-            taskMap.set(progressId, { 
-                fileName: file.fileName.trim(), 
+            taskMap.set(progressId, {
+                fileName: file.fileName.trim(),
                 status: 'starting',
-                taskType: 'download'
+                taskType: 'downloading'
             });
         } catch (error) {
             addNotification(t('error_downloading_file', { error: error.message }), true);
@@ -233,11 +233,10 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
             console.log('Replace option:', file.isReplace);
             const progressId = await window.electronAPI.shareFile(file.filePath, file.isReplace);
             console.log('Progress ID:', progressId);
-            // ✅ Thêm taskType: 'share'
-            taskMap.set(progressId, { 
-                fileName: file.fileName, 
+            taskMap.set(progressId, {
+                fileName: file.fileName,
                 status: 'starting',
-                taskType: 'share'
+                taskType: 'sharing'
             });
             addNotification(t('start_sharing_file', { fileName: file.fileName }), false);
         } catch (error) {
@@ -265,11 +264,10 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
 
             if (response.ok) {
                 const progressId = await response.json();
-                // ✅ Thêm taskType: 'share'
-                taskMap.set(progressId, { 
-                    fileName: file.fileName, 
+                taskMap.set(progressId, {
+                    fileName: file.fileName,
                     status: 'starting',
-                    taskType: 'share'
+                    taskType: 'sharing'
                 });
                 fetchFiles();
             } else {
@@ -304,7 +302,6 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap }) => {
               </div>
             </div>
 
-            {/* Ô tìm kiếm + 2 nút */}
             <div className="flex gap-3 mb-4">
               <input
                 type="text"
