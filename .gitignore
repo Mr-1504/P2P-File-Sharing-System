@@ -6,6 +6,4 @@ desktop.ini
 *.csr
 *.env
 /src/Tracker/out
-.env
-/shared_files
-.idea
+/.idea
