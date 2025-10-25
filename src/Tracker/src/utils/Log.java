@@ -1,4 +1,4 @@
-package src.utils;
+package utils;
 
 import java.io.*;
 import java.nio.file.*;

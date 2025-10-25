@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer }) => {
     const [messageInput, setMessageInput] = useState('');
     const { t } = useTranslation();
+    const messagesEndRef = useRef(null);
 
     const handleSend = () => {
         if (messageInput.trim() && selectedPeer) {
@@ -12,20 +13,23 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
         }
     };
 
+    useEffect(() => {
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, selectedPeer]);
+
     return (
         <div
-            className="h-[600px] bg-[#C9DEEF54] rounded-[10px] p-4 mx-auto
-                       w-full sm:w-[95%] md:w-[85%] lg:w-[75%]"
-            style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
+            className="fixed top-[180px] left-0 right-0 bottom-0 bg-white p-4 flex"
         >
-            {/* Bọc 2 panel bằng flex */}
-            <div className="flex flex-col sm:flex-row gap-4 h-[552px]">
+            <div className="flex flex-col sm:flex-row gap-4 h-full w-full">
                 {/* Left Panel - Peer List */}
                 <div
                     className="w-full sm:w-1/4 bg-white rounded-[10px] border border-[#00000040] flex flex-col ml-0 sm:ml-[15px]"
                     style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
                 >
-                    <div className="p-4 border-b border-gray-200">
+                    <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                         <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{t('peerList')}</h3>
                     </div>
                     <div className="flex-1 overflow-y-auto">
@@ -61,7 +65,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                     {selectedPeer ? (
                         <>
                             {/* Chat Header */}
-                            <div className="p-4 border-b border-gray-200 bg-white">
+                            <div className="p-4 border-b border-gray-200 bg-white sticky top-0 z-10">
                                 <div className="flex items-center space-x-3">
                                     <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
                                         <svg
@@ -136,6 +140,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                                         )}
                                     </div>
                                 ))}
+                                <div ref={messagesEndRef} />
                             </div>
 
                             {/* Message Input */}

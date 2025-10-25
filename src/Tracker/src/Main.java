@@ -1,6 +1,6 @@
 import java.io.IOException;
 
-import src.model.TrackerModel;
+import model.TrackerModel;
 
 
 public class Main {

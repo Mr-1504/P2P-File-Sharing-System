@@ -1,4 +1,4 @@
-package src.utils;
+package utils;
 
 /**
  * This interface defines constants for server and tracker configurations.
