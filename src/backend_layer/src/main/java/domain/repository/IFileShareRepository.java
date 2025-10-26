@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Set;
 
 public interface IFileShareRepository {
+    List<PeerInfo> getSharedPeers(String fileName);
+
     void sharePublicFile(File file, String fileName, String progressId, int isReplace, FileInfo oldFileInfo);
 
     boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles);
@@ -28,4 +30,6 @@ public interface IFileShareRepository {
     int stopSharingFile(String fileName);
 
     List<FileInfo> getPublicFiles();
+
+    boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> peersList);
 }

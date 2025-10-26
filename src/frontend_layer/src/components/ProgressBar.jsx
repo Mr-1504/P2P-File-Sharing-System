@@ -86,6 +86,7 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                     </svg>
                 );
             case 'resumable':
+            case 'paused':
                 return (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -119,6 +120,7 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
             case 'completed':
                 return { text: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' };
             case 'resumable':
+            case 'paused':
                 return { text: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' };
             case 'stalled':
                 return { text: 'text-yellow-600', bg: 'bg-yellow-50', border: 'border-yellow-200' };
@@ -191,6 +193,37 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
             }
         } catch (err) {
             console.error('Lỗi khi hủy task:', err);
+        }
+    };
+
+    const handlePauseTask = async (taskId) => {
+        try {
+            const res = await fetch(`http://localhost:8080/api/progress/${taskId}/pause`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (res.ok) {
+                setTasks(prev =>
+                    prev.map(t =>
+                        t.id === taskId ? { ...t, status: 'paused' } : t
+                    )
+                );
+            } else {
+                console.error('Lỗi khi pause task:', res.status);
+            }
+        } catch (err) {
+            console.error('Lỗi khi pause task:', err);
+        }
+    };
+
+    const handleResumeTask = async (taskId) => {
+        if (onResume) {
+            await onResume(taskId);
+            // onResume already updates the task status, so no need to update locally again
+        } else {
+            // This fallback shouldn't be needed since onResume should always be provided
+            console.warn('onResume prop not provided to ProgressBar');
         }
     };
 
@@ -288,12 +321,39 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                                             </div>
                                         </div>
 
-                                        {/* Action buttons */}
+                                    {/* Action buttons */}
                                         <div className="flex space-x-2">
+                                            {/* Pause button for downloading tasks */}
+                                            {task.status === 'downloading' && (
+                                                <button
+                                                    onClick={() => handlePauseTask(task.id)}
+                                                    className="inline-flex items-center px-3 py-1.5 border border-orange-300 text-orange-700 bg-white rounded-lg hover:bg-orange-50 transition-colors duration-200 text-sm font-medium"
+                                                >
+                                                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                    </svg>
+                                                    {t('pause')}
+                                                </button>
+                                            )}
+
+                                            {/* Resume button for download tasks */}
+                                            {(task.status === 'resumable' || task.status === 'timeout' || task.status === 'paused') && onResume && (
+                                                <button
+                                                    onClick={() => handleResumeTask(task.id)}
+                                                    className="inline-flex items-center px-3 py-1.5 border border-green-300 text-green-700 bg-white rounded-lg hover:bg-green-50 transition-colors duration-200 text-sm font-medium"
+                                                >
+                                                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                    </svg>
+                                                    {t('resume')}
+                                                </button>
+                                            )}
+
                                             {/* Cancel button for active tasks */}
                                             {((task.status === 'starting') ||
                                                 (task.status === 'downloading') ||
-                                                (task.status === 'sharing')) && (
+                                                (task.status === 'sharing') ||
+                                                (task.status === 'paused')) && (
                                                 <button
                                                     onClick={() => handleCancelTask(task.id)}
                                                     className="inline-flex items-center px-3 py-1.5 border border-red-300 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors duration-200 text-sm font-medium"
@@ -302,21 +362,6 @@ const ProgressBar = ({ tasks, setTasks, onResume }) => {
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                                                     </svg>
                                                     {t('cancel')}
-                                                </button>
-                                            )}
-
-                                            {/* Resume button for download tasks */}
-                                            {taskType === 'downloading' &&
-                                                ((task.status === 'resumable') ||
-                                                (task.status === 'timeout')) && onResume && (
-                                                <button
-                                                    onClick={() => onResume(task.id)}
-                                                    className="inline-flex items-center px-3 py-1.5 border border-green-300 text-green-700 bg-white rounded-lg hover:bg-green-50 transition-colors duration-200 text-sm font-medium"
-                                                >
-                                                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                                    </svg>
-                                                    {t('resume')}
                                                 </button>
                                             )}
                                         </div>

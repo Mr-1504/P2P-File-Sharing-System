@@ -7,6 +7,10 @@ import domain.entity.PeerInfo;
 
 import java.io.IOException;
 
+/**
+ * Adapter for serializing and deserializing PeerInfo objects to and from JSON.
+ * The format used is "ip:port:username".
+ */
 public class PeerInfoAdapter extends TypeAdapter<PeerInfo> {
     @Override
     public void write(JsonWriter jsonWriter, PeerInfo peerInfo) throws IOException {

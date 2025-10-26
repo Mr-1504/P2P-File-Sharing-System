@@ -6,6 +6,7 @@ import domain.entity.ProgressInfo;
 import delivery.api.IP2PApi;
 import service.*;
 import utils.AppPaths;
+import utils.Log;
 import utils.LogTag;
 
 import java.io.File;
@@ -15,6 +16,11 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * P2PController serves as the main controller for the P2P file sharing application.
+ * It manages initialization, user sessions, file sharing, downloading, and communication
+ * with the frontend via the IP2PApi interface.
+ */
 public class P2PController {
     private final IFileService service;
     private final INetworkService networkService;
@@ -28,6 +34,13 @@ public class P2PController {
     private String username = null;
     private volatile boolean isInitialized = false;
 
+    /**
+     * Constructor for P2PController.
+     *
+     * @param service        IFileService
+     * @param networkService INetworkService
+     * @param api            IP2PApi
+     */
     public P2PController(IFileService service, INetworkService networkService, IP2PApi api) {
         this.service = service;
         this.networkService = networkService;
@@ -36,6 +49,10 @@ public class P2PController {
         setupApiRoutes();
     }
 
+    /**
+     * Starts the P2PController initialization process.
+     * If a username is already set, it proceeds with full initialization.
+     */
     public synchronized void start() {
         if (!checkUsernameExists()) {
             return;
@@ -43,12 +60,23 @@ public class P2PController {
         performFullInitialization();
     }
 
+    /**
+     * Performs the full initialization tasks including
+     * task initialization and tracker registration.
+     */
     private void performFullInitialization() {
         taskInitialization();
         taskTrackerRegistration();
         isInitialized = true;
     }
 
+    /**
+     * Sets the username for the current session.
+     * This method is synchronized to ensure thread safety.
+     *
+     * @param inputUsername The username to set
+     * @return boolean indicating success of the operation
+     */
     public synchronized boolean setUsername(String inputUsername) {
         this.username = inputUsername;
 
@@ -66,6 +94,12 @@ public class P2PController {
         return true;
     }
 
+    /**
+     * Checks if a username already exists for the current session.
+     * This method is synchronized to ensure thread safety.
+     *
+     * @return boolean indicating if username exists
+     */
     public synchronized boolean checkUsernameExists() {
         if (this.username == null) {
             this.username = AppPaths.loadUsername();
@@ -75,16 +109,19 @@ public class P2PController {
         return this.username != null;
     }
 
-    // Public API method for frontend to check initialization status
-    public synchronized boolean isInitialized() {
-        return isInitialized;
-    }
-
-    // Public API method to get current username
+    /**
+     * Gets the current username.
+     * This method is synchronized to ensure thread safety.
+     *
+     * @return The current username
+     */
     public synchronized String getUsername() {
         return username;
     }
 
+    /**
+     * Initializes the necessary tasks for the P2PController.
+     */
     private void taskInitialization() {
         try {
             String shareDirPath = AppPaths.getAppDataDirectory() + "/shared_files/";
@@ -95,14 +132,17 @@ public class P2PController {
             networkService.initializeServerSocket();
             networkService.startServer();
             networkService.startUDPServer();
-//                fileRepository.loadSharedFiles();
             isLoadSharedFiles = true;
             service.shareFileList();
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.logError("Initialization error", e);
         }
     }
 
+    /**
+     * Handles the registration process with the tracker server.
+     * Retries registration until successful and shares the file list once connected.
+     */
     private void taskTrackerRegistration() {
         try {
             registerWithTracker();
@@ -115,6 +155,10 @@ public class P2PController {
         }
     }
 
+    /**
+     * Registers the peer with the tracker server.
+     * Retries every 5 seconds until successful.
+     */
     private void registerWithTracker() {
         while (!isConnected) {
             int result = networkService.registerWithTracker();
@@ -131,22 +175,50 @@ public class P2PController {
         }
     }
 
+    /**
+     * Downloads a file given its FileInfo and the desired save path.
+     *
+     * @param fileInfo FileInfo of the file to download
+     * @param savePath Path to save the downloaded file
+     * @return String progress ID or error message
+     */
     public String downloadFile(FileInfo fileInfo, String savePath) {
         return service.downloadFile(fileInfo, savePath);
     }
 
+    /**
+     * Removes a shared file by its name.
+     *
+     * @param fileName Name of the file to remove
+     * @return int status code
+     */
     public int removeFile(String fileName) {
         return service.stopSharingFile(fileName);
     }
 
+    /**
+     * Gets the current progress of all tasks.
+     *
+     * @return Map of progress IDs to ProgressInfo objects
+     */
     public Map<String, ProgressInfo> getProgress() {
         return service.getProgress();
     }
 
+    /**
+     * Cleans up progress entries for the given task IDs.
+     *
+     * @param taskIds List of task IDs to clean up
+     */
     public void cleanupProgress(List<String> taskIds) {
         service.cleanupProgress(taskIds);
     }
 
+    /**
+     * Cancels a task given its progress ID.
+     *
+     * @param progressId The progress ID of the task to cancel
+     */
     public void cancelTask(String progressId) {
         Map<String, ProgressInfo> progressMap = service.getProgress();
         if (progressMap.containsKey(progressId)) {
@@ -163,6 +235,11 @@ public class P2PController {
         }
     }
 
+    /**
+     * Resumes a task given its progress ID.
+     *
+     * @param progressId The progress ID of the task to resume
+     */
     public void resumeTask(String progressId) {
         Map<String, ProgressInfo> progressMap = service.getProgress();
         if (progressMap.containsKey(progressId)) {
@@ -175,6 +252,10 @@ public class P2PController {
         }
     }
 
+    /**
+     * Checks for tasks that have timed out and updates their status accordingly.
+     * This method is intended to be called periodically.
+     */
     public void checkTimeouts() {
         Map<String, ProgressInfo> progressMap = service.getProgress();
         for (Map.Entry<String, ProgressInfo> entry : progressMap.entrySet()) {
@@ -187,6 +268,9 @@ public class P2PController {
         }
     }
 
+    /**
+     * Retries the connection to the tracker server if not already connected.
+     */
     public void retryConnectToTracker() {
         if (isRetrying || username == null) {
             return;
@@ -195,6 +279,9 @@ public class P2PController {
         taskTrackerRegistration();
     }
 
+    /**
+     * Sets up the API routes for communication with the frontend.
+     */
     private void setupApiRoutes() {
         // Set up API routes for frontend communication
         api.setRouteForRefresh(() -> {
@@ -260,6 +347,10 @@ public class P2PController {
 
         api.setRouteForResumeTask(this::resumeTask);
 
+        api.setRouteForPauseDownload(this::pauseDownload);
+
+        api.setRouteForResumeDownload(this::resumeDownload);
+
         api.setRouteForSharePrivateFile((filePath, isReplace, peerList) -> {
             if (!isConnected) {
                 retryConnectToTracker();
@@ -292,6 +383,11 @@ public class P2PController {
         api.setRouteForSetUsername(this::setUsername);
 
         api.setRouteForGetKnownPeers(this::getKnownPeers);
+
+        api.setRouteForGetSharedPeers(this::getSharedPeers);
+
+        api.setRouteForEditPermissions(this::editPermissions);
+
         // Start periodic timeout checker
         startTimeoutChecker();
 
@@ -299,10 +395,39 @@ public class P2PController {
         updateApiFiles();
     }
 
+    /**
+     * Gets the list of known peers from the network service.
+     *
+     * @return Set of PeerInfo objects representing known peers
+     */
     public Set<PeerInfo> getKnownPeers() {
         return networkService.queryOnlinePeerList();
     }
 
+    public boolean editPermissions(String filename, String permission, List<PeerInfo> peersList) {
+        try {
+            for (FileInfo file : service.getPublicSharedFiles().values()) {
+                if (file.getFileName().equals(filename)) {
+                    return service.editPermission(file, permission, peersList);
+                }
+            }
+
+            for (FileInfo file : service.getPrivateSharedFiles().keySet()) {
+                if (file.getFileName().equals(filename)) {
+                    return service.editPermission(file, permission, peersList);
+                }
+            }
+            return false;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Refreshes the file list from the service and updates the API.
+     */
     private void refreshFileList() {
         try {
             service.refreshFiles();
@@ -312,24 +437,46 @@ public class P2PController {
         }
     }
 
+    /**
+     * Gets the list of shared peers from the service.
+     *
+     * @return List of PeerInfo objects representing shared peers
+     */
+    private List<PeerInfo> getSharedPeers(String filename) {
+        return service.getSharedPeers(filename);
+    }
+
+    /**
+     * Updates the API with the current list of files from the service.
+     */
     private void updateApiFiles() {
         Set<FileInfo> domainFiles = service.getFiles();
-        List<FileInfo> modelFiles = domainFiles.stream()
-                .map(this::convertToModelFileInfo)
-                .collect(java.util.stream.Collectors.toList());
-        api.setFiles(modelFiles);
+        api.setFiles(domainFiles.stream().toList());
     }
 
-    private FileInfo convertToDomainFileInfo(FileInfo modelFile) {
-        return new FileInfo(
-                modelFile.getFileName(),
-                modelFile.getFileSize(),
-                modelFile.getFileHash(),
-                new PeerInfo(modelFile.getPeerInfo().getIp(), modelFile.getPeerInfo().getPort(), modelFile.getPeerInfo().getUsername()),
-                modelFile.isSharedByMe()
-        );
+    /**
+     * Pauses a download given its progress ID.
+     *
+     * @param progressId The progress ID of the download to pause
+     * @return true if paused successfully, false otherwise
+     */
+    public boolean pauseDownload(String progressId) {
+        return service.pauseDownload(progressId);
     }
 
+    /**
+     * Resumes a download given its progress ID.
+     *
+     * @param progressId The progress ID of the download to resume
+     * @return true if resumed successfully, false otherwise
+     */
+    public boolean resumeDownload(String progressId) {
+        return service.resumeDownload(progressId);
+    }
+
+    /**
+     * Starts a periodic checker to monitor for task timeouts.
+     */
     private void startTimeoutChecker() {
         executor.submit(() -> {
             while (true) {
@@ -342,15 +489,5 @@ public class P2PController {
                 }
             }
         });
-    }
-
-    private FileInfo convertToModelFileInfo(FileInfo domainFile) {
-        return new FileInfo(
-                domainFile.getFileName(),
-                domainFile.getFileSize(),
-                domainFile.getFileHash(),
-                new PeerInfo(domainFile.getPeerInfo().getIp(), domainFile.getPeerInfo().getPort(), domainFile.getPeerInfo().getUsername()),
-                domainFile.isSharedByMe()
-        );
     }
 }

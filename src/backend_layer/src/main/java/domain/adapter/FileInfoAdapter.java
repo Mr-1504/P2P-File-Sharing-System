@@ -8,11 +8,15 @@ import domain.entity.PeerInfo;
 
 import java.io.IOException;
 
+/**
+ * Adapter for serializing and deserializing FileInfo objects to and from JSON.
+ * The format used is "fileName'fileSize'fileHash'ip'port'username".
+ */
 public class FileInfoAdapter extends TypeAdapter<FileInfo> {
     @Override
     public void write(JsonWriter out, FileInfo value) throws IOException {
         out.value(value.getFileName() + "'" + value.getFileSize() + "'" + value.getFileHash() + "'" + value.getPeerInfo().getIp()
-        + "'" + value.getPeerInfo().getPort() + "'" + value.getPeerInfo().getUsername());
+                + "'" + value.getPeerInfo().getPort() + "'" + value.getPeerInfo().getUsername());
     }
 
     @Override

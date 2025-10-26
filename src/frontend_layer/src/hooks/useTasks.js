@@ -161,8 +161,9 @@ export const useTasks = (addNotification) => {
 
     const handleResume = async (taskId) => {
         try {
-            const response = await fetch(buildApiUrl(`/api/resume?taskId=${taskId}`), {
-                method: 'POST'
+            const response = await fetch(buildApiUrl(`/api/progress/${taskId}/resume`), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
             });
 
             if (response.ok) {

@@ -386,7 +386,7 @@ app.whenReady().then(() => {
         try {
             const controller = new AbortController();
             const response = await fetch(
-                buildApiUrl(`/api/files/download?fileName=${encodeURIComponent(fileName)}&peerInfo=${encodeURIComponent(peerInfo)}&savePath=${encodeURIComponent(savePath)}`),
+                buildApiUrl(`/api/files/${encodeURIComponent(fileName)}/download?peerInfo=${encodeURIComponent(peerInfo)}&savePath=${encodeURIComponent(savePath)}`),
                 {
                     method: 'GET',
                     signal: controller.signal,

@@ -3,7 +3,7 @@ package service;
 import domain.entity.FileInfo;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
-import infras.repository.PeerRepository;
+import domain.repository.IPeerRepository;
 import utils.AppPaths;
 import utils.Log;
 import utils.LogTag;
@@ -14,12 +14,21 @@ import java.util.Map;
 import java.util.Set;
 
 public class FileService implements IFileService {
-    private final PeerRepository peerModel;
+    private final IPeerRepository peerModel;
 
-    public FileService(PeerRepository peerModel){
+    public FileService(IPeerRepository peerModel) {
         this.peerModel = peerModel;
     }
 
+    @Override
+    public List<PeerInfo> getSharedPeers(String filename) {
+        return peerModel.getSharedPeers(filename);
+    }
+
+    @Override
+    public boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> peersList){
+        return this.peerModel.editPermission(targetFile, permission,peersList);
+    }
 
     @Override
     public String downloadFile(FileInfo fileInfo, String savePath) {
@@ -43,6 +52,9 @@ public class FileService implements IFileService {
 
             String progressId = ProgressInfo.generateProgressId();
             ProgressInfo progressInfo = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileInfo.getFileName(), ProgressInfo.TaskType.DOWNLOAD);
+            progressInfo.setSavePath(savePath); // Set save path for metadata management
+            progressInfo.setFileHash(fileInfo.getFileHash()); // Set file hash for metadata management
+            progressInfo.setResumable(true); // Mark as resumable
             peerModel.setProgress(progressInfo);
 
             peerModel.downloadFile(fileInfo, saveFile, peers, progressId);
@@ -116,6 +128,16 @@ public class FileService implements IFileService {
     }
 
     @Override
+    public Map<String, FileInfo> getPublicSharedFiles() {
+        return peerModel.getPublicSharedFiles();
+    }
+
+    @Override
+    public Map<FileInfo, Set<PeerInfo>> getPrivateSharedFiles() {
+        return peerModel.getPrivateSharedFiles();
+    }
+
+    @Override
     public void shareFileList() {
         peerModel.shareFileList(peerModel.getPublicFiles(), peerModel.getPrivateSharedFiles());
     }
@@ -138,5 +160,47 @@ public class FileService implements IFileService {
     @Override
     public void cleanupProgress(List<String> progressIds) {
         peerModel.cleanupProgress(progressIds);
+    }
+
+    @Override
+    public boolean pauseDownload(String progressId) {
+        Map<String, ProgressInfo> progressMap = peerModel.getProgress();
+        if (progressMap.containsKey(progressId)) {
+            ProgressInfo progress = progressMap.get(progressId);
+            if (ProgressInfo.ProgressStatus.DOWNLOADING.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.STARTING.equals(progress.getStatus())) {
+                progress.setStatus(ProgressInfo.ProgressStatus.PAUSED);
+                // Save metadata when pausing
+                peerModel.pauseDownload(progressId);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean resumeDownload(String progressId) {
+        Map<String, ProgressInfo> progressMap = peerModel.getProgress();
+        Log.logInfo("Resuming download for progressId: " + progressId);
+        if (progressMap.containsKey(progressId)) {
+            Log.logInfo("Found progress info for progressId: " + progressId);
+            ProgressInfo progress = progressMap.get(progressId);
+            if (ProgressInfo.ProgressStatus.PAUSED.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.STALLED.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.TIMEOUT.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.RESUMABLE.equals(progress.getStatus())) {
+                // Check if resumable download exists
+                if (progress.canResume()) {
+                    progress.setStatus(ProgressInfo.ProgressStatus.DOWNLOADING);
+                    progress.updateProgressTime();
+                    progress.resetFailedChunksCount();
+                    // Resume the download
+                    peerModel.resumeDownload(progressId);
+                    return true;
+                }
+            }
+        }
+        Log.logError("Cannot resume download for progressId: " + progressId, null);
+        return false;
     }
 }

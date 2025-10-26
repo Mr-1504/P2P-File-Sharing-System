@@ -7,7 +7,6 @@ import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import infras.subrepo.*;
 import infras.utils.FileUtils;
-import utils.AppPaths;
 import utils.Config;
 import utils.Log;
 import infras.utils.SSLUtils;
@@ -36,7 +35,6 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     private final ConcurrentHashMap<String, ProgressInfo> processes;
     private boolean isRunning;
     private final ReentrantLock fileLock;
-    private final String username;
 
     // Sub-models
     private final IFileDownloadRepository fileDownloadModel;
@@ -54,7 +52,6 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         this.sharedFileNames = new HashSet<>();
         this.executor = Executors.newFixedThreadPool(8);
         this.isRunning = true;
-        this.username = AppPaths.loadUsername();
         // Instantiate sub-models
         this.fileDownloadModel = new FileDownloadRepository(this);
         this.fileShareModel = new FileShareRepository(this);
@@ -192,6 +189,16 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     @Override
+    public List<PeerInfo> getSharedPeers(String filename) {
+        return fileShareModel.getSharedPeers(filename);
+    }
+
+    @Override
+    public boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> newPeerList) {
+        return fileShareModel.editPermission(targetFile, permission, newPeerList);
+    }
+
+    @Override
     public void startServer() {
         networkModel.startServer();
     }
@@ -286,11 +293,20 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         networkModel.processRequest(request, clientIP, channel);
     }
 
+    // Removed duplicate method - using the delegated one above
+
+    @Override
+    public void pauseDownload(String progressId) {
+        fileDownloadModel.pauseDownload(progressId);
+    }
+
+    @Override
+    public void resumeDownload(String progressId) {
+        fileDownloadModel.resumeDownload(progressId);
+    }
+
     @Override
     public void close() {
-        for (Future<Boolean> future : futures.values().stream().flatMap(List::stream).toList()) {
-            future.cancel(true);
-        }
         this.isRunning = false;
         this.executor.shutdown();
         FileUtils.saveData(publicSharedFiles, privateSharedFiles);
