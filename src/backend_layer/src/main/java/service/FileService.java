@@ -52,6 +52,9 @@ public class FileService implements IFileService {
 
             String progressId = ProgressInfo.generateProgressId();
             ProgressInfo progressInfo = new ProgressInfo(progressId, ProgressInfo.ProgressStatus.STARTING, fileInfo.getFileName(), ProgressInfo.TaskType.DOWNLOAD);
+            progressInfo.setSavePath(savePath); // Set save path for metadata management
+            progressInfo.setFileHash(fileInfo.getFileHash()); // Set file hash for metadata management
+            progressInfo.setResumable(true); // Mark as resumable
             peerModel.setProgress(progressInfo);
 
             peerModel.downloadFile(fileInfo, saveFile, peers, progressId);
@@ -157,5 +160,47 @@ public class FileService implements IFileService {
     @Override
     public void cleanupProgress(List<String> progressIds) {
         peerModel.cleanupProgress(progressIds);
+    }
+
+    @Override
+    public boolean pauseDownload(String progressId) {
+        Map<String, ProgressInfo> progressMap = peerModel.getProgress();
+        if (progressMap.containsKey(progressId)) {
+            ProgressInfo progress = progressMap.get(progressId);
+            if (ProgressInfo.ProgressStatus.DOWNLOADING.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.STARTING.equals(progress.getStatus())) {
+                progress.setStatus(ProgressInfo.ProgressStatus.PAUSED);
+                // Save metadata when pausing
+                peerModel.pauseDownload(progressId);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean resumeDownload(String progressId) {
+        Map<String, ProgressInfo> progressMap = peerModel.getProgress();
+        Log.logInfo("Resuming download for progressId: " + progressId);
+        if (progressMap.containsKey(progressId)) {
+            Log.logInfo("Found progress info for progressId: " + progressId);
+            ProgressInfo progress = progressMap.get(progressId);
+            if (ProgressInfo.ProgressStatus.PAUSED.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.STALLED.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.TIMEOUT.equals(progress.getStatus()) ||
+                ProgressInfo.ProgressStatus.RESUMABLE.equals(progress.getStatus())) {
+                // Check if resumable download exists
+                if (progress.canResume()) {
+                    progress.setStatus(ProgressInfo.ProgressStatus.DOWNLOADING);
+                    progress.updateProgressTime();
+                    progress.resetFailedChunksCount();
+                    // Resume the download
+                    peerModel.resumeDownload(progressId);
+                    return true;
+                }
+            }
+        }
+        Log.logError("Cannot resume download for progressId: " + progressId, null);
+        return false;
     }
 }

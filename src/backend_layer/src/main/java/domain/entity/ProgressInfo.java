@@ -20,6 +20,14 @@ public class ProgressInfo {
     private long lastProgressUpdateTime = System.currentTimeMillis();
     private long timeoutThresholdMs = 120000; // 2 minutes default
 
+    // Resumable download fields
+    private boolean resumable = false;
+    private String partFilePath;
+    private String metaFilePath;
+    private int totalChunks = 0;
+    private int downloadedChunksCount = 0;
+    private int failedChunksCount = 0;
+
     /**
      * Constructor to initialize ProgressInfo with essential details.
      *
@@ -142,5 +150,104 @@ public class ProgressInfo {
     public interface TaskType {
         String DOWNLOAD = "download";
         String SHARE = "share";
+    }
+
+    // Getters and setters for existing fields
+    public String getFileHash() {
+        return fileHash;
+    }
+
+    public void setFileHash(String fileHash) {
+        this.fileHash = fileHash;
+    }
+
+    public String getSavePath() {
+        return savePath;
+    }
+
+    public void setSavePath(String savePath) {
+        this.savePath = savePath;
+    }
+
+    public Set<Integer> getDownloadedChunks() {
+        return downloadedChunks;
+    }
+
+    public void setDownloadedChunks(Set<Integer> downloadedChunks) {
+        this.downloadedChunks = downloadedChunks;
+    }
+
+    public void addDownloadedChunk(int chunkIndex) {
+        this.downloadedChunks.add(chunkIndex);
+    }
+
+    public boolean isResumable() {
+        return resumable;
+    }
+
+    public void setResumable(boolean resumable) {
+        this.resumable = resumable;
+    }
+
+    public String getPartFilePath() {
+        return partFilePath;
+    }
+
+    public void setPartFilePath(String partFilePath) {
+        this.partFilePath = partFilePath;
+    }
+
+    public String getMetaFilePath() {
+        return metaFilePath;
+    }
+
+    public void setMetaFilePath(String metaFilePath) {
+        this.metaFilePath = metaFilePath;
+    }
+
+    public int getTotalChunks() {
+        return totalChunks;
+    }
+
+    public void setTotalChunks(int totalChunks) {
+        this.totalChunks = totalChunks;
+    }
+
+    public int getDownloadedChunksCount() {
+        return downloadedChunksCount;
+    }
+
+    public void setDownloadedChunksCount(int downloadedChunksCount) {
+        this.downloadedChunksCount = downloadedChunksCount;
+    }
+
+    public void incrementDownloadedChunksCount() {
+        this.downloadedChunksCount++;
+    }
+
+    public int getFailedChunksCount() {
+        return failedChunksCount;
+    }
+
+    public void setFailedChunksCount(int failedChunksCount) {
+        this.failedChunksCount = failedChunksCount;
+    }
+
+    public void incrementFailedChunksCount() {
+        this.failedChunksCount++;
+    }
+
+    /**
+     * Reset failed chunks count (useful when resuming).
+     */
+    public void resetFailedChunksCount() {
+        this.failedChunksCount = 0;
+    }
+
+    /**
+     * Check if download can be resumed.
+     */
+    public boolean canResume() {
+        return resumable && !ProgressStatus.COMPLETED.equals(status) && !ProgressStatus.CANCELLED.equals(status);
     }
 }

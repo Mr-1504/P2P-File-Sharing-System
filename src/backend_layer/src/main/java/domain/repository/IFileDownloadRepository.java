@@ -13,4 +13,6 @@ public interface IFileDownloadRepository {
     Map<String, ProgressInfo> getProgress();
     void setProgress(ProgressInfo progressInfo);
     void cleanupProgress(List<String> progressIds);
+    void pauseDownload(String progressId);
+    void resumeDownload(String progressId);
 }

@@ -35,5 +35,9 @@ public interface IFileService {
 
     void cleanupProgress(List<String> progressIds);
 
+    boolean pauseDownload(String progressId);
+
+    boolean resumeDownload(String progressId);
+
     boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> peersList);
 }

@@ -1,11 +1,14 @@
 package infras.subrepo;
 
+import domain.entity.ChunkInfo;
+import domain.entity.DownloadMetadata;
 import domain.entity.FileInfo;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import domain.repository.IFileDownloadRepository;
 import domain.repository.IPeerRepository;
 import infras.utils.FileUtils;
+import infras.utils.MetadataUtils;
 import infras.utils.SSLUtils;
 import utils.Config;
 import utils.Log;
@@ -69,6 +72,72 @@ public class FileDownloadRepository implements IFileDownloadRepository {
         }
     }
 
+    @Override
+    public void resumeDownload(String progressId) {
+        Log.logInfo("Attempting to resume download for progressId: " + progressId);
+        Map<String, ProgressInfo> progressMap = this.peerModel.getProcesses();
+        if (progressMap.containsKey(progressId)) {
+            ProgressInfo progress = progressMap.get(progressId);
+            String status = progress.getStatus();
+
+            if (ProgressInfo.ProgressStatus.DOWNLOADING.equals(status)) {
+
+                String metaFilePath = progress.getSavePath() + ".part.meta";
+                DownloadMetadata metadata = MetadataUtils.loadMetadata(metaFilePath);
+
+                if (metadata != null && !metadata.isComplete()) {
+                    // Create dummy FileInfo from metadata (we only need hash and size for chunk validation)
+                    try {
+                        FileInfo fileInfo = new FileInfo(
+                                metadata.getFileName(),
+                                metadata.getFileSize(),
+                                metadata.getFileHash(),
+                                null // peer not needed for metadata resumption
+                        );
+
+                        progress.setStatus(ProgressInfo.ProgressStatus.DOWNLOADING);
+                        progress.updateProgressTime();
+                        progress.resetFailedChunksCount();
+
+                        // Get any available peers for this file (or reuse if we had stored them)
+                        List<PeerInfo> peers;
+
+                        List<PeerInfo> filePeers = this.peerModel.getPeersWithFile(fileInfo.getFileHash());
+                        if (filePeers != null && !filePeers.isEmpty()) {
+                            peers = new ArrayList<>(filePeers);
+                        } else {
+                            // Try to find any available peer as fallback
+                            Set<PeerInfo> onlinePeersSet = this.peerModel.queryOnlinePeerList();
+                            if (onlinePeersSet != null && !onlinePeersSet.isEmpty()) {
+                                peers = onlinePeersSet.stream()
+                                        .filter(PeerInfo::isAvailableForDownload)
+                                        .limit(5)
+                                        .collect(java.util.stream.Collectors.toList());
+                            } else {
+                                peers = new ArrayList<>();
+                            }
+                        }
+
+                        if (!peers.isEmpty()) {
+                            // Submit resumed download task
+                            this.executorService.submit(() -> this.processDownload(fileInfo, new File(progress.getSavePath()), progressId, peers));
+                            Log.logInfo("Download resumed successfully for: " + progressId + " with " + peers.size() + " peers");
+                        } else {
+                            Log.logInfo("Cannot resume download - no available peers for: " + progressId);
+                            progress.setStatus(ProgressInfo.ProgressStatus.PAUSED);
+                        }
+
+                    } catch (Exception e) {
+                        Log.logError("Error resuming download for: " + progressId, e);
+                        progress.setStatus(ProgressInfo.ProgressStatus.PAUSED);
+                    }
+                } else {
+                    Log.logInfo("Cannot resume download - invalid or empty metadata for: " + progressId);
+                }
+            }
+        }
+    }
+
     private Integer processDownload(FileInfo fileInfo, File file, String progressId, List<PeerInfo> peerInfos) {
         this.peerModel.getFutures().put(progressId, new ArrayList<>());
         this.peerModel.getOpenChannels().put(progressId, new CopyOnWriteArrayList<>());
@@ -82,12 +151,32 @@ public class FileDownloadRepository implements IFileDownloadRepository {
             progressInfo.setBytesTransferred(0L);
             progressInfo.updateProgressTime(); // Reset timeout when download starts
 
+            // Load existing metadata if available
+            String metaFilePath = progressInfo.getSavePath() + ".part.meta";
+            DownloadMetadata metadata = MetadataUtils.loadMetadata(metaFilePath);
+
             try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
                 raf.setLength(fileInfo.getFileSize());
                 ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk = new ConcurrentHashMap<>();
                 int totalChunk = (int) Math.ceil((double) fileInfo.getFileSize() / (double) Config.CHUNK_SIZE);
                 this.initializeHashMap(peerOfChunk, totalChunk);
-                int result = this.downloadAllChunks(fileInfo, peerInfos, progressId, chunkCount, raf, peerOfChunk);
+
+                // Initialize downloaded chunks from metadata
+                if (metadata != null) {
+                    synchronized (progressInfo) {
+                        for (int i = 0; i < metadata.getChunks().size(); i++) {
+                            ChunkInfo chunk = metadata.getChunks().get(i);
+                            if (chunk.isCompleted()) {
+                                progressInfo.getDownloadedChunks().add(i);
+                            }
+                        }
+                        chunkCount.set(progressInfo.getDownloadedChunks().size());
+                        progressInfo.setProgressPercentage((int) ((double) chunkCount.get() * 100.0 / totalChunk));
+                        progressInfo.setBytesTransferred((long) chunkCount.get() * Config.CHUNK_SIZE);
+                    }
+                }
+
+                int result = this.downloadAllChunks(metadata, fileInfo, peerInfos, progressId, chunkCount, raf, peerOfChunk);
                 if (result == LogTag.I_CANCELLED) {
                     this.cancelDownload(file.getPath());
                     return LogTag.I_CANCELLED;
@@ -124,7 +213,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
         }
     }
 
-    private Integer downloadAllChunks(FileInfo file, List<PeerInfo> peerInfos, String progressId, AtomicInteger
+    private Integer downloadAllChunks(DownloadMetadata metadata, FileInfo file, List<PeerInfo> peerInfos, String progressId, AtomicInteger
                                               chunkCount,
                                       RandomAccessFile raf, ConcurrentHashMap<Integer, List<PeerInfo>> peerOfChunk) throws
             InterruptedException {
@@ -133,13 +222,21 @@ public class FileDownloadRepository implements IFileDownloadRepository {
         ProgressInfo progressInfo = this.peerModel.getProcesses().get(progressId);
 
         for (int i = 0; i < totalChunk; ++i) {
-            if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) || Thread.currentThread().isInterrupted()) {
+            // Skip completed chunks from metadata
+            if (metadata != null && metadata.getChunks().get(i).isCompleted()) {
+                continue;
+            }
+
+            if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) ||
+                    progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.PAUSED) ||
+                    Thread.currentThread().isInterrupted()) {
                 return LogTag.I_CANCELLED;
             }
 
             while (((ThreadPoolExecutor) executorService).getActiveCount() >= 6) {
                 Thread.sleep(50L);
-                if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
+                if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) ||
+                        progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.PAUSED)) {
                     return LogTag.I_CANCELLED;
                 }
             }
@@ -157,7 +254,8 @@ public class FileDownloadRepository implements IFileDownloadRepository {
             ArrayList<Integer> stillFailed = new ArrayList<>();
 
             for (int j : failedChunks) {
-                if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
+                if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) ||
+                        progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.PAUSED)) {
                     return LogTag.I_CANCELLED;
                 }
 
@@ -230,7 +328,8 @@ public class FileDownloadRepository implements IFileDownloadRepository {
         final int MAX_RETRY = 20;
 
         while (retryCount++ < MAX_RETRY) {
-            if ((this.peerModel.getProcesses().get(progressId)).getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
+            if ((this.peerModel.getProcesses().get(progressId)).getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) ||
+                    (this.peerModel.getProcesses().get(progressId)).getStatus().equals(ProgressInfo.ProgressStatus.PAUSED)) {
                 return null;
             }
 
@@ -272,8 +371,10 @@ public class FileDownloadRepository implements IFileDownloadRepository {
         ProgressInfo progressInfo = this.peerModel.getProcesses().get(progressId);
         if (!progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED)) {
             for (int i = 1; i <= retryCount; ++i) {
-                if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) || Thread.currentThread().isInterrupted()) {
-                    Log.logInfo("Process cancelled by user while downloading chunk " + chunkIndex + " from peer " + peerInfo.toString());
+                if (progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.CANCELLED) ||
+                        progressInfo.getStatus().equals(ProgressInfo.ProgressStatus.PAUSED) ||
+                        Thread.currentThread().isInterrupted()) {
+                    Log.logInfo("Process paused/cancelled by user while downloading chunk " + chunkIndex + " from peer " + peerInfo.toString());
                     return false;
                 }
                 SSLSocket sslSocket = null;
@@ -312,6 +413,7 @@ public class FileDownloadRepository implements IFileDownloadRepository {
                                 synchronized (progress) {
                                     progress.addBytesTransferred(chunkLength);
                                     progress.setProgressPercentage(percent);
+                                    progress.addDownloadedChunk(chunkIndex);
                                     progress.updateProgressTime();
                                 }
                             }
@@ -355,5 +457,56 @@ public class FileDownloadRepository implements IFileDownloadRepository {
             Log.logInfo("Failed to download chunk " + chunkIndex + " from peer " + peerInfo + " after " + retryCount + " attempts.");
         }
         return false;
+    }
+
+    @Override
+    public void pauseDownload(String progressId) {
+        Map<String, ProgressInfo> progressMap = this.peerModel.getProcesses();
+        if (progressMap.containsKey(progressId)) {
+            ProgressInfo progress = progressMap.get(progressId);
+            String status = progress.getStatus();
+
+            progress.setStatus(ProgressInfo.ProgressStatus.PAUSED);
+            Log.logInfo("Download paused for progressId: " + progressId);
+
+            // Cancel active futures
+            List<Future<Boolean>> futures = this.peerModel.getFutures().get(progressId);
+            if (futures != null) {
+                for (Future<Boolean> future : futures) {
+                    if (!future.isDone()) {
+                        future.cancel(true);
+                    }
+                }
+            }
+
+            // Close SSL connections
+            CopyOnWriteArrayList<SSLSocket> sockets = this.peerModel.getOpenChannels().get(progressId);
+            if (sockets != null) {
+                for (SSLSocket socket : sockets) {
+                    try {
+                        socket.close();
+                    } catch (IOException e) {
+                        Log.logError("Error closing socket during pause", e);
+                    }
+                }
+            }
+
+            // Save metadata
+            String metaFilePath = progress.getSavePath() + ".part.meta";
+            DownloadMetadata metadata = MetadataUtils.loadMetadata(metaFilePath);
+            if (metadata == null) {
+                // Create new metadata
+                metadata = new DownloadMetadata(progress.getFileName(), progress.getFileHash(), progress.getTotalBytes(), progress.getSavePath());
+            }
+            // Update chunks to completed based on downloaded chunks
+            Set<Integer> downloadedChunks = progress.getDownloadedChunks();
+            for (int i = 0; i < metadata.getChunks().size(); i++) {
+                if (downloadedChunks.contains(i)) {
+                    metadata.getChunks().get(i).setStatus(ChunkInfo.ChunkStatus.COMPLETED);
+                }
+            }
+            MetadataUtils.saveMetadata(metadata);
+            Log.logInfo("Metadata saved for paused download: " + progressId);
+        }
     }
 }

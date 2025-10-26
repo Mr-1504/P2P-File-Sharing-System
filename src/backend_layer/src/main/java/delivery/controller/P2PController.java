@@ -347,6 +347,10 @@ public class P2PController {
 
         api.setRouteForResumeTask(this::resumeTask);
 
+        api.setRouteForPauseDownload(this::pauseDownload);
+
+        api.setRouteForResumeDownload(this::resumeDownload);
+
         api.setRouteForSharePrivateFile((filePath, isReplace, peerList) -> {
             if (!isConnected) {
                 retryConnectToTracker();
@@ -448,6 +452,26 @@ public class P2PController {
     private void updateApiFiles() {
         Set<FileInfo> domainFiles = service.getFiles();
         api.setFiles(domainFiles.stream().toList());
+    }
+
+    /**
+     * Pauses a download given its progress ID.
+     *
+     * @param progressId The progress ID of the download to pause
+     * @return true if paused successfully, false otherwise
+     */
+    public boolean pauseDownload(String progressId) {
+        return service.pauseDownload(progressId);
+    }
+
+    /**
+     * Resumes a download given its progress ID.
+     *
+     * @param progressId The progress ID of the download to resume
+     * @return true if resumed successfully, false otherwise
+     */
+    public boolean resumeDownload(String progressId) {
+        return service.resumeDownload(progressId);
     }
 
     /**

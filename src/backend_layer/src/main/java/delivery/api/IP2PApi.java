@@ -92,6 +92,20 @@ public interface IP2PApi {
     void setRouteForResumeTask(Consumer<String> handler);
 
     /**
+     * Routes setup method for pause download API endpoint
+     *
+     * @param handler the function or consumer to handle the route
+     */
+    void setRouteForPauseDownload(Function<String, Boolean> handler);
+
+    /**
+     * Routes setup method for resume download API endpoint
+     *
+     * @param handler the function or consumer to handle the route
+     */
+    void setRouteForResumeDownload(Function<String, Boolean> handler);
+
+    /**
      * Routes setup method for share private file API endpoint
      *
      * @param callable the function or consumer to handle the route

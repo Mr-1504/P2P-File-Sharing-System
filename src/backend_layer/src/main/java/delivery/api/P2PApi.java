@@ -53,6 +53,8 @@ public class P2PApi implements IP2PApi {
     private Consumer<CleanupRequest> cleanupProgressHandler;
     private Consumer<String> cancelTaskHandler;
     private Consumer<String> resumeTaskHandler;
+    private Function<String, Boolean> pauseDownloadHandler;
+    private Function<String, Boolean> resumeDownloadHandler;
     private TriFunction<String, Integer, List<PeerInfo>, String> sharePrivateFileHandler;
     private Callable<Set<PeerInfo>> getKnownPeersHandler;
 
@@ -229,6 +231,20 @@ public class P2PApi implements IP2PApi {
         // POST /api/progress/cleanup
         if (method.equals("POST") && parts.length == 4 && parts[3].equals("cleanup")) {
             handleCleanupProgress(exchange);
+            return;
+        }
+
+        // POST /api/progress/{progressId}/pause
+        if (method.equals("POST") && parts.length == 5 && parts[4].equals("pause")) {
+            String progressId = URLDecoder.decode(parts[3], StandardCharsets.UTF_8);
+            handlePauseDownload(exchange, progressId);
+            return;
+        }
+
+        // POST /api/progress/{progressId}/resume
+        if (method.equals("POST") && parts.length == 5 && parts[4].equals("resume")) {
+            String progressId = URLDecoder.decode(parts[3], StandardCharsets.UTF_8);
+            handleResumeDownload(exchange, progressId);
             return;
         }
 
@@ -437,13 +453,13 @@ public class P2PApi implements IP2PApi {
 
         for (FileInfo file : files) {
             if (file.getFileName().equals(fileName) && file.getPeerInfo().equals(peer)) {
-                String res = downloadFileHandler.apply(file, savePath, isCancelled);
-                if (res.equals(LogTag.S_NOT_CONNECTION)) {
+                String progressId = downloadFileHandler.apply(file, savePath, isCancelled);
+                if (LogTag.S_NOT_CONNECTION.equals(progressId)) {
                     sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE, jsonError(LogTag.S_NOT_CONNECTION));
                     return;
                 }
-                String response = gson.toJson(Collections.singletonMap("status", "starting"));
-                logInfo(response);
+                String response = gson.toJson(progressId);
+                logInfo("Download started with progressId: " + progressId);
                 sendResponse(exchange, LogTag.OK, response);
                 return;
             }
@@ -531,6 +547,46 @@ public class P2PApi implements IP2PApi {
         }
         cleanupProgressHandler.accept(request);
         sendResponse(exchange, LogTag.OK, "{\"status\":\"success\"}");
+    }
+
+    /**
+     * Handles POST /api/progress/{progressId}/pause
+     */
+    private void handlePauseDownload(HttpExchange exchange, String progressId) {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            sendResponse(exchange, LogTag.METHOD_NOT_ALLOW, jsonError("Method not allowed"));
+            return;
+        }
+        if (pauseDownloadHandler == null) throw new UnsupportedOperationException("PauseDownload handler not set");
+
+        logInfo("Pause download request for progressId: " + progressId);
+        boolean success = pauseDownloadHandler.apply(progressId);
+        if (success) {
+            String response = gson.toJson(Collections.singletonMap("status", "paused"));
+            sendResponse(exchange, LogTag.OK, response);
+        } else {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Failed to pause download or download not found"));
+        }
+    }
+
+    /**
+     * Handles POST /api/progress/{progressId}/resume
+     */
+    private void handleResumeDownload(HttpExchange exchange, String progressId) {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            sendResponse(exchange, LogTag.METHOD_NOT_ALLOW, jsonError("Method not allowed"));
+            return;
+        }
+        if (resumeDownloadHandler == null) throw new UnsupportedOperationException("ResumeDownload handler not set");
+
+        logInfo("Resume download request for progressId: " + progressId);
+        boolean success = resumeDownloadHandler.apply(progressId);
+        if (success) {
+            String response = gson.toJson(Collections.singletonMap("status", "resumed"));
+            sendResponse(exchange, LogTag.OK, response);
+        } else {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Failed to resume download or download not resumable"));
+        }
     }
 
     /**
@@ -661,6 +717,16 @@ public class P2PApi implements IP2PApi {
     @Override
     public void setRouteForSharePrivateFile(TriFunction<String, Integer, List<PeerInfo>, String> callable) {
         this.sharePrivateFileHandler = callable;
+    }
+
+    @Override
+    public void setRouteForPauseDownload(Function<String, Boolean> handler) {
+        this.pauseDownloadHandler = handler;
+    }
+
+    @Override
+    public void setRouteForResumeDownload(Function<String, Boolean> handler) {
+        this.resumeDownloadHandler = handler;
     }
 
     @Override

@@ -293,11 +293,20 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         networkModel.processRequest(request, clientIP, channel);
     }
 
+    // Removed duplicate method - using the delegated one above
+
+    @Override
+    public void pauseDownload(String progressId) {
+        fileDownloadModel.pauseDownload(progressId);
+    }
+
+    @Override
+    public void resumeDownload(String progressId) {
+        fileDownloadModel.resumeDownload(progressId);
+    }
+
     @Override
     public void close() {
-        for (Future<Boolean> future : futures.values().stream().flatMap(List::stream).toList()) {
-            future.cancel(true);
-        }
         this.isRunning = false;
         this.executor.shutdown();
         FileUtils.saveData(publicSharedFiles, privateSharedFiles);
