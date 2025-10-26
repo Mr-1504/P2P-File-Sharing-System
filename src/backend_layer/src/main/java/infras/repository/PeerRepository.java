@@ -7,7 +7,6 @@ import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import infras.subrepo.*;
 import infras.utils.FileUtils;
-import utils.AppPaths;
 import utils.Config;
 import utils.Log;
 import infras.utils.SSLUtils;
@@ -36,7 +35,6 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     private final ConcurrentHashMap<String, ProgressInfo> processes;
     private boolean isRunning;
     private final ReentrantLock fileLock;
-    private final String username;
 
     // Sub-models
     private final IFileDownloadRepository fileDownloadModel;
@@ -54,7 +52,6 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         this.sharedFileNames = new HashSet<>();
         this.executor = Executors.newFixedThreadPool(8);
         this.isRunning = true;
-        this.username = AppPaths.loadUsername();
         // Instantiate sub-models
         this.fileDownloadModel = new FileDownloadRepository(this);
         this.fileShareModel = new FileShareRepository(this);
@@ -189,6 +186,16 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     @Override
     public void initializeServerSocket(String username) throws Exception {
         networkModel.initializeServerSocket(username);
+    }
+
+    @Override
+    public List<PeerInfo> getSharedPeers(String filename) {
+        return fileShareModel.getSharedPeers(filename);
+    }
+
+    @Override
+    public boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> newPeerList) {
+        return fileShareModel.editPermission(targetFile, permission, newPeerList);
     }
 
     @Override

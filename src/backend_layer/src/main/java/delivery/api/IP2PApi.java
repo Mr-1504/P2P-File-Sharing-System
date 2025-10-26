@@ -105,6 +105,20 @@ public interface IP2PApi {
      */
     void setRouteForGetKnownPeers(Callable<Set<PeerInfo>> callable);
 
+
+    /**
+     * Routes setup method for edit permissions API endpoint
+     *
+     * @param callable the function or consumer to handle the route
+     */
+    void setRouteForEditPermissions(TriFunction<String, String, List<PeerInfo>, Boolean> callable);
+
+    /**
+     * Routes setup method for get sharing peers of file API endpoint
+     * @param callable the function or consumer to handle the route
+     */
+    void setRouteForGetSharedPeers(Function<String, List<PeerInfo>> callable);
+
     /**
      * Routes setup method for set files
      *

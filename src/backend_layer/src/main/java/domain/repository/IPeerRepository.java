@@ -1,5 +1,6 @@
 package domain.repository;
 
+import domain.entity.PeerInfo;
 import io.netty.channel.socket.SocketChannel;
 import domain.entity.ProgressInfo;
 
@@ -17,6 +18,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
 
 public interface IPeerRepository extends IFileDownloadRepository, IFileShareRepository, INetworkRepository, IPeerDiscoveryRepository {
+    List<PeerInfo> getSharedPeers(String fileName);
+
     ExecutorService getExecutor();
 
     Map<String, ProgressInfo> getProcesses();

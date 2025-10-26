@@ -47,7 +47,7 @@ function App() {
   const fetchFiles = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(buildApiUrl('/api/files/refresh'), {
+      const response = await fetch(buildApiUrl('/api/files'), {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });

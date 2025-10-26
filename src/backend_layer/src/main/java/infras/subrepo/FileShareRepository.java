@@ -73,6 +73,31 @@ public class FileShareRepository implements IFileShareRepository {
     }
 
     @Override
+    public List<PeerInfo> getSharedPeers(String fileName) {
+        for (Map.Entry<FileInfo, Set<PeerInfo>> entry : peerModel.getPrivateSharedFiles().entrySet()) {
+            FileInfo fileInfo = entry.getKey();
+            if (fileInfo.getFileName().equals(fileName)) {
+                return new ArrayList<>(entry.getValue());
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> peersList){
+        if (permission.equals("PUBLIC")) {
+            peerModel.getPrivateSharedFiles().remove(targetFile);
+            peerModel.getPublicSharedFiles().put(targetFile.getFileName(), targetFile);
+            Log.logInfo("Changed file " + targetFile.getFileName() + " to PUBLIC");
+        } else if (permission.equals("PRIVATE")) {
+            peerModel.getPublicSharedFiles().remove(targetFile.getFileName());
+            peerModel.getPrivateSharedFiles().put(targetFile, new HashSet<>(peersList));
+            Log.logInfo("Changed file " + targetFile.getFileName() + " to PRIVATE for peers: " + peersList);
+        }
+        return shareFileList(new ArrayList<>(peerModel.getPublicSharedFiles().values()), peerModel.getPrivateSharedFiles());
+    }
+
+    @Override
     public boolean shareFileList(List<FileInfo> publicFiles, Map<FileInfo, Set<PeerInfo>> privateFiles) {
         if (!SSLUtils.isSSLSupported()) {
             Log.logError("SSL certificates not found! SSL is now mandatory for security.", null);
@@ -178,12 +203,12 @@ public class FileShareRepository implements IFileShareRepository {
                         return -1;
                     }
                     PeerInfo peerInfo = new PeerInfo(Config.SERVER_IP, Config.PEER_PORT);
-                    this.peerModel.getFiles().clear();
                     for (FileInfo file : files) {
                         boolean isSharedByMe = file.getPeerInfo().equals(peerInfo);
                         file.setSharedByMe(isSharedByMe);
-                        this.peerModel.getFiles().add(file);
                     }
+                    this.peerModel.setSharedFileNames(files);
+                    Log.logInfo("Successfully refreshed " + peerModel.getFiles().size() + " shared files from tracker.");
                     return 1;
                 }
             } else {

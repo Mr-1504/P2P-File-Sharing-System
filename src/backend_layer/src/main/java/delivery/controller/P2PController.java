@@ -379,6 +379,11 @@ public class P2PController {
         api.setRouteForSetUsername(this::setUsername);
 
         api.setRouteForGetKnownPeers(this::getKnownPeers);
+
+        api.setRouteForGetSharedPeers(this::getSharedPeers);
+
+        api.setRouteForEditPermissions(this::editPermissions);
+
         // Start periodic timeout checker
         startTimeoutChecker();
 
@@ -395,6 +400,28 @@ public class P2PController {
         return networkService.queryOnlinePeerList();
     }
 
+    public boolean editPermissions(String filename, String permission, List<PeerInfo> peersList) {
+        try {
+            FileInfo targetFile = service.getPublicSharedFiles().get(filename);
+
+            if (targetFile == null) {
+                for (FileInfo file : service.getPrivateSharedFiles().keySet()) {
+                    if (file.getFileName().equals(filename) && file.isSharedByMe()) {
+                        targetFile = file;
+                        break;
+                    }
+                }
+                if (targetFile == null) {
+                    return false;
+                }
+            }
+            return service.editPermission(targetFile, permission, peersList);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     /**
      * Refreshes the file list from the service and updates the API.
      */
@@ -405,6 +432,15 @@ public class P2PController {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Gets the list of shared peers from the service.
+     *
+     * @return List of PeerInfo objects representing shared peers
+     */
+    private List<PeerInfo> getSharedPeers(String filename) {
+        return service.getSharedPeers(filename);
     }
 
     /**

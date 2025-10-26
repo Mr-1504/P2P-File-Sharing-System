@@ -3,7 +3,7 @@ package service;
 import domain.entity.FileInfo;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
-import infras.repository.PeerRepository;
+import domain.repository.IPeerRepository;
 import utils.AppPaths;
 import utils.Log;
 import utils.LogTag;
@@ -14,12 +14,21 @@ import java.util.Map;
 import java.util.Set;
 
 public class FileService implements IFileService {
-    private final PeerRepository peerModel;
+    private final IPeerRepository peerModel;
 
-    public FileService(PeerRepository peerModel){
+    public FileService(IPeerRepository peerModel) {
         this.peerModel = peerModel;
     }
 
+    @Override
+    public List<PeerInfo> getSharedPeers(String filename) {
+        return peerModel.getSharedPeers(filename);
+    }
+
+    @Override
+    public boolean editPermission(FileInfo targetFile, String permission, List<PeerInfo> peersList){
+        return this.peerModel.editPermission(targetFile, permission,peersList);
+    }
 
     @Override
     public String downloadFile(FileInfo fileInfo, String savePath) {
@@ -113,6 +122,16 @@ public class FileService implements IFileService {
     @Override
     public Set<FileInfo> getFiles() {
         return peerModel.getFiles();
+    }
+
+    @Override
+    public Map<String, FileInfo> getPublicSharedFiles() {
+        return peerModel.getPublicSharedFiles();
+    }
+
+    @Override
+    public Map<FileInfo, Set<PeerInfo>> getPrivateSharedFiles() {
+        return peerModel.getPrivateSharedFiles();
     }
 
     @Override
