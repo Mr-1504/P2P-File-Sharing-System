@@ -402,20 +402,19 @@ public class P2PController {
 
     public boolean editPermissions(String filename, String permission, List<PeerInfo> peersList) {
         try {
-            FileInfo targetFile = service.getPublicSharedFiles().get(filename);
-
-            if (targetFile == null) {
-                for (FileInfo file : service.getPrivateSharedFiles().keySet()) {
-                    if (file.getFileName().equals(filename) && file.isSharedByMe()) {
-                        targetFile = file;
-                        break;
-                    }
-                }
-                if (targetFile == null) {
-                    return false;
+            for (FileInfo file : service.getPublicSharedFiles().values()) {
+                if (file.getFileName().equals(filename)) {
+                    return service.editPermission(file, permission, peersList);
                 }
             }
-            return service.editPermission(targetFile, permission, peersList);
+
+            for (FileInfo file : service.getPrivateSharedFiles().keySet()) {
+                if (file.getFileName().equals(filename)) {
+                    return service.editPermission(file, permission, peersList);
+                }
+            }
+            return false;
+
         } catch (Exception e) {
             e.printStackTrace();
             return false;

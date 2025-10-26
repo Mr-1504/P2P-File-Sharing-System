@@ -77,7 +77,7 @@ public class FileShareRepository implements IFileShareRepository {
         for (Map.Entry<FileInfo, Set<PeerInfo>> entry : peerModel.getPrivateSharedFiles().entrySet()) {
             FileInfo fileInfo = entry.getKey();
             if (fileInfo.getFileName().equals(fileName)) {
-                return new ArrayList<>(entry.getValue());
+                return entry.getValue().stream().toList();
             }
         }
         return null;
@@ -94,6 +94,9 @@ public class FileShareRepository implements IFileShareRepository {
             peerModel.getPrivateSharedFiles().put(targetFile, new HashSet<>(peersList));
             Log.logInfo("Changed file " + targetFile.getFileName() + " to PRIVATE for peers: " + peersList);
         }
+        if (unshareFile(targetFile) != 1) {
+            return false;
+        }
         return shareFileList(new ArrayList<>(peerModel.getPublicSharedFiles().values()), peerModel.getPrivateSharedFiles());
     }
 
@@ -106,6 +109,9 @@ public class FileShareRepository implements IFileShareRepository {
 
         try {
             PeerInfo sslTrackerHost = new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT);
+            for (Set<PeerInfo> peers : privateFiles.values()) {
+                peers.add(new PeerInfo(Config.SERVER_IP, Config.PEER_PORT, AppPaths.loadUsername()));
+            }
             Log.logInfo("Established SSL connection to tracker for sharing files");
             StringBuilder messageBuilder = new StringBuilder("SHARE|");
             messageBuilder.append(publicFiles.size()).append("|")
@@ -162,7 +168,7 @@ public class FileShareRepository implements IFileShareRepository {
             return;
         }
 
-        peerModel.getPrivateSharedFiles().put(sharedFile, new HashSet<>(peerInfos));
+        peerModel.getPrivateSharedFiles().put(sharedFile, peerInfos);
         Log.logInfo("Sharing file " + fileName + " (hash: " + fileHash + ") to specific peers: " + peerList);
 
         peerModel.getProcesses().get(progressId).setStatus(ProgressInfo.ProgressStatus.COMPLETED);

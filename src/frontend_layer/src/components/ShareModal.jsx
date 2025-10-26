@@ -81,11 +81,11 @@ const ShareModal = ({ isOpen, onClose, onShareAll, onShareSelective, file }) => 
     };
 
     const handlePeerToggle = (peer) => {
-        const peerKey = peer.username || peer.ip; // Use username as unique identifier
+        const peerKey = peer.ip; // Use ip as unique identifier
         setSelectedPeers(prev => {
             const current = prev || [];
-            return current.some(p => (p.username || p.ip) === peerKey)
-                ? current.filter(p => (p.username || p.ip) !== peerKey)
+            return current.some(p => p.ip === peerKey)
+                ? current.filter(p => p.ip !== peerKey)
                 : [...current, peer];
         });
     };
@@ -214,7 +214,7 @@ const ShareModal = ({ isOpen, onClose, onShareAll, onShareSelective, file }) => 
                                             <label key={index} className="flex items-center space-x-3 cursor-pointer p-3 rounded-lg hover:bg-white hover:shadow-sm transition-all duration-150">
                                                 <input
                                                     type="checkbox"
-                                                    checked={(selectedPeers && selectedPeers.some(p => (p.username || p.ip) === (peer.username || peer.ip))) || false}
+                                                    checked={(selectedPeers && selectedPeers.some(p => p.ip === peer.ip)) || false}
                                                     onChange={() => handlePeerToggle(peer)}
                                                     className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
                                                 />
