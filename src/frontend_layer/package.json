@@ -21,12 +21,13 @@
     "cross-env": "^10.0.0",
     "electron": "^20.0.0",
     "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "wait-on": "^9.0.3"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "electron": "cross-env ELECTRON_START_URL=http://localhost:3000 electron ."
+    "dev": "concurrently \"cross-env BROWSER=none react-scripts start\" \"npm run electron:wait\"",
+    "electron:wait": "wait-on http://localhost:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 electron .",
+    "build": "react-scripts build"
   },
   "browserslist": {
     "production": [
