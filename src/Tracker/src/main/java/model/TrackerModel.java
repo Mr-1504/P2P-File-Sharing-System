@@ -236,7 +236,7 @@ public class TrackerModel {
         } else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
             return getKnownPeers();
         }
-        logInfo("[TRACKER]: Unkhown command: " + request + " on " + getCurrentTime());
+        logInfo("[TRACKER]: Unknown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
     }
 
