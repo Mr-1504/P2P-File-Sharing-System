@@ -32,7 +32,6 @@ import java.util.List;
 public class SSLUtils {
     public static final String TRUSTSTORE_HASH = "ffe24be633fdbddae20ae7ec5effdfa422a0a15bc4d37f5284b5860da0364171";
     public static final int SSL_TRACKER_ENROLL_PORT = Config.TRACKER_ENROLL_PORT;
-    public static final int SSL_TRACKER_PORT = Config.TRACKER_PORT;
     public static final String KEYSTORE_PASSWORD = requireEnv("KEYSTORE_PASSWORD");
     public static final String TRUSTSTORE_PASSWORD = requireEnv("TRUSTSTORE_PASSWORD");
     public static final Path CERT_DIRECTORY = AppPaths.getCertificatePath();
@@ -41,7 +40,6 @@ public class SSLUtils {
     public static final String KEY_ALIAS = getKeyAlias();
 
     private static final String SERVER_IP = Config.TRACKER_IP; // Should be the Tracker's IP
-    private static final int TRACKER_PORT_FOR_CSR = SSL_TRACKER_PORT;
 
     static {
         // Register Bouncy Castle provider once
@@ -133,7 +131,7 @@ public class SSLUtils {
     }
 
     private static String generateCsrPem(KeyPair keyPair) throws Exception {
-        String subjectName = "CN=peer-" + UUID.randomUUID().toString();
+        String subjectName = "CN=peer-" + UUID.randomUUID();
         X500Name subject = new X500Name(subjectName);
 
         JcaPKCS10CertificationRequestBuilder p10Builder = new JcaPKCS10CertificationRequestBuilder(subject, keyPair.getPublic());
@@ -176,7 +174,7 @@ public class SSLUtils {
                 String response = sb.toString().trim();
                 Log.logInfo("Received response from tracker.");
                 Log.logInfo("Response: " + response);
-                if (response != null && response.startsWith("CERT_RESPONSE|")) {
+                if (response.startsWith("CERT_RESPONSE|")) {
                     return response.substring("CERT_RESPONSE|".length());
                 }
             }

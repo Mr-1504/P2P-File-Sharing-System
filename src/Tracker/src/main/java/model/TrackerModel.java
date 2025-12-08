@@ -18,6 +18,9 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import adapter.FileInfoAdapter;
 import adapter.PeerInfoAdapter;
+import dto.Peer;
+import service.TrackerService;
+import service.TrackerServiceImpl;
 import utils.*;
 
 import javax.net.ssl.SSLServerSocket;
@@ -135,7 +138,9 @@ public class TrackerModel {
                 if (escapedCsrPem.isEmpty()) {
                     response = "CERT_ERROR|Invalid CERT_REQUEST format. CSR is missing.";
                 } else {
-                    response = processCertificateRequest(escapedCsrPem);
+                    String peerIp = sslSocket.getInetAddress().getHostAddress();
+                    int peerPort = Config.PEER_PORT; // Assuming peers listen on this standard port
+                    response = processCertificateRequest(escapedCsrPem, peerIp, peerPort);
                 }
             } else {
                 response = "CERT_ERROR|This port only accepts CERT_REQUEST commands.";
@@ -544,11 +549,26 @@ public class TrackerModel {
      * Process certificate signing request from a peer
      * Acts as the Intermediate Certificate Authority (CA)
      */
-    private String processCertificateRequest(String csrPem) {
+    private String processCertificateRequest(String csrPem, String peerIp, int peerPort) {
         try {
             long startTime = System.currentTimeMillis();
-            logInfo("[TRACKER-ENROLL]: Processing certificate request on " + getCurrentTime());
+            logInfo("[TRACKER-ENROLL]: Processing certificate request for peer " + peerIp + ":" + peerPort + " on " + getCurrentTime());
 
+            // Extract public key from CSR
+            String publicKeyHex = SSLUtils.extractPublicKeyFromCSR(csrPem);
+            logInfo("[TRACKER-ENROLL]: Extracted public key for peer " + peerIp + ":" + peerPort + " on " + getCurrentTime());
+
+            // Create or update peer with public key
+            Peer newPeer = new Peer();
+            newPeer.setIp(peerIp);
+            newPeer.setPort(peerPort);
+            newPeer.setPublicKey(publicKeyHex);
+
+            TrackerService trackerService = new TrackerServiceImpl();
+            Peer savedPeer = trackerService.onCsrSigned(newPeer);
+            logInfo("[TRACKER-ENROLL]: Peer saved/updated successfully: " + savedPeer.getIp() + ":" + savedPeer.getPort() + " on " + getCurrentTime());
+
+            // Sign the certificate
             String certificateChainPem = SSLUtils.signCertificateForPeer(csrPem);
             logInfo("[TRACKER-ENROLL]: Certificate chain generated successfully for peer on " + getCurrentTime());
 
@@ -556,7 +576,7 @@ public class TrackerModel {
 
         } catch (Exception e) {
             logError("[TRACKER-ENROLL]: Error processing certificate request: " + e.getMessage() + " on " + getCurrentTime(), e);
-            return "CERT_ERROR|Failed to sign certificate: " + e.getMessage();
+            return "CERT_ERROR|Failed to process certificate request: " + e.getMessage();
         }
     }
 
