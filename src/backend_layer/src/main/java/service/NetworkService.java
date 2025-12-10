@@ -38,4 +38,9 @@ public class NetworkService implements INetworkService {
     public Set<PeerInfo> queryOnlinePeerList() {
         return peerModel.queryOnlinePeerList();
     }
+
+    @Override
+    public Set<PeerInfo> queryAllPeers() {
+        return peerModel.queryAllPeers();
+    }
 }

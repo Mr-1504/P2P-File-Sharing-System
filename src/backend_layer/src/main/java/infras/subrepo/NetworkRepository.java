@@ -215,6 +215,66 @@ public class NetworkRepository implements INetworkRepository {
         return 0;
     }
 
+    @Override
+    public String requestPublicKey(String ip, int port) {
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            String request = "PUBLIC_KEY|" + ip + "|" + port + "\n";
+            sslSocket.getOutputStream().write(request.getBytes());
+            BufferedReader reader = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
+            String response = reader.readLine();
+            if (response != null && response.startsWith("PUBLIC_KEY_RESP|SUCCESS|")) {
+                return response.substring("PUBLIC_KEY_RESP|SUCCESS|".length());
+            }
+        } catch (Exception e) {
+            Log.logError("Error requesting public key from tracker", e);
+        }
+        return null;
+    }
+
+    @Override
+    public boolean sendMessageToTracker(String senderId, String receiverId, String groupId, String payloadBase64) {
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            String groupPart = (groupId != null && !groupId.isEmpty()) ? ("|Group_ID=" + groupId) : "|Group_ID=NULL";
+            String request = "SEND_MSG|Sender_ID=" + senderId + "|Receiver_ID=" + receiverId + groupPart + "|" + payloadBase64 + "\n";
+            sslSocket.getOutputStream().write(request.getBytes());
+            BufferedReader reader = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
+            String response = reader.readLine();
+            return response != null && response.startsWith("SEND_MSG_RESP|SUCCESS");
+        } catch (Exception e) {
+            Log.logError("Error sending message to tracker", e);
+        }
+        return false;
+    }
+
+    @Override
+    public String getOfflineMessages(String receiverId) {
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            String request = "GET_OFFLINE_MSGS|Receiver_ID=" + receiverId + "\n";
+            sslSocket.getOutputStream().write(request.getBytes());
+            BufferedReader reader = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
+            String response = reader.readLine();
+            if (response != null && response.startsWith("OFFLINE_MSGS_RESP|SUCCESS|")) {
+                return response.substring("OFFLINE_MSGS_RESP|SUCCESS|".length());
+            }
+        } catch (Exception e) {
+            Log.logError("Error getting offline messages from tracker", e);
+        }
+        return null;
+    }
+
+    @Override
+    public boolean acknowledgeOfflineMessages(String messageIds) {
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            String request = "ACK_OFFLINE_MSGS|" + messageIds + "\n";
+            sslSocket.getOutputStream().write(request.getBytes());
+            // No response needed?
+            return true;
+        } catch (Exception e) {
+            Log.logError("Error acknowledging offline messages", e);
+        }
+        return false;
+    }
+
     private void shutdown() {
         Log.logInfo("Shutting down SSL server...");
         isRunning = false;

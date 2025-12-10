@@ -24,6 +24,7 @@ import java.util.concurrent.Executors;
 public class P2PController {
     private final IFileService service;
     private final INetworkService networkService;
+    private final IChatService chatService;
     private final IP2PApi api;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private volatile boolean isConnected = false;
@@ -39,11 +40,13 @@ public class P2PController {
      *
      * @param service        IFileService
      * @param networkService INetworkService
+     * @param chatService    IChatService
      * @param api            IP2PApi
      */
-    public P2PController(IFileService service, INetworkService networkService, IP2PApi api) {
+    public P2PController(IFileService service, INetworkService networkService, IChatService chatService, IP2PApi api) {
         this.service = service;
         this.networkService = networkService;
+        this.chatService = chatService;
         this.api = api;
         this.username = AppPaths.loadUsername();
         setupApiRoutes();
@@ -384,9 +387,32 @@ public class P2PController {
 
         api.setRouteForGetKnownPeers(this::getKnownPeers);
 
+        api.setRouteForGetAllPeers(this::getAllPeers);
+
         api.setRouteForGetSharedPeers(this::getSharedPeers);
 
         api.setRouteForEditPermissions(this::editPermissions);
+
+        // --- Chat API routes ---
+        api.setRouteForSendPrivateMessage(chatService::sendPrivateMessage);
+
+        api.setRouteForSendGroupMessage(chatService::sendGroupMessage);
+
+        api.setRouteForCreatePrivateConversation((receiverId, receiverPublicKey) -> chatService.createPrivateConversation(receiverId, receiverPublicKey));
+
+        api.setRouteForGetAllConversations(chatService::getAllConversations);
+
+        api.setRouteForGetConversationById(chatService::getConversationById);
+
+        api.setRouteForGetMessages(chatService::getMessages);
+
+        api.setRouteForGetOfflineMessages(chatService::getOfflineMessages);
+
+        api.setRouteForAcknowledgeMessages(chatService::acknowledgeMessages);
+
+        api.setRouteForAddGroupMember(chatService::addGroupMember);
+
+        api.setRouteForGetGroupMembers(chatService::getGroupMembers);
 
         // Start periodic timeout checker
         startTimeoutChecker();
@@ -402,6 +428,15 @@ public class P2PController {
      */
     public Set<PeerInfo> getKnownPeers() {
         return networkService.queryOnlinePeerList();
+    }
+
+    /**
+     * Gets the list of all peers from the network service.
+     *
+     * @return Set of PeerInfo objects representing all peers
+     */
+    public Set<PeerInfo> getAllPeers() {
+        return networkService.queryAllPeers();
     }
 
     public boolean editPermissions(String filename, String permission, List<PeerInfo> peersList) {

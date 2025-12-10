@@ -10,4 +10,5 @@ public interface INetworkService {
     void startUDPServer();
     int registerWithTracker();
     Set<PeerInfo> queryOnlinePeerList();
+    Set<PeerInfo> queryAllPeers();
 }

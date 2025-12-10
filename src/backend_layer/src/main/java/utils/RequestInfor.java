@@ -21,4 +21,6 @@ public interface RequestInfor {
     String SHARE_TO_PEERS = "SHARE_TO_PEERS";
     String GET_SHARED_PEERS = "GET_SHARED_PEERS";
     String GET_KNOWN_PEERS = "GET_KNOWN_PEERS";
+    String ALL_PEER = "ALL_PEER";
+    String ALL_PEER_RESP = "ALL_PEER_RESP";
 }

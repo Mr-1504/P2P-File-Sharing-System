@@ -11,4 +11,6 @@ public interface IPeerDiscoveryRepository {
     List<PeerInfo> getPeersWithFile(String fileHash);
 
     List<PeerInfo> getSelectivePeers(String fileHash);
+
+    Set<PeerInfo> queryAllPeers();
 }

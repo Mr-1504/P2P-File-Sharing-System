@@ -213,6 +213,27 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
         return networkModel.registerWithTracker();
     }
 
+    // Delegated methods for chat tracker communication
+    @Override
+    public String requestPublicKey(String ip, int port) {
+        return networkModel.requestPublicKey(ip, port);
+    }
+
+    @Override
+    public boolean sendMessageToTracker(String senderId, String receiverId, String groupId, String payloadBase64) {
+        return networkModel.sendMessageToTracker(senderId, receiverId, groupId, payloadBase64);
+    }
+
+    @Override
+    public String getOfflineMessages(String receiverId) {
+        return networkModel.getOfflineMessages(receiverId);
+    }
+
+    @Override
+    public boolean acknowledgeOfflineMessages(String messageIds) {
+        return networkModel.acknowledgeOfflineMessages(messageIds);
+    }
+
     // Delegated methods from IPeerDiscoveryModel
     @Override
     public Set<PeerInfo> queryOnlinePeerList() {
@@ -227,6 +248,11 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     @Override
     public List<PeerInfo> getSelectivePeers(String fileHash) {
         return peerDiscoveryModel.getSelectivePeers(fileHash);
+    }
+
+    @Override
+    public Set<PeerInfo> queryAllPeers() {
+        return peerDiscoveryModel.queryAllPeers();
     }
 
     public ExecutorService getExecutor() {

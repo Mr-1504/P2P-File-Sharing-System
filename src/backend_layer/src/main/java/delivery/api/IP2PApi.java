@@ -119,6 +119,13 @@ public interface IP2PApi {
      */
     void setRouteForGetKnownPeers(Callable<Set<PeerInfo>> callable);
 
+    /**
+     * Routes setup method for get all peers API endpoint
+     *
+     * @param callable the function or consumer to handle the route
+     */
+    void setRouteForGetAllPeers(Callable<Set<PeerInfo>> callable);
+
 
     /**
      * Routes setup method for edit permissions API endpoint
@@ -139,6 +146,78 @@ public interface IP2PApi {
      * @param files List of FileInfo objects to be set
      */
     void setFiles(List<FileInfo> files);
+
+    // --- Chat API Spinner Routes ---
+
+    /**
+     * Routes setup method for send private message
+     *
+     * @param handler the function to handle sending private messages
+     */
+    void setRouteForSendPrivateMessage(BiFunction<String, String, Boolean> handler);
+
+    /**
+     * Routes setup method for send group message
+     *
+     * @param handler the function to handle sending group messages
+     */
+    void setRouteForSendGroupMessage(BiFunction<String, String, Boolean> handler);
+
+    /**
+     * Routes setup method for create private conversation
+     *
+     * @param handler the function to handle creating private conversations
+     */
+    void setRouteForCreatePrivateConversation(BiFunction<String, String, Object> handler);
+
+    /**
+     * Routes setup method for create group conversation
+     *
+     * @param handler the function to handle creating group conversations
+     */
+    void setRouteForGetAllConversations(Callable<Object> handler);
+
+    /**
+     * Routes setup method for get conversations
+     *
+     * @param handler the function to handle getting conversations
+     */
+    void setRouteForGetConversationById(Function<String, Object> handler);
+
+    /**
+     * Routes setup method for get messages
+     *
+     * @param handler the function to handle getting messages
+     */
+    void setRouteForGetMessages(TriFunction<String, Integer, Integer, Object> handler);
+
+    /**
+     * Routes setup method for get offline messages
+     *
+     * @param handler the function to handle getting offline messages
+     */
+    void setRouteForGetOfflineMessages(Function<String, Object> handler);
+
+    /**
+     * Routes setup method for acknowledge messages
+     *
+     * @param handler the consumer to handle acknowledging messages
+     */
+    void setRouteForAcknowledgeMessages(Consumer<List<String>> handler);
+
+    /**
+     * Routes setup method for add group member
+     *
+     * @param handler the consumer to handle adding group members
+     */
+    void setRouteForAddGroupMember(TriFunction<String, String, String, Boolean> handler);
+
+    /**
+     * Routes setup method for get group members
+     *
+     * @param handler the function to handle getting group members
+     */
+    void setRouteForGetGroupMembers(Function<String, Object> handler);
 
     /**
      * BiFunction interface for two-argument functions.
