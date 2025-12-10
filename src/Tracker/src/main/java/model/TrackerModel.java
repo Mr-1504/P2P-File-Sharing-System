@@ -12,12 +12,14 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.Scanner;
+import java.util.Base64;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import adapter.FileInfoAdapter;
 import adapter.PeerInfoAdapter;
+import dto.OfflineMessage;
 import dto.Peer;
 import service.TrackerService;
 import service.TrackerServiceImpl;
@@ -240,6 +242,40 @@ public class TrackerModel {
             return "Định dạng yêu cầu GET_SHARED_PEERS không hợp lệ. Sử dụng: GET_SHARED_PEERS|<fileHash>";
         } else if (request.startsWith(RequestInfor.GET_KNOWN_PEERS)) {
             return getKnownPeers();
+        } else if (request.startsWith(RequestInfor.PUBLIC_KEY)) {
+            if (parts.length == 3) {
+                String peerIp = parts[1];
+                int peerPort = Integer.parseInt(parts[2]);
+                return getPublicKey(peerIp, peerPort);
+            }
+            logInfo("[TRACKER]: Invalid PUBLIC_KEY request: " + request + " on " + getCurrentTime());
+            return RequestInfor.PUBLIC_KEY_RESP + "|ERROR|Invalid format. Use: PUBLIC_KEY|<ip>|<port>";
+        } else if (request.startsWith(RequestInfor.SEND_MSG)) {
+            if (parts.length == 5) {
+                String senderParam = parts[1];
+                String receiverParam = parts[2];
+                String groupParam = parts[3];
+                String base64Payload = parts[4];
+                return processSendMessage(senderParam, receiverParam, groupParam, base64Payload);
+            }
+            logInfo("[TRACKER]: Invalid SEND_MSG request: " + request + " on " + getCurrentTime());
+            return RequestInfor.SEND_MSG_RESP + "|ERROR|" + RequestInfor.MESSAGE_ERROR;
+        } else if (request.startsWith(RequestInfor.GET_OFFLINE_MSGS)) {
+            if (parts.length == 2) {
+                String receiverParam = parts[1];
+                return processGetOfflineMessages(receiverParam);
+            }
+            logInfo("[TRACKER]: Invalid GET_OFFLINE_MSGS request: " + request + " on " + getCurrentTime());
+            return RequestInfor.OFFLINE_MSGS_RESP + "|ERROR|Invalid format";
+        } else if (request.startsWith(RequestInfor.ACK_OFFLINE_MSGS)) {
+            if (parts.length == 2) {
+                String messageIdsCsv = parts[1];
+                return processAckOfflineMessages(messageIdsCsv);
+            }
+            logInfo("[TRACKER]: Invalid ACK_OFFLINE_MSGS request: " + request + " on " + getCurrentTime());
+            return RequestInfor.ACK_OFFLINE_MSGS_RESP + "|ERROR|Invalid format";
+        } else if (request.startsWith(RequestInfor.ALL_PEER)) {
+            return processAllPeers();
         }
         logInfo("[TRACKER]: Unknown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
@@ -535,6 +571,223 @@ public class TrackerModel {
         logInfo("[TRACKER]: Sending selective peer list for file hash: " + fileHash + " on " + getCurrentTime());
 
         return RequestInfor.GET_SHARED_PEERS + "|" + peers.size() + "|" + peersJson;
+    }
+
+    private String getPublicKey(String peerIp, int peerPort) {
+        try {
+            logInfo("[TRACKER]: Looking up public key for peer " + peerIp + ":" + peerPort + " on " + getCurrentTime());
+            TrackerService trackerService = new TrackerServiceImpl();
+            Peer peer = trackerService.findPeerByIpAndPort(peerIp, peerPort);
+
+            if (peer != null && peer.getPublicKey() != null) {
+                logInfo("[TRACKER]: Found public key for peer " + peerIp + ":" + peerPort + " on " + getCurrentTime());
+                return RequestInfor.PUBLIC_KEY_RESP + "|SUCCESS|" + peer.getPublicKey();
+            } else {
+                logInfo("[TRACKER]: No public key found for peer " + peerIp + ":" + peerPort + " on " + getCurrentTime());
+                return RequestInfor.PUBLIC_KEY_RESP + "|ERROR|" + RequestInfor.PEER_NOT_FOUND;
+            }
+        } catch (Exception e) {
+            logError("[TRACKER]: Error retrieving public key for peer " + peerIp + ":" + peerPort + " on " + getCurrentTime(), e);
+            return RequestInfor.PUBLIC_KEY_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    private String processSendMessage(String senderParam, String receiverParam, String groupParam, String base64Payload) {
+        try {
+            logInfo("[TRACKER]: Processing SEND_MSG request on " + getCurrentTime());
+
+            // Parse sender parameter
+            String senderValue = parseParameterValue(senderParam);
+            if (senderValue == null) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid sender parameter";
+            }
+
+            // Parse receiver parameter
+            String receiverValue = parseParameterValue(receiverParam);
+            if (receiverValue == null) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid receiver parameter";
+            }
+
+            // Parse group parameter
+            String groupValue = parseParameterValue(groupParam);
+            if (groupValue == null) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid group parameter";
+            }
+
+            // Decode Base64 payload
+            byte[] encryptedPayload;
+            try {
+                encryptedPayload = Base64.getDecoder().decode(base64Payload);
+            } catch (IllegalArgumentException e) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid base64 payload";
+            }
+
+            // Parse sender ID
+            java.util.UUID senderId;
+            try {
+                senderId = java.util.UUID.fromString(senderValue);
+            } catch (IllegalArgumentException e) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid sender ID format";
+            }
+
+            // Find sender peer (should exist if authenticated)
+            TrackerService trackerService = new TrackerServiceImpl();
+            Peer sender = trackerService.findPeerById(senderId);
+            if (sender == null) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Sender not authenticated";
+            }
+
+            // For this implementation, assume receiverValue is UUID string
+            java.util.UUID receiverId;
+            try {
+                receiverId = java.util.UUID.fromString(receiverValue);
+            } catch (IllegalArgumentException e) {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid receiver ID format";
+            }
+
+            // For group messages, try to parse group ID, for private set to null
+            java.util.UUID groupId = null;
+            if (!"NULL".equalsIgnoreCase(groupValue) && !"null".equalsIgnoreCase(groupValue)) {
+                try {
+                    groupId = java.util.UUID.fromString(groupValue);
+                } catch (IllegalArgumentException e) {
+                    return RequestInfor.SEND_MSG_RESP + "|ERROR|Invalid group ID format";
+                }
+            }
+
+            // Create offline message
+            OfflineMessage message = new OfflineMessage(
+                senderId,
+                receiverId,
+                groupId,
+                encryptedPayload,
+                "text", // default type
+                LocalDateTime.now()
+            );
+
+            // Save to database
+            OfflineMessage savedMessage = trackerService.saveOfflineMessage(message);
+            if (savedMessage != null) {
+                logInfo("[TRACKER]: Message saved successfully from " + senderId + " to " + receiverId + " on " + getCurrentTime());
+                return RequestInfor.SEND_MSG_RESP + "|SUCCESS|Message saved";
+            } else {
+                return RequestInfor.SEND_MSG_RESP + "|ERROR|Failed to save message";
+            }
+
+        } catch (Exception e) {
+            logError("[TRACKER]: Error processing SEND_MSG on " + getCurrentTime(), e);
+            return RequestInfor.SEND_MSG_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    private String processGetOfflineMessages(String receiverParam) {
+        try {
+            logInfo("[TRACKER]: Processing GET_OFFLINE_MSGS request on " + getCurrentTime());
+
+            // Parse receiver parameter (format: Receiver_ID=uuid)
+            String receiverValue = parseParameterValue(receiverParam);
+            if (receiverValue == null) {
+                return RequestInfor.OFFLINE_MSGS_RESP + "|ERROR|Invalid receiver parameter";
+            }
+
+            // Parse receiver ID
+            java.util.UUID receiverId;
+            try {
+                receiverId = java.util.UUID.fromString(receiverValue);
+            } catch (IllegalArgumentException e) {
+                return RequestInfor.OFFLINE_MSGS_RESP + "|ERROR|Invalid receiver ID format";
+            }
+
+            // Get offline messages for this peer
+            TrackerService trackerService = new TrackerServiceImpl();
+            String jsonMessages = trackerService.getOfflineMessagesJsonForPeer(receiverId);
+
+            if (jsonMessages != null) {
+                // Encode JSON to Base64 to avoid | character conflicts
+                String base64Json = Base64.getEncoder().encodeToString(jsonMessages.getBytes(StandardCharsets.UTF_8));
+                logInfo("[TRACKER]: Sending " + (jsonMessages.equals("[]") ? "0" : "multiple") + " offline messages for peer " + receiverId);
+                return RequestInfor.OFFLINE_MSGS_RESP + "|SUCCESS|" + base64Json;
+            } else {
+                return RequestInfor.OFFLINE_MSGS_RESP + "|ERROR|Failed to retrieve messages";
+            }
+
+        } catch (Exception e) {
+            logError("[TRACKER]: Error processing GET_OFFLINE_MSGS on " + getCurrentTime(), e);
+            return RequestInfor.OFFLINE_MSGS_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    private String processAckOfflineMessages(String messageIdsCsv) {
+        try {
+            logInfo("[TRACKER]: Processing ACK_OFFLINE_MSGS request: " + messageIdsCsv);
+
+            // Acknowledge (delete) the messages
+            TrackerService trackerService = new TrackerServiceImpl();
+            trackerService.acknowledgeOfflineMessages(messageIdsCsv);
+
+            logInfo("[TRACKER]: Successfully acknowledged offline messages: " + messageIdsCsv);
+            return RequestInfor.ACK_OFFLINE_MSGS_RESP + "|SUCCESS|Messages deleted";
+
+        } catch (Exception e) {
+            logError("[TRACKER]: Error processing ACK_OFFLINE_MSGS: " + messageIdsCsv, e);
+            return RequestInfor.ACK_OFFLINE_MSGS_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    private String processAllPeers() {
+        try {
+            logInfo("[TRACKER]: Processing ALL_PEER request on " + getCurrentTime());
+            TrackerService trackerService = new TrackerServiceImpl();
+            List<PeerInfo> peers = trackerService.getAllPeers();
+
+            if (peers == null || peers.isEmpty()) {
+                logInfo("[TRACKER]: No peers found in database on " + getCurrentTime());
+                return RequestInfor.ALL_PEER_RESP + "|0|[]";
+            }
+
+            // Map usernames from online peers (knownPeers)
+            List<PeerInfo> peersWithUsernames = new ArrayList<>();
+            for (PeerInfo peer : peers) {
+                PeerInfo mappedPeer = findOnlinePeer(peer.getIp(), peer.getPort());
+                if (mappedPeer != null) {
+                    peersWithUsernames.add(new PeerInfo(peer.getIp(), peer.getPort(), mappedPeer.getUsername()));
+                } else {
+                    peersWithUsernames.add(peer); // Keep original (username = null)
+                }
+            }
+
+            Type listType = new TypeToken<List<PeerInfo>>() {
+            }.getType();
+            Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+            String peersJson = gson.toJson(peersWithUsernames, listType);
+
+            logInfo("[TRACKER]: Sending all peers list with usernames mapped: " + peers.size() + " peers on " + getCurrentTime());
+            return RequestInfor.ALL_PEER_RESP + "|" + peers.size() + "|" + peersJson;
+
+        } catch (Exception e) {
+            logError("[TRACKER]: Error processing ALL_PEER request on " + getCurrentTime(), e);
+            return RequestInfor.ALL_PEER_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    private PeerInfo findOnlinePeer(String ip, int port) {
+        for (PeerInfo knownPeer : knownPeers) {
+            if (knownPeer.getIp().equals(ip) && knownPeer.getPort() == port) {
+                return knownPeer;
+            }
+        }
+        return null;
+    }
+
+    private String parseParameterValue(String param) {
+        if (param == null || param.trim().isEmpty()) {
+            return null;
+        }
+        int equalsIndex = param.indexOf('=');
+        if (equalsIndex == -1 || equalsIndex == param.length() - 1) {
+            return null;
+        }
+        return param.substring(equalsIndex + 1).trim();
     }
 
     String getCurrentTime() {

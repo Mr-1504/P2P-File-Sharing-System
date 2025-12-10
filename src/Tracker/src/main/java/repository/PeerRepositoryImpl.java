@@ -6,6 +6,7 @@ import org.hibernate.Transaction;
 import utils.HibernateUtils;
 import utils.Log;
 
+import java.util.List;
 import java.util.UUID;
 
 public class PeerRepositoryImpl implements PeerRepository{
@@ -57,6 +58,16 @@ public class PeerRepositoryImpl implements PeerRepository{
                     .uniqueResult();
         } catch (Exception e) {
             Log.logError("Error finding Peer entity by public key", e);
+            return null;
+        }
+    }
+
+    @Override
+    public List<Peer> findAll() {
+        try (Session session = HibernateUtils.getSessionFactory().openSession()) {
+            return session.createQuery("from Peer", Peer.class).list();
+        } catch (Exception e) {
+            Log.logError("Error finding all Peer entities", e);
             return null;
         }
     }
