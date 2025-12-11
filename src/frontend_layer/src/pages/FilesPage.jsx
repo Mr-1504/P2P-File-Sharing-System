@@ -308,7 +308,7 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPol
             <div className="flex gap-3 mb-4">
               <input
                 type="text"
-                placeholder="Nhập tên file cần tìm"
+                placeholder={t('input_search')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}

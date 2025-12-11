@@ -13,3 +13,5 @@ src/Tracker/backend_layer.iml
 /out
 P2P-File-Sharing-System.iml
 *.jar
+/src/frontend_layer/dist
+/src/frontend_layer/build
