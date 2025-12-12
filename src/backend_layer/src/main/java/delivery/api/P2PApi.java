@@ -1,6 +1,7 @@
 package delivery.api;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -14,9 +15,11 @@ import utils.LogTag;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -368,12 +371,28 @@ public class P2PApi implements IP2PApi {
 
         logInfo("Share to peers request");
         JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
-        String filePath = body.has("filePath") ? body.get("filePath").getAsString() : null;
-        int isReplace = body.has("isReplace") ? body.get("isReplace").getAsInt() : 0;
+        String filePath = getStringSafe(body, "filePath");
+        int isReplace;
+        try {
+            isReplace = getIntSafe(body, "isReplace", 0);
+        } catch (IllegalArgumentException e) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("isReplace must be an integer"));
+            return;
+        }
+        if (isReplace != -1 && isReplace != 0 && isReplace != 1) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("isReplace must be -1, 0, or 1"));
+            return;
+        }
         List<PeerInfo> peers = parsePeers(body);
 
-        if (filePath == null || filePath.isEmpty() || peers.isEmpty()) {
+        if (filePath == null || filePath.trim().isEmpty() || peers.isEmpty()) {
             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("filePath and peers are required"));
+            return;
+        }
+
+        File file = new File(filePath);
+        if (!file.exists() || file.isDirectory()) {
+            sendResponse(exchange, LogTag.NOT_FOUND, jsonError("File not found"));
             return;
         }
 
@@ -383,6 +402,9 @@ public class P2PApi implements IP2PApi {
         switch (result) {
             case LogTag.S_NOT_CONNECTION:
                 sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE, jsonError(LogTag.S_NOT_CONNECTION));
+                break;
+            case LogTag.S_NOT_FOUND:
+                sendResponse(exchange, LogTag.NOT_FOUND, jsonError("File not found"));
                 break;
             case LogTag.S_INVALID:
                 sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Invalid peer list"));
@@ -1101,7 +1123,7 @@ public class P2PApi implements IP2PApi {
      */
     private List<PeerInfo> parsePeers(JsonObject body) {
         List<PeerInfo> peers = new ArrayList<>();
-        if (body.has("peers")) {
+        if (body.has("peers") && !body.get("peers").isJsonNull() && body.get("peers").isJsonArray()) {
             body.get("peers").getAsJsonArray().forEach(peerJson -> {
                 JsonObject p = peerJson.getAsJsonObject();
                 String ip = p.has("ip") ? p.get("ip").getAsString() : null;
@@ -1152,5 +1174,38 @@ public class P2PApi implements IP2PApi {
             result.put(key, value);
         }
         return result;
+    }
+
+    /**
+     * Safely gets a string value from JsonObject, handling absent or null JSON values.
+     */
+    private String getStringSafe(JsonObject obj, String key) {
+        JsonElement el = obj.get(key);
+        if (el == null || el.isJsonNull()) {
+            return null;
+        }
+        return el.getAsString();
+    }
+
+    /**
+     * Safely gets an int value from JsonObject, handling absent or null JSON values.
+     */
+    private int getIntSafe(JsonObject obj, String key, int def) {
+        JsonElement el = obj.get(key);
+        if (el == null || el.isJsonNull()) {
+            return def;
+        }
+        if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("Invalid value for " + key + ": must be a number");
+        }
+        BigDecimal bd = el.getAsBigDecimal();
+        if (bd.scale() != 0) {
+            throw new IllegalArgumentException("Invalid value for " + key + ": must be an integer");
+        }
+        try {
+            return bd.intValueExact();
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid value for " + key + ": must be an integer");
+        }
     }
 }
