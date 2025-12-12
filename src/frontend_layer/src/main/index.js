@@ -39,7 +39,7 @@ function createWindow() {
     if (process.env.ELECTRON_START_URL) {
         win.loadURL(process.env.ELECTRON_START_URL);
     } else {
-        win.loadFile(path.join(process.resourcesPath, 'build', 'index.html'));
+        win.loadFile(path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'index.html'));
     }
 
 

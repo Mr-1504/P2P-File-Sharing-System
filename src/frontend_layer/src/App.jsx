@@ -142,10 +142,8 @@ function App() {
       {showSplash && (
         <div className="fixed inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 bg-opacity-95 flex flex-col items-center justify-center z-50 animate-fade-in backdrop-blur-sm">
           <div className="relative">
-            <svg className="w-[55px] h-[55px] mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30 animate-ping"></div>
+            <Clock className="w-[55px] h-[55px] mb-6 text-white animate-pulse" />
+              <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30"></div>
           </div>
           <h2 className="text-3xl font-bold text-white mb-4 tracking-wider">{t('loading')}</h2>
           <div className="w-16 h-16 border-4 border-t-transparent border-white rounded-full animate-spin shadow-lg"></div>

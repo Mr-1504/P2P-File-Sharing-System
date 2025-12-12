@@ -36,7 +36,7 @@ const ChatPage = ({ addNotification }) => {
                 } catch (error) {
                     console.error('Error polling messages:', error);
                 }
-            }, 100); // 0.1 seconds
+            }, 1000); // 0.1 seconds
 
             return () => clearInterval(interval);
         }
