@@ -72,9 +72,7 @@ public class WebSocketClientService {
                 return false;
             }
 
-            // Send encrypted message with own identification using Config format
-            String messageToSend = utils.Config.SERVER_IP + ":" + utils.Config.PEER_PORT + "|" + encryptedMessage;
-            wsClient.send(messageToSend);
+            wsClient.send(encryptedMessage);
 
             // Wait for response
             if (!messageLatch.await(2, TimeUnit.SECONDS)) {

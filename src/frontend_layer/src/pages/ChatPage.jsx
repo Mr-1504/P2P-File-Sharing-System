@@ -70,7 +70,7 @@ const ChatPage = ({ addNotification }) => {
                 } catch (error) {
                     console.error('Error polling messages:', error);
                 }
-            }, 500); // Poll every 10 seconds
+            }, 1000); // Poll every 10 seconds
 
             return () => clearInterval(interval);
         }
@@ -146,7 +146,12 @@ const ChatPage = ({ addNotification }) => {
                 msgType: msg.msgType
             }));
 
-            setMessages(prev => append ? [...mappedMessages, ...prev] : mappedMessages);
+            // Sort messages by timestamp ascending (oldest first) so newest appear at bottom
+            const sortedMessages = mappedMessages.sort((a, b) =>
+                new Date(a.timestamp) - new Date(b.timestamp)
+            );
+
+            setMessages(prev => append ? [...sortedMessages, ...prev] : sortedMessages);
 
             // Acknowledge unread messages - use original API data for this
             const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);
@@ -219,6 +224,46 @@ const ChatPage = ({ addNotification }) => {
         }
     };
 
+    // Separate function for loading older messages with append=true
+    const loadOlderMessagesWithAppend = async () => {
+        if (selectedConversation && messages.length >= messageLimit) {
+            const newOffset = messageOffset + messageLimit;
+            try {
+                const messagesData = await chatApi.getMessages(selectedConversation.id, messageLimit, newOffset);
+
+                if (messagesData && messagesData.length > 0) {
+                    // Map and sort older messages
+                    const mappedMessages = (messagesData || []).map(msg => ({
+                        id: msg.id,
+                        text: msg.content || msg.text || '',
+                        sender: msg.senderId === currentUsername ? 'You' : (msg.senderId || 'Unknown'),
+                        timestamp: new Date(msg.createdAt).toISOString(),
+                        read: true,
+                        status: msg.status,
+                        msgType: msg.msgType
+                    }));
+
+                    // Sort by timestamp ascending and prepend to existing messages
+                    const sortedMessages = mappedMessages.sort((a, b) =>
+                        new Date(a.timestamp) - new Date(b.timestamp)
+                    );
+
+                    setMessages(prev => [...sortedMessages, ...prev]);
+                    setMessageOffset(newOffset);
+
+                    // Acknowledge unread messages from older messages
+                    const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);
+                    if (unreadMessageIds.length > 0) {
+                        await chatApi.acknowledgeMessages(unreadMessageIds);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading older messages:', error);
+                addNotification(t('error_loading_messages'), true);
+            }
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
@@ -235,7 +280,7 @@ const ChatPage = ({ addNotification }) => {
             messages={messages}
             onSendMessage={handleSendMessage}
             onConversationSelect={handleConversationSelect}
-            onLoadOlderMessages={loadOlderMessages}
+            onLoadOlderMessages={loadOlderMessagesWithAppend}
             canLoadMore={messages.length >= messageLimit}
         />
     );

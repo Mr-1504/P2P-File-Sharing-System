@@ -72,7 +72,8 @@ public class ChatService implements IChatService {
             PublicKey receiverPublicKey = CryptoUtils.loadPublicKey(peerPublicKeyStr);
 
             // Encrypt message
-            String encryptedPayload = CryptoUtils.buildEncryptedPayload(content, receiverPublicKey);
+            String messageStr = Config.SERVER_IP + ":" + Config.PEER_PORT + "|" + content;
+            String encryptedPayload = CryptoUtils.buildEncryptedPayload(messageStr, receiverPublicKey);
 
             // Store locally (store plain text locally)
             Message message = createMessage(conversationId, ownPeerId, "text", content);
@@ -149,9 +150,7 @@ public class ChatService implements IChatService {
     @Override
     public Conversation createPrivateConversation(String conversationName, String receiverPublicKey) {
         // Check if exists
-        Conversation existing = getAllConversations().stream()
-                .filter(c -> c.getIsGroup() == 0 && conversationName.equals(c.getName()))
-                .findFirst().orElse(null);
+        Conversation existing = getAllConversations().stream().filter(c -> c.getIsGroup() == 0 && conversationName.equals(c.getName())).findFirst().orElse(null);
         if (existing != null) {
             return existing;
         }
@@ -168,9 +167,7 @@ public class ChatService implements IChatService {
     public Conversation createPrivateConversation(PeerInfo receiver, String receiverPublicKey) {
         String username = receiver.getUsername() != null ? receiver.getUsername() : receiver.getIp() + ":" + receiver.getPort();
         // Check if exists
-        Conversation existing = getAllConversations().stream()
-                .filter(c -> c.getIsGroup() == 0 && username.equals(c.getName()))
-                .findFirst().orElse(null);
+        Conversation existing = getAllConversations().stream().filter(c -> c.getIsGroup() == 0 && username.equals(c.getName())).findFirst().orElse(null);
         if (existing != null) {
             return existing;
         }
@@ -416,24 +413,26 @@ public class ChatService implements IChatService {
                 Log.logError("Invalid message format. Expected: senderIP:port|content", null);
                 return;
             }
-
-            String senderPeerId = parts[0];
+            String senderHost = parts[0];
+            String[] partsHost = senderHost.split(":", 2);
+            String senderPeerIp = partsHost[0];
+            int senderPeerPort = Integer.parseInt(partsHost[1]);
             String content = parts[1]; // decrypted message content
 
-            Log.logInfo("Parsed message: sender=" + senderPeerId + ", content=" + content);
+            Peer sender = peerRepository.findPeerByIpAndPort(senderPeerIp, senderPeerPort);
+            Conversation conversation = chatRepository.findConversationByPublicKey(sender.getPublicKey());
+            Log.logInfo("Parsed message: sender=" + senderHost + ", content=" + content);
 
-            // 3. Find or create conversation based on sender
-            Conversation conversation = findOrCreateConversationForIncoming(senderPeerId);
 
             // 4. Create and save message
-            Message message = createMessage(conversation.getId(), senderPeerId, "text", content);
+            Message message = createMessage(conversation.getId(), sender.getId().toString(), "text", content);
             chatRepository.saveMessage(message);
             Log.logInfo("Message saved to DB");
 
             // 5. Update conversation last message
             updateConversationLastMessage(conversation.getId(), content, message.getCreatedAt());
 
-            Log.logInfo("Incoming message processed successfully from: " + senderPeerId);
+            Log.logInfo("Incoming message processed successfully from: " + senderHost);
 
         } catch (Exception e) {
             Log.logError("Error processing incoming message", e);
@@ -500,17 +499,14 @@ public class ChatService implements IChatService {
         try {
             // Load keystore (similar to SSLUtils.createSSLContext())
             KeyStore keyStore = KeyStore.getInstance("JKS");
-            File keyStoreFile = Paths.get(SSLUtils.CERT_DIRECTORY.toFile().getAbsolutePath(),
-                                          SSLUtils.KEYSTORE_NAME).toFile();
+            File keyStoreFile = Paths.get(SSLUtils.CERT_DIRECTORY.toFile().getAbsolutePath(), SSLUtils.KEYSTORE_NAME).toFile();
 
             try (FileInputStream fis = new FileInputStream(keyStoreFile)) {
                 keyStore.load(fis, SSLUtils.KEYSTORE_PASSWORD.toCharArray());
             }
 
             // Get private key from keystore
-            KeyStore.PrivateKeyEntry keyEntry = (KeyStore.PrivateKeyEntry)
-                keyStore.getEntry(SSLUtils.KEY_ALIAS,
-                                  new KeyStore.PasswordProtection(SSLUtils.KEYSTORE_PASSWORD.toCharArray()));
+            KeyStore.PrivateKeyEntry keyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(SSLUtils.KEY_ALIAS, new KeyStore.PasswordProtection(SSLUtils.KEYSTORE_PASSWORD.toCharArray()));
 
             return keyEntry.getPrivateKey();
 
@@ -537,8 +533,7 @@ public class ChatService implements IChatService {
 
     @Override
     public boolean isPrivateConversationExists(String publicKey) {
-        return getAllConversations().stream()
-                .anyMatch(c -> c.getIsGroup() == 0 && publicKey.equals(c.getPeerPublicKey()));
+        return getAllConversations().stream().anyMatch(c -> c.getIsGroup() == 0 && publicKey.equals(c.getPeerPublicKey()));
     }
 
     @Override
@@ -547,9 +542,7 @@ public class ChatService implements IChatService {
             createPrivateConversation(username, publicKey);
         } else {
             // update public key
-            Conversation existing = getAllConversations().stream()
-                    .filter(c -> c.getIsGroup() == 0 && publicKey.equals(c.getPeerPublicKey()))
-                    .findFirst().orElse(null);
+            Conversation existing = getAllConversations().stream().filter(c -> c.getIsGroup() == 0 && publicKey.equals(c.getPeerPublicKey())).findFirst().orElse(null);
             if (existing != null) {
                 existing.setPeerPublicKey(publicKey);
                 existing.setName(username);

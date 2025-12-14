@@ -94,7 +94,7 @@ public class ChatRepository implements IChatRepository {
             Root<Message> root = cq.from(Message.class);
             Predicate condition = cb.equal(root.get("conversationId"), conversationId);
             cq.where(condition);
-            cq.orderBy(cb.desc(root.get("createdAt")));
+            cq.orderBy(cb.asc(root.get("createdAt")));
             List<Message> results = session.createQuery(cq)
                     .setFirstResult(offset)
                     .setMaxResults(limit)
@@ -181,6 +181,21 @@ public class ChatRepository implements IChatRepository {
         } catch (Exception e) {
             Log.logError("Error updating group member", e);
             if (transaction != null) transaction.rollback();
+        }
+    }
+
+    @Override
+    public Conversation findConversationByPublicKey(String publicKey) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            CriteriaBuilder cb = session.getCriteriaBuilder();
+            CriteriaQuery<Conversation> cq = cb.createQuery(Conversation.class);
+            Root<Conversation> root = cq.from(Conversation.class);
+            Predicate condition = cb.equal(root.get("peerPublicKey"), publicKey);
+            cq.where(condition);
+            return session.createQuery(cq).uniqueResult();
+        } catch (Exception e) {
+            Log.logError("Error finding conversation by public key", e);
+            return null;
         }
     }
 }

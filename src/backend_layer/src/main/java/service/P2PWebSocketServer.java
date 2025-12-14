@@ -55,23 +55,8 @@ public class P2PWebSocketServer extends WebSocketServer {
         try {
             // Parse message format: "peerId|message" or just "message"
             // For now, assume direct encrypted payload
-            String[] parts = message.split("\\|", 2);
-            if (parts.length == 2) {
-                // Message with peer identification
-                String senderPeerId = parts[0];
-                String encryptedPayload = parts[1];
-
-                // Update connection mapping
-                peerConnections.put(senderPeerId, conn);
-                connectionPeerInfo.put(conn, senderPeerId);
-
                 // Process encrypted message
-                chatService.enqueueMessageForProcessing(encryptedPayload);
-            } else {
-                // Direct encrypted payload
                 chatService.enqueueMessageForProcessing(message);
-            }
-
             Log.logInfo("WebSocket message processed successfully");
 
         } catch (Exception e) {

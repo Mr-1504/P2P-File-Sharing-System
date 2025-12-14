@@ -14,6 +14,7 @@ public interface IChatRepository {
     // Conversation operations
     Conversation saveConversation(Conversation conversation);
     Conversation findConversationById(String conversationId);
+    Conversation findConversationByPublicKey(String publicKey);
     List<Conversation> findAllConversations();
     void updateConversation(Conversation conversation);
 
