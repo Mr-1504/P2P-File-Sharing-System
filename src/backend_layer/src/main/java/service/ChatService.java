@@ -1,8 +1,6 @@
 package service;
 
-import domain.entity.Conversation;
-import domain.entity.GroupMember;
-import domain.entity.Message;
+import domain.entity.*;
 import domain.repository.IChatRepository;
 import infras.repository.ChatRepository;
 import utils.AppPaths;
@@ -116,12 +114,24 @@ public class ChatService implements IChatService {
     }
 
     @Override
-    public Conversation createPrivateConversation(String receiverId, String receiverPublicKey) {
+    public Conversation createPrivateConversation(String conversationName, String receiverPublicKey) {
         // Check if exists
         // For simplicity, assume one conversation per pair
         Conversation conv = new Conversation();
         conv.setId(generateConversationId());
-        conv.setName("Private Chat");
+        conv.setName(conversationName);
+        conv.setIsGroup(0);
+        conv.setPeerPublicKey(receiverPublicKey);
+        return chatRepository.saveConversation(conv);
+    }
+    @Override
+    public Conversation createPrivateConversation(PeerInfo receiver, String receiverPublicKey) {
+        // Check if exists
+        // For simplicity, assume one conversation per pair
+        Conversation conv = new Conversation();
+        conv.setId(generateConversationId());
+        String username = receiver.getUsername() != null ? receiver.getUsername() : receiver.getIp() + ":" + receiver.getPort();
+        conv.setName(username);
         conv.setIsGroup(0);
         conv.setPeerPublicKey(receiverPublicKey);
         return chatRepository.saveConversation(conv);
@@ -294,5 +304,27 @@ public class ChatService implements IChatService {
 
     private String generateMessageId() {
         return UUID.randomUUID().toString();
+    }
+
+    @Override
+    public boolean isPrivateConversationExists(String username) {
+        return getAllConversations().stream()
+                .anyMatch(c -> c.getIsGroup() == 0 && username.equals(c.getName()));
+    }
+
+    @Override
+    public void createPrivateConversationIfNotExists(String username, String publicKey) {
+        if (!isPrivateConversationExists(username)) {
+            createPrivateConversation(username, publicKey);
+        } else {
+            // update public key
+            Conversation existing = getAllConversations().stream()
+                .filter(c -> c.getIsGroup() == 0 && username.equals(c.getName()))
+                .findFirst().orElse(null);
+            if (existing != null) {
+                existing.setPeerPublicKey(publicKey);
+                chatRepository.saveConversation(existing);
+            }
+        }
     }
 }

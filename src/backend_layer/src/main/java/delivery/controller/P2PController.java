@@ -1,15 +1,20 @@
 package delivery.controller;
 
-import domain.entity.FileInfo;
-import domain.entity.PeerInfo;
-import domain.entity.ProgressInfo;
+import domain.entity.*;
+import domain.repository.IPeerJpaRepository;
+import infras.repository.PeerJpaRepository;
 import delivery.api.IP2PApi;
 import service.*;
 import utils.AppPaths;
+import utils.Config;
 import utils.Log;
 import utils.LogTag;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
+
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +31,7 @@ public class P2PController {
     private final INetworkService networkService;
     private final IChatService chatService;
     private final IP2PApi api;
+    private final IPeerJpaRepository peerRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private volatile boolean isConnected = false;
     private volatile boolean isLoadSharedFiles = false;
@@ -48,6 +54,7 @@ public class P2PController {
         this.networkService = networkService;
         this.chatService = chatService;
         this.api = api;
+        this.peerRepository = new PeerJpaRepository();
         this.username = AppPaths.loadUsername();
         setupApiRoutes();
     }
@@ -423,20 +430,74 @@ public class P2PController {
 
     /**
      * Gets the list of known peers from the network service.
+     * Filters out the current peer to avoid returning itself in the list.
      *
-     * @return Set of PeerInfo objects representing known peers
+     * @return Set of PeerInfo objects representing known peers except the local one
      */
     public Set<PeerInfo> getKnownPeers() {
-        return networkService.queryOnlinePeerList();
+        Set<PeerInfo> peers = networkService.queryOnlinePeerList();
+        peers.remove(new PeerInfo(Config.SERVER_IP, Config.PEER_PORT));
+        return peers;
     }
 
     /**
      * Gets the list of all peers from the network service.
+     * Filters out the current peer to avoid returning itself in the list.
+     * Saves/updates peers in DB and creates private conversations using public key from Peer in DB.
+     * Conversation name is set to username from PeerInfo if available, else ip:port.
      *
-     * @return Set of PeerInfo objects representing all peers
+     * @return List of Peer objects representing all peers except the local one
      */
-    public Set<PeerInfo> getAllPeers() {
-        return networkService.queryAllPeers();
+    public List<Peer> getAllPeers() {
+        Set<PeerInfo> peerInfos = networkService.queryAllPeerInfo();
+        Set<Peer> peers = networkService.queryAllPeers();
+        // Remove current peer if present
+        PeerInfo currentPeer = null;
+        for (PeerInfo pi : peerInfos) {
+            Log.logInfo("PeerInfo: " + pi.getIp() + ":" + pi.getPort() + " Username: " + pi.getUsername());
+            if (pi.getIp().equals(Config.SERVER_IP) && pi.getPort() == Config.PEER_PORT) {
+                currentPeer = pi;
+                break;
+            }
+        }
+        if (currentPeer != null) {
+            peerInfos.remove(currentPeer);
+        }
+
+        List<Peer> result = new ArrayList<>();
+        for (Peer peer : peers) {
+            boolean found = false;
+            for (PeerInfo peerInfo : peerInfos) {
+                if (peer.getIp().equals(peerInfo.getIp()) && peer.getPort() == peerInfo.getPort()) {
+                    // Create new Peer based on existing Peer from network service
+                    Peer newPeer = new Peer();
+                    newPeer.setId(peer.getId());
+                    newPeer.setIp(peer.getIp());
+                    newPeer.setPort(peer.getPort());
+                    newPeer.setPublicKey(peer.getPublicKey());
+                    newPeer.setOnline(true);
+                    newPeer.setCreatedAt(LocalDateTime.now());
+                    newPeer.setLastSeen(LocalDateTime.now());
+                    peerRepository.savePeer(newPeer);
+                    // Create or update conversation with name from PeerInfo and publicKey from Peer
+                    String name = (peerInfo.getUsername() != null && !peerInfo.getUsername().isEmpty()) ? peerInfo.getUsername() : (peerInfo.getIp() + ":" + peerInfo.getPort());
+                    if (newPeer.getPublicKey() != null && !newPeer.getPublicKey().trim().isEmpty()) {
+                        chatService.createPrivateConversationIfNotExists(name, newPeer.getPublicKey());
+                    }
+                    result.add(newPeer);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                String name = peer.getIp() + ":" + peer.getPort();
+                if (peer.getPublicKey() != null && !peer.getPublicKey().trim().isEmpty()) {
+                    chatService.createPrivateConversationIfNotExists(name, peer.getPublicKey());
+                }
+                result.add(peer);
+            }
+        }
+        return result;
     }
 
     public boolean editPermissions(String filename, String permission, List<PeerInfo> peersList) {

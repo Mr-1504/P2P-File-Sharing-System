@@ -45,13 +45,34 @@ const ChatPage = ({ addNotification }) => {
     const loadChatData = async () => {
         try {
             setLoading(true);
-            const [peersData, conversationsData, offlineMessages] = await Promise.all([
-                chatApi.getPeers(),
+            const [conversationsData, offlineMessages] = await Promise.all([
                 chatApi.getConversations(),
                 chatApi.getOfflineMessages()
             ]);
-            setPeers(peersData || []);
-            setConversations(conversationsData || []);
+            // Map conversations to expected format: {id, type, name, participants, lastMessage, unreadCount}
+            const mappedConversations = (conversationsData || []).map(conv => ({
+                id: conv.id,
+                type: conv.isGroup ? 'group' : 'private',
+                name: conv.name,
+                participants: conv.participants || ['me', conv.id],
+                lastMessage: conv.lastMessage || '',
+                unreadCount: conv.unreadCount || 0
+            }));
+            let mappedPeers = [];
+            if (mappedConversations.length === 0) {
+                // Only fetch peers if no conversations
+                const peersData = await chatApi.getPeers();
+                mappedPeers = (peersData || []).map(peer => ({
+                    id: `${peer.ip}:${peer.port}`,
+                    name: peer.username || `${peer.ip}:${peer.port}`,
+                    username: peer.username,
+                    ip: peer.ip,
+                    port: peer.port,
+                    taskForDownloadCount: peer.taskForDownloadCount
+                }));
+            }
+            setPeers(mappedPeers);
+            setConversations(mappedConversations);
 
             // Handle offline messages - could show a notification or integrate into conversations
             if (offlineMessages && offlineMessages.length > 0) {
@@ -59,8 +80,8 @@ const ChatPage = ({ addNotification }) => {
             }
 
             // Select first conversation if available (safe null check)
-            if (conversationsData && conversationsData.length > 0) {
-                setSelectedConversation(conversationsData[0]);
+            if (mappedConversations && mappedConversations.length > 0) {
+                setSelectedConversation(mappedConversations[0]);
             }
         } catch (error) {
             console.error('Error loading chat data:', error);
@@ -107,10 +128,10 @@ const ChatPage = ({ addNotification }) => {
             if (selectedConversation.type === 'group') {
                 await chatApi.sendGroupMessage(selectedConversation.id, text);
             } else {
-                // For private, find recipient
-                const recipient = peers.find(p => p.id !== 'me' && selectedConversation.participants.includes(p.id));
-                if (recipient) {
-                    await chatApi.sendPrivateMessage(recipient.id, text);
+                // For private, use the other participant ID
+                const recipientId = selectedConversation.participants.find(p => p !== 'me');
+                if (recipientId) {
+                    await chatApi.sendPrivateMessage(recipientId, text);
                 }
             }
 

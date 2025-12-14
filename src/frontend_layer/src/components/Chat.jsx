@@ -48,75 +48,75 @@ const Chat = ({
                         </h3>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2">
-                        {/* Conversations */}
-                        {conversations && conversations.map(conversation => {
-                            const otherParticipant = peers.find(p => p.id !== 'me' && conversation.participants.includes(p.id));
-                            const conversationName = conversation.type === 'group' ? conversation.name :
-                                (otherParticipant ? otherParticipant.name : 'Unknown');
+                        {conversations && conversations.length > 0 ? (
+                            /* Conversations */
+                            conversations.map(conversation => {
+                                const conversationName = conversation.name;
 
-                            return (
-                                <div
-                                    key={conversation.id}
-                                    onClick={() => onConversationSelect(conversation)}
-                                    className={`p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg ${
-                                        selectedConversation?.id === conversation.id
-                                            ? 'bg-blue-50 border border-blue-200 shadow-sm'
-                                            : 'hover:bg-gray-50 hover:shadow-sm'
-                                    }`}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
-                                            {conversationName}
-                                        </span>
-                                        {conversation.type === 'group' && (
-                                            <span className="text-xs bg-gray-200 px-2 py-1 rounded">
-                                                {conversation.participants.length} members
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="text-xs text-gray-500 mt-1">
-                                        {conversation.lastMessage ? conversation.lastMessage.substring(0, 30) + '...' : 'No messages'}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        {/* Peers without conversations */}
-                        {peers && conversations && peers
-                            .filter(peer => peer.id !== 'me' && (!conversations || !conversations.some(conv => conv.participants.includes(peer.id))))
-                            .map(peer => {
-                                const isOnline = peer.username && typeof peer.username === 'string' && peer.username.trim() !== "" && peer.username !== "null";
                                 return (
                                     <div
-                                        key={`peer-${peer.id}`}
-                                        onClick={() => {
-                                            // Create a new private conversation for this peer
-                                            const newConversation = {
-                                                id: `peer-${peer.id}`,
-                                                type: 'private',
-                                                participants: ['me', peer.id],
-                                                name: null, // Will use peer name
-                                                lastMessage: null
-                                            };
-                                            onConversationSelect(newConversation);
-                                        }}
-                                        className="p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg hover:bg-gray-50 hover:shadow-sm"
+                                        key={conversation.id}
+                                        onClick={() => onConversationSelect(conversation)}
+                                        className={`p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg ${
+                                            selectedConversation?.id === conversation.id
+                                                ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                                                : 'hover:bg-gray-50 hover:shadow-sm'
+                                        }`}
                                     >
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm font-semibold text-gray-700" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
-                                                {peer.name}
+                                            <span className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                                {conversationName}
                                             </span>
-                                            <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                            {conversation.type === 'group' && (
+                                                <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                                                    {conversation.participants.length} members
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            {t(isOnline ? 'online_peer' : 'offline_peer')}
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            {conversation.lastMessage ? conversation.lastMessage.substring(0, 30) + '...' : 'No messages'}
                                         </div>
                                     </div>
                                 );
-                            })}
-                        {(!conversations || conversations.length === 0) && (!peers || peers.filter(p => p.id !== 'me' && (!conversations || !conversations.some(conv => conv.participants.includes(p.id)))).length === 0) && (
-                            <div className="text-center text-gray-500 py-8">
-                                {t('no_conversations')}
-                            </div>
+                            })
+                        ) : (
+                            /* Peers */
+                            peers ? peers
+                                .filter(peer => peer.id !== 'me')
+                                .map(peer => {
+                                    const isOnline = peer.username && typeof peer.username === 'string' && peer.username.trim() !== "" && peer.username !== "null";
+                                    return (
+                                        <div
+                                            key={`peer-${peer.id}`}
+                                            onClick={() => {
+                                                // Create a new private conversation for this peer
+                                                const newConversation = {
+                                                    id: `peer-${peer.id}`,
+                                                    type: 'private',
+                                                    participants: ['me', peer.id],
+                                                    name: null, // Will use peer name
+                                                    lastMessage: null
+                                                };
+                                                onConversationSelect(newConversation);
+                                            }}
+                                            className="p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg hover:bg-gray-50 hover:shadow-sm"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-semibold text-gray-700" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                                    {peer.name}
+                                                </span>
+                                                <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-1">
+                                                {t(isOnline ? 'online_peer' : 'offline_peer')}
+                                            </div>
+                                        </div>
+                                    );
+                                }) : (
+                                <div className="text-center text-gray-500 py-8">
+                                    {t('no_conversations')}
+                                </div>
+                            )
                         )}
                     </div>
                 </div>
@@ -146,8 +146,7 @@ const Chat = ({
                                     </div>
                                     <div className="flex-1">
                                         <h3 className="text-lg font-bold text-black">
-                                            {selectedConversation.type === 'group' ? selectedConversation.name :
-                                             peers.find(p => selectedConversation.participants.includes(p.id) && p.id !== 'me')?.name || 'Unknown'}
+                                            {selectedConversation.name}
                                         </h3>
                                         <div className="flex items-center space-x-1">
                                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>

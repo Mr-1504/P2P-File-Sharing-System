@@ -1,6 +1,17 @@
 PRAGMA foreign_keys = ON;
 
 
+-- 1. Bảng Peers (Cho các Peer đã kết nối)
+CREATE TABLE IF NOT EXISTS peers (
+    id TEXT PRIMARY KEY,
+    ip VARCHAR(45) NOT NULL,
+    port INTEGER NOT NULL,
+    public_key TEXT NOT NULL,
+    is_online BOOLEAN DEFAULT 1,
+    last_seen TIMESTAMP,
+    created_at TIMESTAMP NOT NULL
+);
+
 -- 2. Bảng Conversation (Cập nhật thêm peer_public_key)
 CREATE TABLE IF NOT EXISTS conversation (
     id TEXT PRIMARY KEY,                 -- PeerID (nếu 1-1) hoặc GroupID

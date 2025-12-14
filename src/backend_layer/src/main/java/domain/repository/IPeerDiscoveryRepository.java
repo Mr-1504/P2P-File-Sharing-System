@@ -1,5 +1,6 @@
 package domain.repository;
 
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 
 import java.util.List;
@@ -12,5 +13,7 @@ public interface IPeerDiscoveryRepository {
 
     List<PeerInfo> getSelectivePeers(String fileHash);
 
-    Set<PeerInfo> queryAllPeers();
+    Set<Peer> queryAllPeers();
+
+    Set<PeerInfo> queryAllPeerInfo();
 }

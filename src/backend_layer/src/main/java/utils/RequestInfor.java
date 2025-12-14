@@ -23,4 +23,6 @@ public interface RequestInfor {
     String GET_KNOWN_PEERS = "GET_KNOWN_PEERS";
     String ALL_PEER = "ALL_PEER";
     String ALL_PEER_RESP = "ALL_PEER_RESP";
+    String ALL_PEER_INFO = "ALL_PEER_INFO";
+    String ALL_PEER_INFO_RESP = "ALL_PEER_INFO_RESP";
 }

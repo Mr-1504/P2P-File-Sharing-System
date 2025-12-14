@@ -2,6 +2,8 @@ package service;
 
 import domain.entity.Conversation;
 import domain.entity.Message;
+import domain.entity.Peer;
+import domain.entity.PeerInfo;
 
 import java.util.List;
 
@@ -11,14 +13,17 @@ import java.util.List;
 public interface IChatService {
 
     // Message sending
-    boolean sendPrivateMessage(String receiverId, String content);
+    boolean sendPrivateMessage(String conversationId, String content);
     boolean sendGroupMessage(String groupId, String content);
 
     // Conversation management
-    Conversation createPrivateConversation(String receiverId, String receiverPublicKey);
+    Conversation createPrivateConversation(String conversationName, String receiverPublicKey);
+    Conversation createPrivateConversation(PeerInfo receiver, String receiverPublicKey);
     Conversation createGroupConversation(String groupName, List<String> memberIds);
     Conversation getConversationById(String conversationId);
     List<Conversation> getAllConversations();
+    boolean isPrivateConversationExists(String username);
+    void createPrivateConversationIfNotExists(String username, String publicKey);
 
     // Message retrieval
     List<Message> getMessages(String conversationId, int limit, int offset);

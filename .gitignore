@@ -15,3 +15,4 @@ P2P-File-Sharing-System.iml
 *.jar
 /src/frontend_layer/dist
 /src/frontend_layer/build
+src/backend_layer/p2p_chat.db

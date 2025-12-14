@@ -65,6 +65,11 @@ public class TrackerServiceImpl implements TrackerService{
     }
 
     @Override
+    public Peer findPeerByPublicKey(String publicKey) {
+        return peerRepository.findByPublicKey(publicKey);
+    }
+
+    @Override
     public OfflineMessage saveOfflineMessage(OfflineMessage message) {
         return offlineMessageRepository.save(message);
     }
@@ -122,17 +127,10 @@ public class TrackerServiceImpl implements TrackerService{
     }
 
     @Override
-    public List<PeerInfo> getAllPeers() {
+    public List<Peer> getAllPeers() {
         try {
             List<Peer> peers = peerRepository.findAll();
-            if (peers == null) {
-                return new ArrayList<>();
-            }
-            List<PeerInfo> peerInfos = new ArrayList<>();
-            for (Peer peer : peers) {
-                peerInfos.add(new PeerInfo(peer.getIp(), peer.getPort(), null));
-            }
-            return peerInfos;
+            return peers != null ? peers : new ArrayList<>();
         } catch (Exception e) {
             logError("Error retrieving all peers", e);
             return new ArrayList<>();

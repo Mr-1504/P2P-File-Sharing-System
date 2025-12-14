@@ -88,20 +88,24 @@ public class NetworkUtils {
     }
 
     public static String getBroadcastIp() {
+        List<String> candidates = new ArrayList<>();
         try {
             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces.hasMoreElements()) {
                 NetworkInterface ni = interfaces.nextElement();
+                // Bổ sung check veth (thường của docker)
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
 
                 String nameLower = ni.getName().toLowerCase();
                 String displayLower = ni.getDisplayName().toLowerCase();
 
+                // Bổ sung thêm "veth" vào danh sách chặn
                 if (nameLower.contains("vmnet") || displayLower.contains("vmware")
                         || displayLower.contains("virtualbox") || displayLower.contains("docker")
                         || displayLower.contains("hyper-v") || displayLower.contains("bridge")
                         || displayLower.contains("tap") || displayLower.contains("wsl")
-                        || displayLower.contains("loopback") || displayLower.contains("virtual")) {
+                        || displayLower.contains("loopback") || displayLower.contains("virtual")
+                        || nameLower.startsWith("veth") || nameLower.startsWith("br-")) {
                     continue;
                 }
 
@@ -110,14 +114,36 @@ public class NetworkUtils {
                     if (addr instanceof Inet4Address && addr.isSiteLocalAddress()) {
                         InetAddress broadcast = ia.getBroadcast();
                         if (broadcast != null) {
-                            return broadcast.getHostAddress();
+                            candidates.add(broadcast.getHostAddress());
                         }
                     }
                 }
             }
         } catch (SocketException ignored) {
         }
-        return null;
+
+        if (candidates.isEmpty()) return null;
+
+        // Logic ưu tiên chọn: 192.168 > 10. > 172.
+        String best = null;
+        for (String ip : candidates) {
+            // Ưu tiên số 1: Mạng gia đình/văn phòng phổ biến
+            if (ip.startsWith("192.168.")) return ip;
+
+            // Ưu tiên số 2: Mạng LAN lớn (class A)
+            if (best == null && ip.startsWith("10.")) best = ip;
+        }
+
+        // Nếu có 10.x thì trả về, nếu không thì xét tiếp
+        if (best != null) return best;
+
+        // Cuối cùng mới xét đến dải 172. (Dải này Docker rất hay dùng, nên để độ ưu tiên thấp nhất)
+        for (String ip : candidates) {
+            if (ip.startsWith("172.")) return ip;
+        }
+
+        // Fallback: trả về cái đầu tiên tìm được nếu không khớp logic trên
+        return candidates.get(0);
     }
 
 }

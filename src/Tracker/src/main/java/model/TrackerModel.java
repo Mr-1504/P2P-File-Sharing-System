@@ -18,6 +18,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import adapter.FileInfoAdapter;
+import adapter.LocalDateTimeAdapter;
 import adapter.PeerInfoAdapter;
 import dto.OfflineMessage;
 import dto.Peer;
@@ -276,6 +277,15 @@ public class TrackerModel {
             return RequestInfor.ACK_OFFLINE_MSGS_RESP + "|ERROR|Invalid format";
         } else if (request.startsWith(RequestInfor.ALL_PEER)) {
             return processAllPeers();
+        } else if (request.startsWith(RequestInfor.ALL_PEER_INFO)) {
+            return processAllPeerInfo();
+        } else if (request.startsWith(RequestInfor.PEER_INFO)) {
+            if (parts.length == 2) {
+                String publicKey = parts[1];
+                return getPeerInfoByPublicKey(publicKey);
+            }
+            logInfo("[TRACKER]: Invalid PEER_INFO request: " + request + " on " + getCurrentTime());
+            return "Định dạng yêu cầu PEER_INFO không hợp lệ. Sử dụng: PEER_INFO|<publicKey>";
         }
         logInfo("[TRACKER]: Unknown command: " + request + " on " + getCurrentTime());
         return "Lệnh không xác định";
@@ -592,6 +602,30 @@ public class TrackerModel {
         }
     }
 
+    private String getPeerInfoByPublicKey(String publicKey) {
+        try {
+            logInfo("[TRACKER]: Looking up peer for public key on " + getCurrentTime());
+            TrackerService trackerService = new TrackerServiceImpl();
+            Peer peer = trackerService.findPeerByPublicKey(publicKey);
+
+            if (peer != null) {
+                logInfo("[TRACKER]: Found peer for public key: " + peer.getIp() + ":" + peer.getPort() + " on " + getCurrentTime());
+
+                // Serialize the full Peer object to JSON
+                Gson gson = new Gson();
+                String peerJson = gson.toJson(peer);
+
+                return RequestInfor.PEER_INFO_RESP + "|SUCCESS|" + peerJson;
+            } else {
+                logInfo("[TRACKER]: No peer found for public key on " + getCurrentTime());
+                return RequestInfor.PEER_INFO_RESP + "|ERROR|Peer not found";
+            }
+        } catch (Exception e) {
+            logError("[TRACKER]: Error retrieving peer by public key on " + getCurrentTime(), e);
+            return RequestInfor.PEER_INFO_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
     private String processSendMessage(String senderParam, String receiverParam, String groupParam, String base64Payload) {
         try {
             logInfo("[TRACKER]: Processing SEND_MSG request on " + getCurrentTime());
@@ -738,35 +772,62 @@ public class TrackerModel {
         try {
             logInfo("[TRACKER]: Processing ALL_PEER request on " + getCurrentTime());
             TrackerService trackerService = new TrackerServiceImpl();
-            List<PeerInfo> peers = trackerService.getAllPeers();
+            List<Peer> peers = trackerService.getAllPeers();
 
             if (peers == null || peers.isEmpty()) {
                 logInfo("[TRACKER]: No peers found in database on " + getCurrentTime());
                 return RequestInfor.ALL_PEER_RESP + "|0|[]";
             }
 
-            // Map usernames from online peers (knownPeers)
-            List<PeerInfo> peersWithUsernames = new ArrayList<>();
-            for (PeerInfo peer : peers) {
-                PeerInfo mappedPeer = findOnlinePeer(peer.getIp(), peer.getPort());
-                if (mappedPeer != null) {
-                    peersWithUsernames.add(new PeerInfo(peer.getIp(), peer.getPort(), mappedPeer.getUsername()));
+            Type listType = new TypeToken<List<Peer>>() {
+            }.getType();
+            Gson gson = new GsonBuilder()
+                .registerTypeAdapter(LocalDateTime.class, new LocalDateTimeAdapter())
+                .create();
+            String peersJson = gson.toJson(peers, listType);
+
+            logInfo("[TRACKER]: Sending all peers list with full peer data: " + peers.size() + " peers on " + getCurrentTime());
+            return RequestInfor.ALL_PEER_RESP + "|" + peers.size() + "|" + peersJson;
+
+        } catch (Exception e) {
+            logError("[TRACKER]: Error processing ALL_PEER request on " + getCurrentTime(), e);
+            return RequestInfor.ALL_PEER_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+        }
+    }
+
+    private String processAllPeerInfo() {
+        try {
+            logInfo("[TRACKER]: Processing ALL_PEER_INFO request on " + getCurrentTime());
+            TrackerService trackerService = new TrackerServiceImpl();
+            List<Peer> peers = trackerService.getAllPeers();
+
+            if (peers == null || peers.isEmpty()) {
+                logInfo("[TRACKER]: No peers found in database on " + getCurrentTime());
+                return RequestInfor.ALL_PEER_INFO_RESP + "|0|[]";
+            }
+
+            // Convert Peer DTOs to PeerInfo objects with usernames
+            List<PeerInfo> peerInfos = new ArrayList<>();
+            for (Peer peer : peers) {
+                PeerInfo peerInfo = findOnlinePeer(peer.getIp(), peer.getPort());
+                if (peerInfo != null) {
+                    peerInfos.add(peerInfo); // Has username from ping discovery
                 } else {
-                    peersWithUsernames.add(peer); // Keep original (username = null)
+                    peerInfos.add(new PeerInfo(peer.getIp(), peer.getPort())); // No username available
                 }
             }
 
             Type listType = new TypeToken<List<PeerInfo>>() {
             }.getType();
             Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
-            String peersJson = gson.toJson(peersWithUsernames, listType);
+            String peerInfosJson = gson.toJson(peerInfos, listType);
 
-            logInfo("[TRACKER]: Sending all peers list with usernames mapped: " + peers.size() + " peers on " + getCurrentTime());
-            return RequestInfor.ALL_PEER_RESP + "|" + peers.size() + "|" + peersJson;
+            logInfo("[TRACKER]: Sending all peer info list with usernames: " + peerInfos.size() + " peers on " + getCurrentTime());
+            return RequestInfor.ALL_PEER_INFO_RESP + "|" + peerInfos.size() + "|" + peerInfosJson;
 
         } catch (Exception e) {
-            logError("[TRACKER]: Error processing ALL_PEER request on " + getCurrentTime(), e);
-            return RequestInfor.ALL_PEER_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
+            logError("[TRACKER]: Error processing ALL_PEER_INFO request on " + getCurrentTime(), e);
+            return RequestInfor.ALL_PEER_INFO_RESP + "|ERROR|" + RequestInfor.INTERNAL_SERVER_ERROR;
         }
     }
 

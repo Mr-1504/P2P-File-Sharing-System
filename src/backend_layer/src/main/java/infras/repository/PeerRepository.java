@@ -3,6 +3,7 @@ package infras.repository;
 import domain.repository.*;
 import io.netty.channel.socket.SocketChannel;
 import domain.entity.FileInfo;
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import infras.subrepo.*;
@@ -251,8 +252,13 @@ public class PeerRepository implements IPeerRepository, AutoCloseable {
     }
 
     @Override
-    public Set<PeerInfo> queryAllPeers() {
+    public Set<Peer> queryAllPeers() {
         return peerDiscoveryModel.queryAllPeers();
+    }
+
+    @Override
+    public Set<PeerInfo> queryAllPeerInfo() {
+        return peerDiscoveryModel.queryAllPeerInfo();
     }
 
     public ExecutorService getExecutor() {

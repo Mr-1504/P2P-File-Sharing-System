@@ -34,6 +34,10 @@ public interface RequestInfor {
     String ACK_OFFLINE_MSGS_RESP = "ACK_OFFLINE_MSGS_RESP";
     String ALL_PEER = "ALL_PEER";
     String ALL_PEER_RESP = "ALL_PEER_RESP";
+    String ALL_PEER_INFO = "ALL_PEER_INFO";
+    String ALL_PEER_INFO_RESP = "ALL_PEER_INFO_RESP";
+    String PEER_INFO = "PEER_INFO";
+    String PEER_INFO_RESP = "PEER_INFO_RESP";
 
     // SSL/TLS Constants
     int SSL_PORT_OFFSET = 1000;

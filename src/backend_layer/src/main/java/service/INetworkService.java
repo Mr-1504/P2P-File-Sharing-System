@@ -1,5 +1,6 @@
 package service;
 
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 
 import java.util.Set;
@@ -10,5 +11,7 @@ public interface INetworkService {
     void startUDPServer();
     int registerWithTracker();
     Set<PeerInfo> queryOnlinePeerList();
-    Set<PeerInfo> queryAllPeers();
+    Set<Peer> queryAllPeers();
+    Set<PeerInfo> queryAllPeerInfo();
+    String requestPublicKey(String ip, int port);
 }

@@ -8,6 +8,7 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import utils.HibernateUtil;
 import jakarta.persistence.criteria.*;
+import utils.Log;
 
 import java.util.List;
 
@@ -26,8 +27,9 @@ public class ChatRepository implements IChatRepository {
             transaction.commit();
             return conversation;
         } catch (Exception e) {
+            Log.logError("Error saving conversation", e);
             if (transaction != null) transaction.rollback();
-            throw new RuntimeException("Error saving conversation", e);
+            return null;
         }
     }
 
@@ -36,7 +38,8 @@ public class ChatRepository implements IChatRepository {
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
             return session.get(Conversation.class, conversationId);
         } catch (Exception e) {
-            throw new RuntimeException("Error finding conversation by ID", e);
+            Log.logError("Error finding conversation by ID", e);
+            return null;
         }
     }
 
@@ -49,7 +52,8 @@ public class ChatRepository implements IChatRepository {
             cq.select(root);
             return session.createQuery(cq).getResultList();
         } catch (Exception e) {
-            throw new RuntimeException("Error finding all conversations", e);
+            Log.logError("Error finding all conversations", e);
+            return null;
         }
     }
 
@@ -61,8 +65,8 @@ public class ChatRepository implements IChatRepository {
             session.merge(conversation);
             transaction.commit();
         } catch (Exception e) {
+            Log.logError("Error update conversation", e);
             if (transaction != null) transaction.rollback();
-            throw new RuntimeException("Error updating conversation", e);
         }
     }
 
@@ -76,8 +80,9 @@ public class ChatRepository implements IChatRepository {
             transaction.commit();
             return message;
         } catch (Exception e) {
+            Log.logError("Error saving message", e);
             if (transaction != null) transaction.rollback();
-            throw new RuntimeException("Error saving message", e);
+            return null;
         }
     }
 
@@ -95,7 +100,8 @@ public class ChatRepository implements IChatRepository {
                     .setMaxResults(limit)
                     .getResultList();
         } catch (Exception e) {
-            throw new RuntimeException("Error finding messages by conversation ID", e);
+            Log.logError("Error finding messages by conversation ID", e);
+            return null;
         }
     }
 
@@ -110,7 +116,8 @@ public class ChatRepository implements IChatRepository {
             cq.orderBy(cb.asc(root.get("createdAt")));
             return session.createQuery(cq).getResultList();
         } catch (Exception e) {
-            throw new RuntimeException("Error finding offline messages", e);
+            Log.logError("Error finding offline messages", e);
+            return null;
         }
     }
 
@@ -127,8 +134,8 @@ public class ChatRepository implements IChatRepository {
             session.createQuery(cd).executeUpdate();
             transaction.commit();
         } catch (Exception e) {
+            Log.logError("Error deleting messages", e);
             if (transaction != null) transaction.rollback();
-            throw new RuntimeException("Error deleting messages", e);
         }
     }
 
@@ -142,8 +149,9 @@ public class ChatRepository implements IChatRepository {
             transaction.commit();
             return member;
         } catch (Exception e) {
+            Log.logError("Error saving group member", e);
             if (transaction != null) transaction.rollback();
-            throw new RuntimeException("Error saving group member", e);
+            return null;
         }
     }
 
@@ -157,7 +165,8 @@ public class ChatRepository implements IChatRepository {
             cq.where(condition);
             return session.createQuery(cq).getResultList();
         } catch (Exception e) {
-            throw new RuntimeException("Error finding group members by group ID", e);
+            Log.logError("Error finding group members by group ID", e);
+            return null;
         }
     }
 
@@ -169,8 +178,8 @@ public class ChatRepository implements IChatRepository {
             session.merge(member);
             transaction.commit();
         } catch (Exception e) {
+            Log.logError("Error updating group member", e);
             if (transaction != null) transaction.rollback();
-            throw new RuntimeException("Error updating group member", e);
         }
     }
 }

@@ -23,7 +23,7 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPol
         setLanguage(lng);
     };
 
-    const fetchFiles = async () => {
+    const fetchFiles = async (filterToUse = null) => {
       setIsLoading(true);
       try {
         const response = await fetch(buildApiUrl('/api/files'), {
@@ -40,7 +40,8 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPol
         const data = await response.json();
 
         setAllFiles(data);
-        setFiles(activeFilter === 'my' ? data.filter(f => f.isSharedByMe) : data);
+        const active = filterToUse !== null ? filterToUse : activeFilter;
+        setFiles(active === 'my' ? data.filter(f => f.isSharedByMe) : data);
 
         addNotification('Đã tải danh sách tệp', false);
       } catch (error) {
@@ -202,12 +203,16 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPol
     const handleSearch = async () => {
         addNotification(t('search', { searchTerm }), false);
         if (searchTerm.trim()) {
-            const filteredFiles = files.filter(file => 
-                file.fileName.toLowerCase().includes(searchTerm.toLowerCase())
+            const fullList = activeFilter === 'my' ? allFiles.filter(f => f.isSharedByMe) : allFiles;
+            const trimmedTerm = searchTerm.trim();
+            const normalizedTerm = trimmedTerm.replace(/\s+/g, '');
+            const filteredFiles = fullList.filter(file =>
+                file.fileName.replace(/\s+/g, '').toLowerCase().includes(normalizedTerm.toLowerCase())
             );
             setFiles(filteredFiles);
         } else {
-            fetchFiles();
+            const fullList = activeFilter === 'my' ? allFiles.filter(f => f.isSharedByMe) : allFiles;
+            setFiles(fullList);
         }
     };
 
@@ -218,14 +223,12 @@ const FilesPage = ({ isLoading, setIsLoading, addNotification, taskMap, startPol
 
     const handleMyFiles = () => {
         setActiveFilter('my');
-        setFiles(allFiles.filter(f => f.isSharedByMe));
-        addNotification(t('show_my_files'), false);
-        };
+        fetchFiles('my');
+    };
 
     const handleAllFiles = () => {
         setActiveFilter('all');
-        setFiles(allFiles);
-        fetchFiles();
+        fetchFiles('all');
         };
 
     const handleShareAll = async (file) => {

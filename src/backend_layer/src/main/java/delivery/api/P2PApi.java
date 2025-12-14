@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import domain.entity.FileInfo;
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import delivery.dto.CleanupRequest;
@@ -27,6 +28,7 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 import static utils.Log.logError;
 import static utils.Log.logInfo;
@@ -41,6 +43,7 @@ public class P2PApi implements IP2PApi {
     private HttpServer server;
     private List<FileInfo> files = new ArrayList<>();
     private static final Gson gson = new Gson();
+    private static final Pattern IPV4_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
 
     // --- Handler Storage ---
     private TriFunction<String, String, List<PeerInfo>, Boolean> editPermissionsHandler;
@@ -60,7 +63,7 @@ public class P2PApi implements IP2PApi {
     private Function<String, Boolean> resumeDownloadHandler;
     private TriFunction<String, Integer, List<PeerInfo>, String> sharePrivateFileHandler;
     private Callable<Set<PeerInfo>> getKnownPeersHandler;
-    private Callable<Set<PeerInfo>> getAllPeersHandler;
+    private Callable<List<Peer>> getAllPeersHandler;
 
     // --- Chat Handlers ---
     private BiFunction<String, String, Boolean> sendPrivateMessageHandler;
@@ -121,7 +124,7 @@ public class P2PApi implements IP2PApi {
             }
 
             String path = exchange.getRequestURI().getPath();
-            Log.logInfo("API Request Path: " + path);
+                Log.logInfo("API Request Path: " + path);
             String[] parts = path.split("/");
 
             if (parts.length < 3) {
@@ -231,7 +234,7 @@ public class P2PApi implements IP2PApi {
             }
         }
 
-        sendResponse(exchange, LogTag.NOT_FOUND, jsonError("Unknown file route"));
+        sendResponse(exchange, 405, jsonError("Method not allowed for /api/files"));
     }
 
     /**
@@ -383,7 +386,13 @@ public class P2PApi implements IP2PApi {
             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("isReplace must be -1, 0, or 1"));
             return;
         }
-        List<PeerInfo> peers = parsePeers(body);
+        List<PeerInfo> peers;
+        try {
+            peers = parsePeers(body);
+        } catch (IllegalArgumentException e) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError(e.getMessage()));
+            return;
+        }
 
         if (filePath == null || filePath.trim().isEmpty() || peers.isEmpty()) {
             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("filePath and peers are required"));
@@ -464,7 +473,13 @@ public class P2PApi implements IP2PApi {
             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Invalid permission"));
             return;
         }
-        List<PeerInfo> peers = parsePeers(body);
+        List<PeerInfo> peers;
+        try {
+            peers = parsePeers(body);
+        } catch (IllegalArgumentException e) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError(e.getMessage()));
+            return;
+        }
 
         Log.logInfo(" Permission: " + permission + ", Peers: " + peers);
         boolean success = editPermissionsHandler.apply(fileName, permission, peers);
@@ -684,7 +699,7 @@ public class P2PApi implements IP2PApi {
         if (getAllPeersHandler == null) throw new UnsupportedOperationException("GetAllPeers handler not set");
 
         logInfo("Get all peers request");
-        Set<PeerInfo> peers = getAllPeersHandler.call();
+        List<Peer> peers = getAllPeersHandler.call();
         String response = gson.toJson(peers);
         logInfo("All peers response: " + response);
         sendResponse(exchange, LogTag.OK, response);
@@ -729,7 +744,7 @@ public class P2PApi implements IP2PApi {
         }
 
         // GET /api/chat/conversations
-        if (method.equals("GET") && parts.length == 3) {
+        if (method.equals("GET") && parts.length == 4 && parts[3].equals("conversations")) {
             handleGetAllConversations(exchange);
             return;
         }
@@ -1055,7 +1070,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForGetAllPeers(Callable<Set<PeerInfo>> callable) {
+    public void setRouteForGetAllPeers(Callable<List<Peer>> callable) {
         this.getAllPeersHandler = callable;
     }
 
@@ -1119,24 +1134,59 @@ public class P2PApi implements IP2PApi {
     // --- Utility Methods ---
 
     /**
-     * Helper to parse PeerInfo list from JSON body
+     * Helper to parse PeerInfo list from JSON body, validating IP and port
      */
-    private List<PeerInfo> parsePeers(JsonObject body) {
+    private List<PeerInfo> parsePeers(JsonObject body) throws IllegalArgumentException {
         List<PeerInfo> peers = new ArrayList<>();
         if (body.has("peers") && !body.get("peers").isJsonNull() && body.get("peers").isJsonArray()) {
-            body.get("peers").getAsJsonArray().forEach(peerJson -> {
-                JsonObject p = peerJson.getAsJsonObject();
-                String ip = p.has("ip") ? p.get("ip").getAsString() : null;
-                int port = p.has("port") ? p.get("port").getAsInt() : 0;
-                String username = p.has("username") ? p.get("username").getAsString() : null;
-                if (username != null) {
-                    peers.add(new PeerInfo(ip, port, username));
-                } else {
-                    peers.add(new PeerInfo(ip, port));
+            for (JsonElement peerJson : body.get("peers").getAsJsonArray()) {
+                if (!peerJson.isJsonObject()) {
+                    throw new IllegalArgumentException("Each peer must be a JSON object");
                 }
-            });
+                JsonObject p = peerJson.getAsJsonObject();
+                String ipStr = getStringSafe(p, "ip");
+                if (ipStr == null || ipStr.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Peer ip is required and cannot be empty");
+                }
+                if (!isValidIPv4(ipStr.trim())) {
+                    throw new IllegalArgumentException("Peer ip must be a valid IPv4 address");
+                }
+                int port;
+                try {
+                    port = getIntSafe(p, "port", 0);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException("Peer port must be an integer");
+                }
+                if (port <= 0 || port > 65535) {
+                    throw new IllegalArgumentException("Peer port must be between 1 and 65535");
+                }
+                String username = getStringSafe(p, "username");
+                username = username != null ? username.trim() : null;
+                if (username != null) {
+                    peers.add(new PeerInfo(ipStr.trim(), port, username));
+                } else {
+                    peers.add(new PeerInfo(ipStr.trim(), port));
+                }
+            }
         }
         return peers;
+    }
+
+    /**
+     * Validates if the given string is a valid IPv4 address.
+     */
+    private boolean isValidIPv4(String ip) {
+        if (!IPV4_PATTERN.matcher(ip).matches()) return false;
+        String[] parts = ip.split("\\.");
+        try {
+            for (String part : parts) {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) return false;
+            }
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        return true;
     }
 
     private static void addCorsHeaders(HttpExchange exchange) {

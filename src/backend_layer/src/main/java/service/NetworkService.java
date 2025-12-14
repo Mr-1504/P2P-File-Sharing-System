@@ -1,5 +1,6 @@
 package service;
 
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.repository.IPeerRepository;
 import utils.AppPaths;
@@ -25,6 +26,11 @@ public class NetworkService implements INetworkService {
     }
 
     @Override
+    public Set<PeerInfo> queryAllPeerInfo() {
+        return peerModel.queryAllPeerInfo();
+    }
+
+    @Override
     public void startUDPServer() {
         peerModel.startUDPServer();
     }
@@ -40,7 +46,12 @@ public class NetworkService implements INetworkService {
     }
 
     @Override
-    public Set<PeerInfo> queryAllPeers() {
+    public Set<Peer> queryAllPeers() {
         return peerModel.queryAllPeers();
+    }
+
+    @Override
+    public String requestPublicKey(String ip, int port) {
+        return peerModel.requestPublicKey(ip, port);
     }
 }

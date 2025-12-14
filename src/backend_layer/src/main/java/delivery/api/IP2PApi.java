@@ -1,6 +1,7 @@
 package delivery.api;
 
 import domain.entity.FileInfo;
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import delivery.dto.CleanupRequest;
@@ -124,7 +125,7 @@ public interface IP2PApi {
      *
      * @param callable the function or consumer to handle the route
      */
-    void setRouteForGetAllPeers(Callable<Set<PeerInfo>> callable);
+    void setRouteForGetAllPeers(Callable<List<Peer>> callable);
 
 
     /**

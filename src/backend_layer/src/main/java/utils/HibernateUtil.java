@@ -54,6 +54,7 @@ public class HibernateUtil {
                 configuration.addAnnotatedClass(domain.entity.Conversation.class);
                 configuration.addAnnotatedClass(domain.entity.Message.class);
                 configuration.addAnnotatedClass(domain.entity.GroupMember.class);
+                configuration.addAnnotatedClass(domain.entity.Peer.class);
 
                 // Build session factory
                 sessionFactory = configuration.buildSessionFactory();
