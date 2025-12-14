@@ -13,6 +13,8 @@ public interface IPeerJpaRepository {
     Peer savePeer(Peer peer);
     Peer findPeerById(UUID id);
     Peer findPeerByIpAndPort(String ip, int port);
+    Peer findByPublicKey(String publicKey);
+    Peer findByTrackerPeerId(String trackerPeerId);
     List<Peer> findAllPeers();
     void updatePeer(Peer peer);
     void deletePeer(UUID id);

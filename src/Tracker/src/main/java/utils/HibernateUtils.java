@@ -21,6 +21,9 @@ public class HibernateUtils {
             cfg.setProperty("hibernate.format_sql", "true");
 
             cfg.addAnnotatedClass(dto.Peer.class);
+            cfg.addAnnotatedClass(dto.Group.class);
+            cfg.addAnnotatedClass(dto.GroupMember.class);
+            cfg.addAnnotatedClass(dto.OfflineMessage.class);
 
             return cfg.buildSessionFactory();
         } catch (Exception e) {

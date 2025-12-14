@@ -86,13 +86,18 @@ function App() {
         }
 
         const checkData = await checkResponse.json();
-        const hasUsername = checkData.hasUsername;
+        const { hasUsername, username } = checkData;
 
         if (!hasUsername) {
           // No username set, show dialog
           setShowUsernameDialog(true);
           setShowSplash(false); // Hide splash while showing dialog
           return;
+        }
+
+        // Username exists on backend, save to localStorage as cache
+        if (username) {
+          localStorage.setItem('p2p_username', username);
         }
 
         // Username exists, proceed with normal init
@@ -320,10 +325,30 @@ function App() {
       {/* Username Dialog */}
       <UsernameDialog
         isOpen={showUsernameDialog}
-        onClose={() => {
+        onClose={async () => {
           setShowUsernameDialog(false);
-          // Trigger app reinitialization when dialog closes
-          // Backend should now be initialized, so fetch files
+
+          // After username is set, re-check and save the username from backend
+          try {
+            const checkResponse = await fetch(buildApiUrl('/api/check-username'), {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (checkResponse.ok) {
+              const checkData = await checkResponse.json();
+              const { hasUsername, username } = checkData;
+
+              if (hasUsername && username) {
+                // Save the newly set username to localStorage
+                localStorage.setItem('p2p_username', username);
+              }
+            }
+          } catch (error) {
+            console.error('Error re-fetching username after dialog:', error);
+          }
+
+          // Trigger app reinitialization - backend now initialized, fetch files
           fetchFiles();
         }}
       />

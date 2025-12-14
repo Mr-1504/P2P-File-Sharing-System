@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import domain.adapter.LocalDateTimeAdapter;
+import domain.adapter.PeerAdapter;
 import domain.adapter.PeerInfoAdapter;
 import domain.entity.FileInfo;
 import domain.entity.Peer;
@@ -22,6 +23,7 @@ import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -185,6 +187,7 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
                         Type setType = new TypeToken<Set<Peer>>() {
                         }.getType();
                         Gson gson = new GsonBuilder()
+                            .registerTypeAdapter(Peer.class, new PeerAdapter())
                             .registerTypeAdapter(LocalDateTime.class, new LocalDateTimeAdapter())
                             .create();
 
@@ -223,6 +226,7 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
             Log.logInfo("SSL Requesting all peer info from tracker, message: " + request);
             BufferedReader buff = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
             String response = buff.readLine();
+            Log.logInfo("ALL_PEER_INFO_RESP: " + response);
             if (response == null || response.isEmpty()) {
                 Log.logInfo("No SSL response from tracker for all peer info");
                 return Collections.emptySet();
@@ -237,20 +241,22 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
                         Log.logInfo("No all peer info found via SSL");
                         return Collections.emptySet();
                     } else {
-                        Type setType = new TypeToken<Set<PeerInfo>>() {
+                        Type listType = new TypeToken<List<PeerInfo>>() {
                         }.getType();
                         Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
 
-                        Set<PeerInfo> peerInfos = gson.fromJson(parts[2], setType);
-                        if (peerInfos.isEmpty()) {
+                        List<PeerInfo> peers = gson.fromJson(parts[2], listType);
+
+                        Log.logInfo(peers.toString());
+                        if (peers.isEmpty()) {
                             Log.logInfo("No valid all peer info found via SSL");
                             return Collections.emptySet();
-                        } else if (peerCount != peerInfos.size()) {
-                            Log.logInfo("All peer info count mismatch via SSL: expected " + peerCount + ", found " + peerInfos.size());
+                        } else if (peerCount != peers.size()) {
+                            Log.logInfo("All peer info count mismatch via SSL: expected " + peerCount + ", found " + peers.size());
                             return Collections.emptySet();
                         } else {
                             Log.logInfo("Received all peer info from tracker via SSL: " + response);
-                            return peerInfos;
+                            return new HashSet<>(peers);
                         }
                     }
                 }

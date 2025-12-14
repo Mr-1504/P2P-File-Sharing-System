@@ -16,6 +16,7 @@ import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 
 import javax.net.ssl.*;
 import java.io.*;
+import java.net.InetAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyPair;
@@ -151,7 +152,8 @@ public class SSLUtils {
         // Use an SSL context with our certificates to connect to the Tracker
         // The pre-bundled truststore should contain the CA certificates
         SSLSocketFactory factory = createSSLSocketFactory();
-        try (SSLSocket socket = (SSLSocket) factory.createSocket(SERVER_IP, SSL_TRACKER_ENROLL_PORT)) {
+        InetAddress card = InetAddress.getByName(Config.SERVER_IP);
+        try (SSLSocket socket = (SSLSocket) factory.createSocket(SERVER_IP, SSL_TRACKER_ENROLL_PORT, card, 0)) {
             socket.setSoTimeout(15000); // 15s timeout
 
             // Send certificate signing request to Tracker

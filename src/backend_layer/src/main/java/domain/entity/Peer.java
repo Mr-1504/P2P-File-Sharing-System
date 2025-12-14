@@ -59,17 +59,27 @@ public class Peer {
         return createdAt;
     }
 
+    public String getTrackerPeerId() {
+        return trackerPeerId;
+    }
+
+    public void setTrackerPeerId(String trackerPeerId) {
+        this.trackerPeerId = trackerPeerId;
+    }
+
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+//    @GeneratedValue(strategy = GenerationType.AUTO) // Removed auto-gen, use external tracker ID
     @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
     @Column(length = 45)
     private String ip;
     private int port;
+    @Column(name = "tracker_peer_id", nullable = false)
+    private String trackerPeerId;
     @Column(name = "public_key", nullable = false, length = 1024)
     private String publicKey;
     @Column(name = "is_online")
@@ -78,6 +88,27 @@ public class Peer {
     private LocalDateTime lastSeen;
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    public Peer(UUID id, String trackerPeerId, String ip, int port, String publicKey, boolean isOnline, LocalDateTime lastSeen, LocalDateTime createdAt) {
+        this.id = id;
+        this.trackerPeerId = trackerPeerId;
+        this.ip = ip;
+        this.port = port;
+        this.publicKey = publicKey;
+        this.isOnline = isOnline;
+        this.lastSeen = lastSeen;
+        this.createdAt = createdAt;
+    }
+
+    public Peer(String trackerPeerId, String ip, int port, String publicKey, boolean isOnline, LocalDateTime lastSeen, LocalDateTime createdAt) {
+        this.trackerPeerId = trackerPeerId;
+        this.ip = ip;
+        this.port = port;
+        this.publicKey = publicKey;
+        this.isOnline = isOnline;
+        this.lastSeen = lastSeen;
+        this.createdAt = createdAt;
+    }
 
     public Peer(String ip, int port, String publicKey, boolean isOnline, LocalDateTime lastSeen, LocalDateTime createdAt) {
         this.ip = ip;

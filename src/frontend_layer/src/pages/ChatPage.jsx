@@ -12,23 +12,57 @@ const ChatPage = ({ addNotification }) => {
     const [loading, setLoading] = useState(true);
     const [messageLimit] = useState(50);
     const [messageOffset, setMessageOffset] = useState(0);
+    const [currentUsername, setCurrentUsername] = useState('');
 
-    // Load peers and conversations on mount
+    // Load username and peers/conversations on mount
     useEffect(() => {
+        // Load username from localStorage
+        const storedUsername = localStorage.getItem('p2p_username');
+        if (storedUsername) {
+            setCurrentUsername(storedUsername);
+        }
         loadChatData();
     }, []);
 
-    // Poll for new messages every 0.1 seconds
+    // Poll for new messages every 10 seconds
     useEffect(() => {
-        if (selectedConversation) {
+        if (selectedConversation && currentUsername) {
             const interval = setInterval(async () => {
                 try {
                     const newMessages = await chatApi.getMessages(selectedConversation.id, 10, 0);
                     // Only update if there are new messages
                     if (newMessages.length > 0 && (!messages.length || !newMessages[0]?.id || !messages[0]?.id || newMessages[0].id !== messages[0].id)) {
-                        setMessages(newMessages);
-                        // Acknowledge unread messages
-                        const unreadMessageIds = newMessages.filter(msg => !msg.read && msg.sender !== 'You').map(msg => msg.id);
+                        // Map API response to expected format for new messages
+                        const mappedNewMessages = newMessages.map(msg => ({
+                            id: msg.id,
+                            text: msg.content || msg.text || '',
+                            sender: msg.senderId === currentUsername ? 'You' : (msg.senderId || 'Unknown'),
+                            timestamp: new Date(msg.createdAt).toISOString(),
+                            read: msg.read || false, // Respect API read status
+                            status: msg.status,
+                            msgType: msg.msgType
+                        }));
+
+                        setMessages(mappedNewMessages);
+
+                        // Update last message in conversations list for better UI responsiveness
+                        const latestMessage = newMessages[0]; // Most recent message (API response, not mapped)
+                        setConversations(prevConversations =>
+                            prevConversations.map(conv =>
+                                conv.id === selectedConversation.id
+                                    ? {
+                                        ...conv,
+                                        lastMessage: latestMessage.content || latestMessage.text || '',
+                                        lastMessageTime: latestMessage.createdAt || latestMessage.timestamp
+                                    }
+                                    : conv
+                            )
+                        );
+
+                        // Acknowledge unread messages - only acknowledge messages NOT sent by current user
+                        const unreadMessageIds = newMessages
+                            .filter(msg => !msg.read && msg.senderId !== currentUsername)
+                            .map(msg => msg.id);
                         if (unreadMessageIds.length > 0) {
                             await chatApi.acknowledgeMessages(unreadMessageIds);
                         }
@@ -36,41 +70,40 @@ const ChatPage = ({ addNotification }) => {
                 } catch (error) {
                     console.error('Error polling messages:', error);
                 }
-            }, 1000); // 0.1 seconds
+            }, 500); // Poll every 10 seconds
 
             return () => clearInterval(interval);
         }
-    }, [selectedConversation, messages]);
+    }, [selectedConversation, currentUsername, messages]);
 
     const loadChatData = async () => {
         try {
             setLoading(true);
-            const [conversationsData, offlineMessages] = await Promise.all([
+            const [conversationsData, offlineMessages, peersData] = await Promise.all([
                 chatApi.getConversations(),
-                chatApi.getOfflineMessages()
+                chatApi.getOfflineMessages(),
+                chatApi.getPeers() // Always fetch peers to show all peers feature
             ]);
             // Map conversations to expected format: {id, type, name, participants, lastMessage, unreadCount}
+            // Align with API docs: {id, name, isGroup, peerPublicKey, lastMsgContent, lastMsgTime, unreadCount}
             const mappedConversations = (conversationsData || []).map(conv => ({
                 id: conv.id,
                 type: conv.isGroup ? 'group' : 'private',
                 name: conv.name,
-                participants: conv.participants || ['me', conv.id],
-                lastMessage: conv.lastMessage || '',
-                unreadCount: conv.unreadCount || 0
+                participants: conv.isGroup ? (conv.participants || []) : ['me', conv.name], // For groups use participants array, for private use 'me' and peer name
+                lastMessage: conv.lastMsgContent || '', // Changed from lastMessage to lastMsgContent
+                lastMessageTime: conv.lastMsgTime, // Add timestamp
+                unreadCount: conv.unreadCount || 0,
+                peerPublicKey: conv.peerPublicKey // Store public key for encryption
             }));
-            let mappedPeers = [];
-            if (mappedConversations.length === 0) {
-                // Only fetch peers if no conversations
-                const peersData = await chatApi.getPeers();
-                mappedPeers = (peersData || []).map(peer => ({
-                    id: `${peer.ip}:${peer.port}`,
-                    name: peer.username || `${peer.ip}:${peer.port}`,
-                    username: peer.username,
-                    ip: peer.ip,
-                    port: peer.port,
-                    taskForDownloadCount: peer.taskForDownloadCount
-                }));
-            }
+            const mappedPeers = (peersData || []).map(peer => ({
+                id: `${peer.ip}:${peer.port}`,
+                name: peer.username || `${peer.ip}:${peer.port}`,
+                username: peer.username,
+                ip: peer.ip,
+                port: peer.port,
+                taskForDownloadCount: peer.taskForDownloadCount
+            }));
             setPeers(mappedPeers);
             setConversations(mappedConversations);
 
@@ -101,9 +134,21 @@ const ChatPage = ({ addNotification }) => {
     const loadMessages = async (conversationId, append = false) => {
         try {
             const messagesData = await chatApi.getMessages(conversationId, messageLimit, messageOffset);
-            setMessages(prev => append ? [...messagesData, ...prev] : messagesData);
 
-            // Acknowledge messages as read
+            // Map API response to expected format
+            const mappedMessages = (messagesData || []).map(msg => ({
+                id: msg.id,
+                text: msg.content || msg.text || '', // Use content field from API
+                sender: msg.senderId === currentUsername ? 'You' : (msg.senderId || 'Unknown'), // Determine if it's current user's message
+                timestamp: new Date(msg.createdAt).toISOString(), // Convert unix timestamp to ISO string
+                read: true, // Assume loaded messages are read
+                status: msg.status,
+                msgType: msg.msgType
+            }));
+
+            setMessages(prev => append ? [...mappedMessages, ...prev] : mappedMessages);
+
+            // Acknowledge unread messages - use original API data for this
             const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);
             if (unreadMessageIds.length > 0) {
                 await chatApi.acknowledgeMessages(unreadMessageIds);
@@ -124,15 +169,12 @@ const ChatPage = ({ addNotification }) => {
                 timestamp: new Date().toISOString()
             };
 
-            // Send message via API
+            // Send message via API - using "content" parameter name per API docs
             if (selectedConversation.type === 'group') {
                 await chatApi.sendGroupMessage(selectedConversation.id, text);
             } else {
-                // For private, use the other participant ID
-                const recipientId = selectedConversation.participants.find(p => p !== 'me');
-                if (recipientId) {
-                    await chatApi.sendPrivateMessage(recipientId, text);
-                }
+                // For private, use conversation ID as receiverId per user feedback
+                await chatApi.sendPrivateMessage(selectedConversation.id, text);
             }
 
             // Optimistically update UI
@@ -141,9 +183,23 @@ const ChatPage = ({ addNotification }) => {
                 text,
                 sender: 'You',
                 timestamp: new Date().toISOString(),
-                read: true
+                read: true,
+                content: text // Add content field for consistency
             };
             setMessages(prev => [...prev, newMessage]);
+
+            // Update last message in conversations list immediately
+            setConversations(prevConversations =>
+                prevConversations.map(conv =>
+                    conv.id === selectedConversation.id
+                        ? {
+                            ...conv,
+                            lastMessage: text,
+                            lastMessageTime: new Date().toISOString()
+                        }
+                        : conv
+                )
+            );
 
             addNotification(t('message_sent'), false);
         } catch (error) {

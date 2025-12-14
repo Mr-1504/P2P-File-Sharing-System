@@ -1,9 +1,11 @@
 package delivery.api;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
+import domain.adapter.LocalDateTimeAdapter;
 import com.sun.net.httpserver.HttpServer;
 import domain.entity.FileInfo;
 import domain.entity.Peer;
@@ -42,13 +44,15 @@ import static utils.Log.logInfo;
 public class P2PApi implements IP2PApi {
     private HttpServer server;
     private List<FileInfo> files = new ArrayList<>();
-    private static final Gson gson = new Gson();
+    private static final Gson gson = new GsonBuilder()
+        .registerTypeAdapter(java.time.LocalDateTime.class, new LocalDateTimeAdapter())
+        .create();
     private static final Pattern IPV4_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
 
     // --- Handler Storage ---
     private TriFunction<String, String, List<PeerInfo>, Boolean> editPermissionsHandler;
     private Function<String, List<PeerInfo>> getSharedPeersHandler;
-    private Callable<Boolean> checkUsernameHandler;
+    private Callable<Map<String, Object>> checkUsernameHandler;
     private Function<String, Boolean> setUsernameHandler;
     private Function<String, Boolean> checkFileHandler;
     private Callable<Integer> refreshHandler;
@@ -76,6 +80,7 @@ public class P2PApi implements IP2PApi {
     private Consumer<List<String>> acknowledgeMessagesHandler;
     private TriFunction<String, String, String, Boolean> addGroupMemberHandler;
     private Function<String, Object> getGroupMembersHandler;
+    private Consumer<String> directMessageHandler; // Handler for direct encrypted messages
 
     /**
      * Constructor to initialize the P2PApi and start the API server.
@@ -540,8 +545,8 @@ public class P2PApi implements IP2PApi {
         if (checkUsernameHandler == null) throw new UnsupportedOperationException("CheckUsername handler not set");
 
         logInfo("Check username request");
-        boolean hasUsername = checkUsernameHandler.call();
-        String response = gson.toJson(Collections.singletonMap("hasUsername", hasUsername));
+        Map<String, Object> result = checkUsernameHandler.call();
+        String response = gson.toJson(result);
         sendResponse(exchange, LogTag.OK, response);
     }
 
@@ -725,6 +730,12 @@ public class P2PApi implements IP2PApi {
     private void handleChatRoutes(HttpExchange exchange, String[] parts) throws Exception {
         String method = exchange.getRequestMethod().toUpperCase();
 
+        // POST /api/chat/direct-message (receive encrypted message from another peer)
+        if (method.equals("POST") && parts.length == 4 && parts[3].equals("direct-message")) {
+            handleDirectMessage(exchange);
+            return;
+        }
+
         // POST /api/chat/send-private
         if (method.equals("POST") && parts.length == 4 && parts[3].equals("send-private")) {
             handleSendPrivateMessage(exchange);
@@ -756,15 +767,15 @@ public class P2PApi implements IP2PApi {
             return;
         }
 
-        // GET /api/chat/messages
+        // GET /api/chat/messages (with optional conversationId, limit, offset in query params)
         if (method.equals("GET") && parts.length == 3) {
-            handleGetMessages(exchange, "");
+            handleGetMessages(exchange, null);
             return;
         }
 
         // GET /api/chat/messages/{conversationId}
-        if (method.equals("GET") && parts.length == 4 && parts[3].equals("messages")) {
-            String conversationId = URLDecoder.decode(parts[3], StandardCharsets.UTF_8);
+        if (method.equals("GET") && parts.length == 5 && parts[3].equals("messages")) {
+            String conversationId = URLDecoder.decode(parts[4], StandardCharsets.UTF_8);
             handleGetMessages(exchange, conversationId);
             return;
         }
@@ -800,6 +811,36 @@ public class P2PApi implements IP2PApi {
 
 
     // --- Chat Specific Endpoint Handlers ---
+
+    /**
+     * Handles POST /api/chat/direct-message (receive encrypted message from another peer)
+     */
+    private void handleDirectMessage(HttpExchange exchange) {
+        try {
+            logInfo("Direct message received from peer");
+
+            // Read the encrypted payload from request body
+            String encryptedPayload = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+            if (encryptedPayload == null || encryptedPayload.trim().isEmpty()) {
+                sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Encrypted payload is required"));
+                return;
+            }
+
+            if (directMessageHandler == null) throw new UnsupportedOperationException("Direct message handler not set");
+
+            // Enqueue the message for processing via ChatService
+            directMessageHandler.accept(encryptedPayload);
+
+            // Send immediate response
+            Log.logInfo("Direct message accepted, enqueuing for processing");
+            sendResponse(exchange, LogTag.OK, "{\"status\":\"message accepted for processing\"}");
+
+        } catch (Exception e) {
+            Log.logError("Error handling direct message", e);
+            sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR, jsonError("Failed to process direct message"));
+        }
+    }
 
     /**
      * Handles POST /api/chat/send-private
@@ -891,12 +932,19 @@ public class P2PApi implements IP2PApi {
     /**
      * Handles GET /api/chat/messages[/{conversationId}]
      */
-    private void handleGetMessages(HttpExchange exchange, String conversationId) {
+    private void handleGetMessages(HttpExchange exchange, String pathConversationId) {
         if (getMessagesHandler == null) throw new UnsupportedOperationException("Get messages handler not set");
 
-        logInfo("Get messages request for conversation: " + conversationId);
+        // Parse query parameters
         String query = exchange.getRequestURI().getRawQuery();
         Map<String, String> params = parseQuery(query);
+
+        // Priority: path param > query param > empty string
+        String conversationId = pathConversationId != null ? pathConversationId : params.get("conversationId");
+        if (conversationId == null) conversationId = "";
+
+        logInfo("Get messages request for conversation: " + conversationId);
+
         int limit = Integer.parseInt(params.getOrDefault("limit", "50"));
         int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
 
@@ -995,7 +1043,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForCheckUsername(Callable<Boolean> callable) {
+    public void setRouteForCheckUsername(Callable<Map<String, Object>> callable) {
         this.checkUsernameHandler = callable;
     }
 
@@ -1129,6 +1177,11 @@ public class P2PApi implements IP2PApi {
     @Override
     public void setRouteForGetGroupMembers(Function<String, Object> handler) {
         this.getGroupMembersHandler = handler;
+    }
+
+    @Override
+    public void setRouteForDirectMessage(Consumer<String> handler) {
+        this.directMessageHandler = handler;
     }
 
     // --- Utility Methods ---

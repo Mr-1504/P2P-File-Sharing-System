@@ -6,11 +6,17 @@ CREATE TABLE IF NOT EXISTS peers (
     id TEXT PRIMARY KEY,
     ip VARCHAR(45) NOT NULL,
     port INTEGER NOT NULL,
+    tracker_peer_id TEXT NOT NULL,  -- New: ID used by tracker (ip:port or username)
     public_key TEXT NOT NULL,
     is_online BOOLEAN DEFAULT 1,
     last_seen TIMESTAMP,
     created_at TIMESTAMP NOT NULL
 );
+
+---- Migration: Add tracker_peer_id column if it doesn't exist
+--ALTER TABLE peers ADD COLUMN tracker_peer_id TEXT DEFAULT '';
+--UPDATE peers SET tracker_peer_id = ip || ':' || port WHERE tracker_peer_id = '';
+--ALTER TABLE peers ADD CONSTRAINT tracker_peer_id_not_empty CHECK (tracker_peer_id != '');
 
 -- 2. Bảng Conversation (Cập nhật thêm peer_public_key)
 CREATE TABLE IF NOT EXISTS conversation (

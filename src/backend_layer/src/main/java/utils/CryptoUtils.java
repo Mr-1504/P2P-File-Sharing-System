@@ -182,17 +182,44 @@ public class CryptoUtils {
     }
 
     /**
-     * Load public key from PEM string.
+     * Load public key from PEM string or DER hex string.
+     * If starts with "-----BEGIN", treat as PEM (Base64).
+     * Otherwise, treat as hex string representing DER bytes.
      */
-    public static PublicKey loadPublicKey(String pemPublicKey) {
+    public static PublicKey loadPublicKey(String keyString) {
         try {
-            byte[] publicKeyBytes = Base64.decode(pemPublicKey);
+            byte[] publicKeyBytes;
+            if (keyString.startsWith("-----BEGIN")) {
+                // PEM format: remove header/footer, decode Base64
+                String base64Data = keyString
+                    .replaceAll("-----BEGIN PUBLIC KEY-----", "")
+                    .replaceAll("-----END PUBLIC KEY-----", "")
+                    .replaceAll("\\s", "");
+                publicKeyBytes = Base64.decode(base64Data);
+            } else {
+                // Assume hex string: convert to bytes
+                publicKeyBytes = hexStringToByteArray(keyString);
+            }
+
             X509EncodedKeySpec spec = new X509EncodedKeySpec(publicKeyBytes);
             KeyFactory factory = KeyFactory.getInstance("RSA");
             return factory.generatePublic(spec);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load public key", e);
+            throw new RuntimeException("Failed to load public key from: " + keyString.substring(0, Math.min(50, keyString.length())), e);
         }
+    }
+
+    /**
+     * Convert hex string to byte array.
+     */
+    private static byte[] hexStringToByteArray(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                                 + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
     }
 
     /**

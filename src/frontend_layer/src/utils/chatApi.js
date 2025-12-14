@@ -2,27 +2,31 @@ import { buildApiUrl } from './config';
 
 // Chat API utility functions
 
-export const sendPrivateMessage = async (recipientId, message) => {
+export const sendPrivateMessage = async (receiverId, content) => {
+    // Align with API docs: use "receiverId" and "content" parameter names
     const response = await fetch(buildApiUrl('/api/chat/send-private'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId, message })
+        body: JSON.stringify({ receiverId, content })
     });
     if (!response.ok) throw new Error('Failed to send private message');
     return await response.json();
 };
 
-export const sendGroupMessage = async (groupId, message) => {
+export const sendGroupMessage = async (groupId, content) => {
+    // Align with API docs: use "content" parameter name for consistency
     const response = await fetch(buildApiUrl('/api/chat/send-group'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupId, message })
+        body: JSON.stringify({ groupId, content })
     });
     if (!response.ok) throw new Error('Failed to send group message');
     return await response.json();
 };
 
 export const getConversations = async () => {
+    // API doc shows /api/chat/conversations/all but current implementation uses /conversations
+    // Keeping current path as confirmed by user that it works
     const response = await fetch(buildApiUrl('/api/chat/conversations'));
     if (!response.ok) throw new Error('Failed to fetch conversations');
     return await response.json();
@@ -45,7 +49,8 @@ export const getConversation = async (conversationId) => {
 };
 
 export const getMessages = async (conversationId, limit = 50, offset = 0) => {
-    const response = await fetch(buildApiUrl(`/api/chat/messages?conversationId=${conversationId}&limit=${limit}&offset=${offset}`));
+    // Updated to match API docs: /api/chat/messages/{conversationId}?limit=10&offset=0
+    const response = await fetch(buildApiUrl(`/api/chat/messages/${conversationId}?limit=${limit}&offset=${offset}`));
     if (!response.ok) throw new Error('Failed to fetch messages');
     return await response.json();
 };
@@ -82,8 +87,9 @@ export const getGroupMembers = async (groupId) => {
     return await response.json();
 };
 
-// Additional helper functions for peers (assuming API exists)
+// Additional helper functions for peers - endpoint confirmed to exist
 export const getPeers = async () => {
+    // Note: This endpoint is not in the provided API docs but confirmed to work by user
     const response = await fetch(buildApiUrl('/api/peers'));
     if (!response.ok) throw new Error('Failed to fetch peers');
     return await response.json();

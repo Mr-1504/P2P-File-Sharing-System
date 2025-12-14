@@ -64,7 +64,9 @@ public class P2PController {
      * If a username is already set, it proceeds with full initialization.
      */
     public synchronized void start() {
-        if (!checkUsernameExists()) {
+        Map<String, Object> usernameCheck = checkUsernameExists();
+        Boolean hasUsername = (Boolean) usernameCheck.get("hasUsername");
+        if (!hasUsername) {
             return;
         }
         performFullInitialization();
@@ -108,15 +110,15 @@ public class P2PController {
      * Checks if a username already exists for the current session.
      * This method is synchronized to ensure thread safety.
      *
-     * @return boolean indicating if username exists
+     * @return Map containing hasUsername boolean and username string if exists
      */
-    public synchronized boolean checkUsernameExists() {
+    public synchronized Map<String, Object> checkUsernameExists() {
         if (this.username == null) {
             this.username = AppPaths.loadUsername();
             System.out.println("Loaded " + username);
         }
         System.out.println(username);
-        return this.username != null;
+        return Map.of("hasUsername", this.username != null, "username", this.username != null ? this.username : null);
     }
 
     /**
@@ -466,36 +468,54 @@ public class P2PController {
 
         List<Peer> result = new ArrayList<>();
         for (Peer peer : peers) {
-            boolean found = false;
+            // Check if peer already exists by tracker peer ID
+            Peer existing = peerRepository.findByTrackerPeerId(peer.getTrackerPeerId());
+
+            Peer peerToSave;
+            if (existing != null) {
+                // Update existing peer with latest info from tracker
+                existing.setIp(peer.getIp());
+                existing.setPort(peer.getPort());
+                existing.setPublicKey(peer.getPublicKey());
+                existing.setOnline(peer.isOnline());
+                existing.setLastSeen(peer.getLastSeen());
+                existing.setCreatedAt(peer.getCreatedAt()); // Keep original, or update if needed
+                existing.setTrackerPeerId(peer.getTrackerPeerId()); // Ensure consistency
+                peerToSave = existing;
+                Log.logInfo("Updating existing peer: " + peer.getTrackerPeerId());
+            } else {
+                // New peer - prepare for insert
+                Log.logInfo("Inserting new peer: " + peer.getTrackerPeerId());
+                peerToSave = peer;
+            }
+
+            // Save/update peer in database
+            try {
+                peerRepository.savePeer(peerToSave);
+            } catch (Exception e) {
+                Log.logError("Failed to save peer: " + peer.getTrackerPeerId(), e);
+                continue; // Skip this peer but continue with others
+            }
+
+            // Find matching PeerInfo for name
+            String name = null;
             for (PeerInfo peerInfo : peerInfos) {
                 if (peer.getIp().equals(peerInfo.getIp()) && peer.getPort() == peerInfo.getPort()) {
-                    // Create new Peer based on existing Peer from network service
-                    Peer newPeer = new Peer();
-                    newPeer.setId(peer.getId());
-                    newPeer.setIp(peer.getIp());
-                    newPeer.setPort(peer.getPort());
-                    newPeer.setPublicKey(peer.getPublicKey());
-                    newPeer.setOnline(true);
-                    newPeer.setCreatedAt(LocalDateTime.now());
-                    newPeer.setLastSeen(LocalDateTime.now());
-                    peerRepository.savePeer(newPeer);
-                    // Create or update conversation with name from PeerInfo and publicKey from Peer
-                    String name = (peerInfo.getUsername() != null && !peerInfo.getUsername().isEmpty()) ? peerInfo.getUsername() : (peerInfo.getIp() + ":" + peerInfo.getPort());
-                    if (newPeer.getPublicKey() != null && !newPeer.getPublicKey().trim().isEmpty()) {
-                        chatService.createPrivateConversationIfNotExists(name, newPeer.getPublicKey());
-                    }
-                    result.add(newPeer);
-                    found = true;
+                    name = (peerInfo.getUsername() != null && !peerInfo.getUsername().isEmpty()) ?
+                           peerInfo.getUsername() : (peerInfo.getIp() + ":" + peerInfo.getPort());
                     break;
                 }
             }
-            if (!found) {
-                String name = peer.getIp() + ":" + peer.getPort();
-                if (peer.getPublicKey() != null && !peer.getPublicKey().trim().isEmpty()) {
-                    chatService.createPrivateConversationIfNotExists(name, peer.getPublicKey());
-                }
-                result.add(peer);
+            if (name == null) {
+                name = peer.getIp() + ":" + peer.getPort(); // Fallback
             }
+
+            // Create or update conversation with public key
+            if (peer.getPublicKey() != null && !peer.getPublicKey().trim().isEmpty()) {
+                chatService.createPrivateConversationIfNotExists(name, peer.getPublicKey());
+            }
+
+            result.add(peerToSave);
         }
         return result;
     }

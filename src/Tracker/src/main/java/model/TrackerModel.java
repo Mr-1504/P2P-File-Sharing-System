@@ -46,7 +46,12 @@ public class TrackerModel {
         knownPeers = new CopyOnWriteArraySet<>();
         selector = Selector.open();
         pingExecutor = Executors.newScheduledThreadPool(1);
-        pingExecutor.scheduleAtFixedRate(this::pingPeers, 0, 10, TimeUnit.SECONDS);
+        pingExecutor.scheduleWithFixedDelay(
+                this::pingPeers,
+                3,
+                5,
+                TimeUnit.SECONDS
+        );
     }
 
     public void startTracker() {
@@ -58,8 +63,6 @@ public class TrackerModel {
         } catch (Exception e) {
             logError("[TRACKER]: SSL Server error: " + e.getMessage() + " on " + getCurrentTime(), e);
             throw new RuntimeException("Failed to start SSL Tracker server", e);
-        } finally {
-            pingExecutor.shutdown();
         }
     }
 
@@ -275,10 +278,10 @@ public class TrackerModel {
             }
             logInfo("[TRACKER]: Invalid ACK_OFFLINE_MSGS request: " + request + " on " + getCurrentTime());
             return RequestInfor.ACK_OFFLINE_MSGS_RESP + "|ERROR|Invalid format";
-        } else if (request.startsWith(RequestInfor.ALL_PEER)) {
-            return processAllPeers();
         } else if (request.startsWith(RequestInfor.ALL_PEER_INFO)) {
             return processAllPeerInfo();
+        } else if (request.startsWith(RequestInfor.ALL_PEER)) {
+            return processAllPeers();
         } else if (request.startsWith(RequestInfor.PEER_INFO)) {
             if (parts.length == 2) {
                 String publicKey = parts[1];
@@ -798,32 +801,20 @@ public class TrackerModel {
     private String processAllPeerInfo() {
         try {
             logInfo("[TRACKER]: Processing ALL_PEER_INFO request on " + getCurrentTime());
-            TrackerService trackerService = new TrackerServiceImpl();
-            List<Peer> peers = trackerService.getAllPeers();
+            List<PeerInfo> peers = this.knownPeers.stream().toList();
 
-            if (peers == null || peers.isEmpty()) {
+            if (peers.isEmpty()) {
                 logInfo("[TRACKER]: No peers found in database on " + getCurrentTime());
                 return RequestInfor.ALL_PEER_INFO_RESP + "|0|[]";
-            }
-
-            // Convert Peer DTOs to PeerInfo objects with usernames
-            List<PeerInfo> peerInfos = new ArrayList<>();
-            for (Peer peer : peers) {
-                PeerInfo peerInfo = findOnlinePeer(peer.getIp(), peer.getPort());
-                if (peerInfo != null) {
-                    peerInfos.add(peerInfo); // Has username from ping discovery
-                } else {
-                    peerInfos.add(new PeerInfo(peer.getIp(), peer.getPort())); // No username available
-                }
             }
 
             Type listType = new TypeToken<List<PeerInfo>>() {
             }.getType();
             Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
-            String peerInfosJson = gson.toJson(peerInfos, listType);
+            String peerInfosJson = gson.toJson(peers, listType);
 
-            logInfo("[TRACKER]: Sending all peer info list with usernames: " + peerInfos.size() + " peers on " + getCurrentTime());
-            return RequestInfor.ALL_PEER_INFO_RESP + "|" + peerInfos.size() + "|" + peerInfosJson;
+            logInfo("[TRACKER]: Sending all peer info list with usernames: " + peers.size() + " peers on " + getCurrentTime());
+            return RequestInfor.ALL_PEER_INFO_RESP + "|" + peers.size() + "|" + peerInfosJson;
 
         } catch (Exception e) {
             logError("[TRACKER]: Error processing ALL_PEER_INFO request on " + getCurrentTime(), e);

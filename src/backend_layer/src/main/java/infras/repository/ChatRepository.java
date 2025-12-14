@@ -23,7 +23,7 @@ public class ChatRepository implements IChatRepository {
         Transaction transaction = null;
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
             transaction = session.beginTransaction();
-            session.persist(conversation);
+            session.merge(conversation);
             transaction.commit();
             return conversation;
         } catch (Exception e) {
@@ -95,10 +95,11 @@ public class ChatRepository implements IChatRepository {
             Predicate condition = cb.equal(root.get("conversationId"), conversationId);
             cq.where(condition);
             cq.orderBy(cb.desc(root.get("createdAt")));
-            return session.createQuery(cq)
+            List<Message> results = session.createQuery(cq)
                     .setFirstResult(offset)
                     .setMaxResults(limit)
                     .getResultList();
+            return results;
         } catch (Exception e) {
             Log.logError("Error finding messages by conversation ID", e);
             return null;

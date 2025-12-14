@@ -239,6 +239,7 @@ public class NetworkRepository implements INetworkRepository {
             sslSocket.getOutputStream().write(request.getBytes());
             BufferedReader reader = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
             String response = reader.readLine();
+            Log.logInfo(response);
             return response != null && response.startsWith("SEND_MSG_RESP|SUCCESS");
         } catch (Exception e) {
             Log.logError("Error sending message to tracker", e);

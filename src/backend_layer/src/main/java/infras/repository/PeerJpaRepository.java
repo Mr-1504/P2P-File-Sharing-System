@@ -6,6 +6,7 @@ import org.hibernate.Session;
 import org.hibernate.Transaction;
 import utils.HibernateUtil;
 import jakarta.persistence.criteria.*;
+import utils.Log;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,14 +22,21 @@ public class PeerJpaRepository implements IPeerJpaRepository {
         Transaction transaction = null;
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
             transaction = session.beginTransaction();
-            if (peer.getId() == null) {
-                session.persist(peer);
-            } else {
+//            Peer existingPeer = findPeerByIpAndPort(peer.getIp(), peer.getPort());
+//            if (existingPeer == null) {
+//                // Check if peer with this ID already exists (detached entity case)
+//                if (peer.getId() != null && findPeerById(peer.getId()) != null) {
+//                    session.merge(peer);
+//                } else {
+//                    session.persist(peer);
+//                }
+//            } else {
                 session.merge(peer);
-            }
+//            }
             transaction.commit();
             return peer;
         } catch (Exception e) {
+            Log.logError("Error saving peer", e);
             if (transaction != null) transaction.rollback();
             throw new RuntimeException("Error saving peer", e);
         }
@@ -97,6 +105,35 @@ public class PeerJpaRepository implements IPeerJpaRepository {
         } catch (Exception e) {
             if (transaction != null) transaction.rollback();
             throw new RuntimeException("Error deleting peer", e);
+        }
+    }
+
+    @Override
+    public Peer findByPublicKey(String publicKey) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            CriteriaBuilder cb = session.getCriteriaBuilder();
+            CriteriaQuery<Peer> cq = cb.createQuery(Peer.class);
+            Root<Peer> root = cq.from(Peer.class);
+            Predicate condition = cb.equal(root.get("publicKey"), publicKey);
+            cq.where(condition);
+            return session.createQuery(cq).uniqueResult();
+        } catch (Exception e) {
+            Log.logError("Error finding peer by public key", e);
+            throw new RuntimeException("Error finding peer by public key", e);
+        }
+    }
+
+    @Override
+    public Peer findByTrackerPeerId(String trackerPeerId) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            CriteriaBuilder cb = session.getCriteriaBuilder();
+            CriteriaQuery<Peer> cq = cb.createQuery(Peer.class);
+            Root<Peer> root = cq.from(Peer.class);
+            Predicate condition = cb.equal(root.get("trackerPeerId"), trackerPeerId);
+            cq.where(condition);
+            return session.createQuery(cq).uniqueResult();
+        } catch (Exception e) {
+            throw new RuntimeException("Error finding peer by tracker peer ID", e);
         }
     }
 }

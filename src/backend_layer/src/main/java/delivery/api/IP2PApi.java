@@ -20,7 +20,7 @@ public interface IP2PApi {
      *
      * @param callable the function or consumer to handle the route
      */
-    void setRouteForCheckUsername(Callable<Boolean> callable);
+    void setRouteForCheckUsername(Callable<Map<String, Object>> callable);
 
     /**
      * Routes setup method for set username API endpoint
@@ -219,6 +219,7 @@ public interface IP2PApi {
      * @param handler the function to handle getting group members
      */
     void setRouteForGetGroupMembers(Function<String, Object> handler);
+    void setRouteForDirectMessage(Consumer<String> handler);
 
     /**
      * BiFunction interface for two-argument functions.
