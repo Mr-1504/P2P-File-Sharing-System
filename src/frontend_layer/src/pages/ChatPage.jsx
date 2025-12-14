@@ -12,6 +12,7 @@ const ChatPage = ({ addNotification }) => {
     const [loading, setLoading] = useState(true);
     const [messageLimit] = useState(50);
     const [messageOffset, setMessageOffset] = useState(0);
+    const [paginationOffset, setPaginationOffset] = useState(0); // Separate offset that increments by 1
     const [currentUsername, setCurrentUsername] = useState('');
 
     // Load username and peers/conversations on mount
@@ -210,7 +211,8 @@ const ChatPage = ({ addNotification }) => {
 
     const handleConversationSelect = (conversation) => {
         setSelectedConversation(conversation);
-        setMessageOffset(0); // Reset pagination
+        setMessageOffset(0); // Reset message loading pagination
+        setPaginationOffset(0); // Reset auto-pagination offset
     };
 
     const loadOlderMessages = () => {
@@ -221,10 +223,11 @@ const ChatPage = ({ addNotification }) => {
 
     // Separate function for loading older messages with append=true
     const loadOlderMessagesWithAppend = async () => {
-        if (selectedConversation && messages.length >= messageLimit) {
-            const newOffset = messageOffset + messageLimit;
+        if (selectedConversation) {
             try {
-                const messagesData = await chatApi.getMessages(selectedConversation.id, messageLimit, newOffset);
+                // Increment pagination offset by 1 as requested
+                const nextPaginationOffset = paginationOffset + 1;
+                const messagesData = await chatApi.getMessages(selectedConversation.id, messageLimit, nextPaginationOffset);
 
                 if (messagesData && messagesData.length > 0) {
                     // Map older messages
@@ -239,7 +242,7 @@ const ChatPage = ({ addNotification }) => {
                     }));
 
                     setMessages(prev => [...mappedMessages, ...prev]);
-                    setMessageOffset(newOffset);
+                    setPaginationOffset(nextPaginationOffset); // Increment by 1
 
                     // Acknowledge unread messages from older messages
                     const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);

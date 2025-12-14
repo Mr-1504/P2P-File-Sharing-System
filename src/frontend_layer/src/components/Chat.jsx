@@ -12,8 +12,10 @@ const Chat = ({
     canLoadMore
 }) => {
     const [messageInput, setMessageInput] = useState('');
+    const [isAutoLoading, setIsAutoLoading] = useState(false);
     const { t } = useTranslation();
     const messagesEndRef = useRef(null);
+    const scrollTriggerRef = useRef(null);
 
     const handleSend = () => {
         if (messageInput.trim() && selectedConversation) {
@@ -22,11 +24,38 @@ const Chat = ({
         }
     };
 
+    // Only auto-scroll to bottom for new messages when NOT auto-loading older messages
     useEffect(() => {
-        if (messagesEndRef.current) {
+        if (messagesEndRef.current && !isAutoLoading) {
             messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [messages]);
+    }, [messages, isAutoLoading]);
+
+    // Disabled auto-pagination for now to stop continuous scrolling
+    // TODO: Re-enable with proper scroll position preservation
+    // useEffect(() => {
+    //     if (!canLoadMore || isAutoLoading) return;
+    //
+    //     const observer = new IntersectionObserver(
+    //         (entries) => {
+    //             const entry = entries[0];
+    //             if (entry.isIntersecting && canLoadMore && !isAutoLoading) {
+    //                 setIsAutoLoading(true);
+    //                 onLoadOlderMessages().finally(() => {
+    //                     setIsAutoLoading(false);
+    //                     observer.disconnect();
+    //                 });
+    //             }
+    //         },
+    //         { threshold: 0.1, rootMargin: '200px 0px 0px 0px' }
+    //     );
+    //
+    //     if (scrollTriggerRef.current) {
+    //         observer.observe(scrollTriggerRef.current);
+    //     }
+    //
+    //     return () => observer.disconnect();
+    // }, [canLoadMore, isAutoLoading, onLoadOlderMessages]);
 
     const formatTime = (timestamp) => {
         return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -230,6 +259,18 @@ const Chat = ({
                                         )}
                                     </div>
                                 ))}
+
+                                {/* Auto-pagination trigger - triggers when user scrolls near the end */}
+                                {canLoadMore && (
+                                    <div ref={scrollTriggerRef} className="flex justify-center py-4">
+                                        {isAutoLoading ? (
+                                            <div className="text-sm text-gray-500">{t('loading')}</div>
+                                        ) : (
+                                            <div className="h-4"></div> // Invisible trigger element
+                                        )}
+                                    </div>
+                                )}
+
                                 <div ref={messagesEndRef} />
                             </div>
 
