@@ -10,7 +10,7 @@ import utils.HibernateUtil;
 import jakarta.persistence.criteria.*;
 import utils.Log;
 
-import java.util.List;
+import java.util.*;
 
 /**
  * Hibernate implementation of IChatRepository.
@@ -94,11 +94,15 @@ public class ChatRepository implements IChatRepository {
             Root<Message> root = cq.from(Message.class);
             Predicate condition = cb.equal(root.get("conversationId"), conversationId);
             cq.where(condition);
-            cq.orderBy(cb.asc(root.get("createdAt")));
+            cq.orderBy(cb.desc(root.get("createdAt")));
             List<Message> results = session.createQuery(cq)
                     .setFirstResult(offset)
                     .setMaxResults(limit)
                     .getResultList();
+
+            // Sort results in reverse order for proper chronological display
+            Collections.reverse(results);
+
             return results;
         } catch (Exception e) {
             Log.logError("Error finding messages by conversation ID", e);

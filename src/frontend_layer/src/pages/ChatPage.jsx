@@ -146,12 +146,7 @@ const ChatPage = ({ addNotification }) => {
                 msgType: msg.msgType
             }));
 
-            // Sort messages by timestamp ascending (oldest first) so newest appear at bottom
-            const sortedMessages = mappedMessages.sort((a, b) =>
-                new Date(a.timestamp) - new Date(b.timestamp)
-            );
-
-            setMessages(prev => append ? [...sortedMessages, ...prev] : sortedMessages);
+            setMessages(prev => append ? [...mappedMessages, ...prev] : mappedMessages);
 
             // Acknowledge unread messages - use original API data for this
             const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);
@@ -232,7 +227,7 @@ const ChatPage = ({ addNotification }) => {
                 const messagesData = await chatApi.getMessages(selectedConversation.id, messageLimit, newOffset);
 
                 if (messagesData && messagesData.length > 0) {
-                    // Map and sort older messages
+                    // Map older messages
                     const mappedMessages = (messagesData || []).map(msg => ({
                         id: msg.id,
                         text: msg.content || msg.text || '',
@@ -243,12 +238,7 @@ const ChatPage = ({ addNotification }) => {
                         msgType: msg.msgType
                     }));
 
-                    // Sort by timestamp ascending and prepend to existing messages
-                    const sortedMessages = mappedMessages.sort((a, b) =>
-                        new Date(a.timestamp) - new Date(b.timestamp)
-                    );
-
-                    setMessages(prev => [...sortedMessages, ...prev]);
+                    setMessages(prev => [...mappedMessages, ...prev]);
                     setMessageOffset(newOffset);
 
                     // Acknowledge unread messages from older messages
