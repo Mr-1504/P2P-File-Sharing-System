@@ -1,5 +1,6 @@
 package utils;
 
+import dto.Peer;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
@@ -10,6 +11,8 @@ import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import service.TrackerService;
+import service.TrackerServiceImpl;
 
 
 import java.nio.file.Paths;
@@ -182,5 +185,29 @@ public class SSLUtils {
 
     private static String getCurrentTime() {
         return LocalDateTime.now().format(formatter);
+    }
+
+    /**
+     * Extract public key from CSR PEM string
+     */
+    public static String extractPublicKeyFromCSR(String csrPem) throws Exception {
+        StringReader reader = new StringReader(csrPem);
+        PEMParser pemParser = new PEMParser(reader);
+        Object parsedObj = pemParser.readObject();
+        pemParser.close();
+
+        if (!(parsedObj instanceof PKCS10CertificationRequest)) {
+            throw new IllegalArgumentException("Provided string is not a valid PKCS#10 CSR");
+        }
+
+        PKCS10CertificationRequest csr = (PKCS10CertificationRequest) parsedObj;
+        byte[] publicKeyBytes = csr.getSubjectPublicKeyInfo().getEncoded();
+
+        // Convert to hex string
+        StringBuilder hex = new StringBuilder();
+        for (byte b : publicKeyBytes) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
     }
 }

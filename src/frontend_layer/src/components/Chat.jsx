@@ -1,62 +1,157 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer }) => {
+const Chat = ({
+    peers,
+    conversations,
+    selectedConversation,
+    messages,
+    onSendMessage,
+    onConversationSelect,
+    onLoadOlderMessages,
+    canLoadMore
+}) => {
     const [messageInput, setMessageInput] = useState('');
+    const [isAutoLoading, setIsAutoLoading] = useState(false);
     const { t } = useTranslation();
     const messagesEndRef = useRef(null);
+    const scrollTriggerRef = useRef(null);
 
     const handleSend = () => {
-        if (messageInput.trim() && selectedPeer) {
-            onSendMessage(selectedPeer.id, messageInput);
+        if (messageInput.trim() && selectedConversation) {
+            onSendMessage(messageInput);
             setMessageInput('');
         }
     };
 
+    // Only auto-scroll to bottom for new messages when NOT auto-loading older messages
     useEffect(() => {
-        if (messagesEndRef.current) {
+        if (messagesEndRef.current && !isAutoLoading) {
             messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [messages, selectedPeer]);
+    }, [messages, isAutoLoading]);
+
+    // Disabled auto-pagination for now to stop continuous scrolling
+    // TODO: Re-enable with proper scroll position preservation
+    // useEffect(() => {
+    //     if (!canLoadMore || isAutoLoading) return;
+    //
+    //     const observer = new IntersectionObserver(
+    //         (entries) => {
+    //             const entry = entries[0];
+    //             if (entry.isIntersecting && canLoadMore && !isAutoLoading) {
+    //                 setIsAutoLoading(true);
+    //                 onLoadOlderMessages().finally(() => {
+    //                     setIsAutoLoading(false);
+    //                     observer.disconnect();
+    //                 });
+    //             }
+    //         },
+    //         { threshold: 0.1, rootMargin: '200px 0px 0px 0px' }
+    //     );
+    //
+    //     if (scrollTriggerRef.current) {
+    //         observer.observe(scrollTriggerRef.current);
+    //     }
+    //
+    //     return () => observer.disconnect();
+    // }, [canLoadMore, isAutoLoading, onLoadOlderMessages]);
+
+    const formatTime = (timestamp) => {
+        return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
 
     return (
         <div
             className="fixed top-[180px] left-0 right-0 bottom-0 bg-white p-4 flex"
         >
             <div className="flex flex-col sm:flex-row gap-4 h-full w-full">
-                {/* Left Panel - Peer List */}
+                {/* Left Panel - Conversations */}
                 <div
                     className="w-full sm:w-1/4 bg-white rounded-[10px] border border-[#00000040] flex flex-col ml-0 sm:ml-[15px]"
                     style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
                 >
                     <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                        <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{t('peerList')}</h3>
+                        <h3 className="text-lg font-bold text-[#196BAD]" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                            {t('conversations_peers')}
+                        </h3>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2">
-                        {peers.map(peer => (
-                            <div
-                                key={peer.id}
-                                onClick={() => setSelectedPeer(peer)}
-                                className={`p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg ${
-                                    selectedPeer?.id === peer.id
-                                        ? 'bg-blue-50 border border-blue-200 shadow-sm'
-                                        : 'hover:bg-gray-50 hover:shadow-sm'
-                                }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>{peer.name}</span>
-                                    {peer.status === 'Online' && (
-                                        <div className="flex items-center space-x-1">
-                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                            <span className="text-xs text-green-600 font-medium" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>Online</span>
-                                        </div>
-                                    )}
+                        {/* Conversations */}
+                        {conversations && conversations.map(conversation => {
+                            const conversationName = conversation.name;
+
+                            return (
+                                <div
+                                    key={conversation.id}
+                                    onClick={() => onConversationSelect(conversation)}
+                                    className={`p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg ${
+                                        selectedConversation?.id === conversation.id
+                                            ? 'bg-blue-50 border border-blue-200 shadow-sm'
+                                            : 'hover:bg-gray-50 hover:shadow-sm'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                            {conversationName}
+                                        </span>
+                                        {conversation.type === 'group' && (
+                                            <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                                                {conversation.participants.length} members
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        {conversation.lastMessage ? conversation.lastMessage.substring(0, 30) + '...' : 'No messages'}
+                                    </div>
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
-                                    {peer.ip}
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
+
+                        {/* Peers Section - Always show available peers */}
+                        {peers && peers.length > 0 && (
+                            <>
+                                {conversations && conversations.length > 0 && (
+                                    <div className="mt-4 mb-2 px-4">
+                                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                            {t('peers')}
+                                        </h4>
+                                    </div>
+                                )}
+                                {peers
+                                    .filter(peer => peer.id !== 'me')
+                                    .map(peer => {
+                                        const isOnline = peer.username && typeof peer.username === 'string' && peer.username.trim() !== "" && peer.username !== "null";
+                                        return (
+                                            <div
+                                                key={`peer-${peer.id}`}
+                                                onClick={() => {
+                                                    // Create a new private conversation for this peer
+                                                    const newConversation = {
+                                                        id: `peer-${peer.id}`,
+                                                        type: 'private',
+                                                        participants: ['me', peer.id],
+                                                        name: null, // Will use peer name
+                                                        lastMessage: null
+                                                    };
+                                                    onConversationSelect(newConversation);
+                                                }}
+                                                className="p-4 mx-1 mb-1 cursor-pointer transition-all duration-200 rounded-lg hover:bg-gray-50 hover:shadow-sm"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm font-semibold text-gray-700" style={{ fontFamily: 'Kumbh Sans, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif' }}>
+                                                        {peer.name}
+                                                    </span>
+                                                    <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                                </div>
+                                                <div className="text-xs text-gray-400 mt-1">
+                                                    {t(isOnline ? 'online_peer' : 'offline_peer')}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -65,7 +160,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                     className="flex-1 bg-white rounded-[10px] border border-[#00000040] flex flex-col overflow-hidden"
                     style={{ boxShadow: '2px 4px 8px -1px rgba(0, 0, 0, 0.25)' }}
                 >
-                    {selectedPeer ? (
+                    {selectedConversation ? (
                         <>
                             {/* Chat Header */}
                             <div className="p-4 border-b border-gray-200 bg-white sticky top-0 z-10">
@@ -83,21 +178,37 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                                             />
                                         </svg>
                                     </div>
-                                    <div>
-                                        <h3 className="text-lg font-bold text-black">{selectedPeer.name}</h3>
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-bold text-black">
+                                            {selectedConversation.name}
+                                        </h3>
                                         <div className="flex items-center space-x-1">
                                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                            <span className="text-sm text-black font-normal">Online</span>
+                                            <span className="text-sm text-black font-normal">
+                                                {selectedConversation.type === 'group' ? `${selectedConversation.participants.length} members` : 'Private'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
+                            {/* Load More Button */}
+                            {canLoadMore && (
+                                <div className="p-2 border-b border-gray-200 text-center">
+                                    <button
+                                        onClick={onLoadOlderMessages}
+                                        className="text-sm text-[#196BAD] hover:text-[#1669A6] underline"
+                                    >
+                                        {t('load_older_messages')}
+                                    </button>
+                                </div>
+                            )}
+
                             {/* Chat Messages */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
-                                {(messages[selectedPeer.id] || []).map((msg, index) => (
+                                {messages.map((msg, index) => (
                                     <div
-                                        key={index}
+                                        key={msg.id || index}
                                         className={`flex items-end ${
                                             msg.sender === 'You' ? 'justify-end' : 'justify-start'
                                         }`}
@@ -117,14 +228,19 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                                                 </svg>
                                             </div>
                                         )}
-                                        <div
-                                            className={`max-w-xs px-4 py-2 rounded-2xl ${
-                                                msg.sender === 'You'
-                                                    ? 'bg-[#D1E7FF] text-black'
-                                                    : 'bg-[#F0F0F0] text-black'
-                                            }`}
-                                        >
-                                            <p className="text-sm">{msg.text}</p>
+                                        <div className="max-w-xs">
+                                            <div
+                                                className={`px-4 py-2 rounded-2xl ${
+                                                    msg.sender === 'You'
+                                                        ? 'bg-[#D1E7FF] text-black'
+                                                        : 'bg-[#F0F0F0] text-black'
+                                                }`}
+                                            >
+                                                <p className="text-sm">{msg.text}</p>
+                                            </div>
+                                            <div className={`text-xs text-gray-500 mt-1 ${msg.sender === 'You' ? 'text-right' : 'text-left'}`}>
+                                                {formatTime(msg.timestamp)}
+                                            </div>
                                         </div>
                                         {msg.sender === 'You' && (
                                             <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center ml-2 flex-shrink-0">
@@ -143,6 +259,18 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                                         )}
                                     </div>
                                 ))}
+
+                                {/* Auto-pagination trigger - triggers when user scrolls near the end */}
+                                {canLoadMore && (
+                                    <div ref={scrollTriggerRef} className="flex justify-center py-4">
+                                        {isAutoLoading ? (
+                                            <div className="text-sm text-gray-500">{t('loading')}</div>
+                                        ) : (
+                                            <div className="h-4"></div> // Invisible trigger element
+                                        )}
+                                    </div>
+                                )}
+
                                 <div ref={messagesEndRef} />
                             </div>
 
@@ -174,7 +302,7 @@ const Chat = ({ peers, messages, onSendMessage, selectedPeer, setSelectedPeer })
                         </>
                     ) : (
                         <div className="flex-1 flex items-center justify-center">
-                            <p className="text-gray-500 text-lg">{t('select_peer')}</p>
+                            <p className="text-gray-500 text-lg">{t('select_conversation')}</p>
                         </div>
                     )}
                 </div>

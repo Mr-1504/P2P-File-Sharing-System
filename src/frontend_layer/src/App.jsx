@@ -86,13 +86,18 @@ function App() {
         }
 
         const checkData = await checkResponse.json();
-        const hasUsername = checkData.hasUsername;
+        const { hasUsername, username } = checkData;
 
         if (!hasUsername) {
           // No username set, show dialog
           setShowUsernameDialog(true);
           setShowSplash(false); // Hide splash while showing dialog
           return;
+        }
+
+        // Username exists on backend, save to localStorage as cache
+        if (username) {
+          localStorage.setItem('p2p_username', username);
         }
 
         // Username exists, proceed with normal init
@@ -142,10 +147,8 @@ function App() {
       {showSplash && (
         <div className="fixed inset-0 bg-gradient-to-br from-blue-600 to-indigo-700 bg-opacity-95 flex flex-col items-center justify-center z-50 animate-fade-in backdrop-blur-sm">
           <div className="relative">
-            <svg className="w-[55px] h-[55px] mb-6 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30 animate-ping"></div>
+            <Clock className="w-[55px] h-[55px] mb-6 text-white animate-pulse" />
+              <div className="absolute inset-0 rounded-full border-4 border-white border-opacity-30"></div>
           </div>
           <h2 className="text-3xl font-bold text-white mb-4 tracking-wider">{t('loading')}</h2>
           <div className="w-16 h-16 border-4 border-t-transparent border-white rounded-full animate-spin shadow-lg"></div>
@@ -322,10 +325,30 @@ function App() {
       {/* Username Dialog */}
       <UsernameDialog
         isOpen={showUsernameDialog}
-        onClose={() => {
+        onClose={async () => {
           setShowUsernameDialog(false);
-          // Trigger app reinitialization when dialog closes
-          // Backend should now be initialized, so fetch files
+
+          // After username is set, re-check and save the username from backend
+          try {
+            const checkResponse = await fetch(buildApiUrl('/api/check-username'), {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (checkResponse.ok) {
+              const checkData = await checkResponse.json();
+              const { hasUsername, username } = checkData;
+
+              if (hasUsername && username) {
+                // Save the newly set username to localStorage
+                localStorage.setItem('p2p_username', username);
+              }
+            }
+          } catch (error) {
+            console.error('Error re-fetching username after dialog:', error);
+          }
+
+          // Trigger app reinitialization - backend now initialized, fetch files
           fetchFiles();
         }}
       />

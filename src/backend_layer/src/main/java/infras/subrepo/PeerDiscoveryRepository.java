@@ -3,8 +3,11 @@ package infras.subrepo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import domain.adapter.LocalDateTimeAdapter;
+import domain.adapter.PeerAdapter;
 import domain.adapter.PeerInfoAdapter;
 import domain.entity.FileInfo;
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.repository.IPeerDiscoveryRepository;
 import domain.repository.IPeerRepository;
@@ -17,8 +20,10 @@ import javax.net.ssl.SSLSocket;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -148,5 +153,117 @@ public class PeerDiscoveryRepository implements IPeerDiscoveryRepository {
             }
         }
         return peers;
+    }
+
+    @Override
+    public Set<Peer> queryAllPeers() {
+        if (!SSLUtils.isSSLSupported()) {
+            Log.logError("SSL certificates not found! SSL is now mandatory for security.", null);
+            throw new IllegalStateException("SSL certificates required for secure communication");
+        }
+
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            Log.logInfo("Established SSL connection to tracker for getting all peers");
+
+            String request = RequestInfor.ALL_PEER + "\n";
+            sslSocket.getOutputStream().write(request.getBytes());
+            Log.logInfo("SSL Requesting all peers from tracker, message: " + request);
+            BufferedReader buff = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
+            String response = buff.readLine();
+            if (response == null || response.isEmpty()) {
+                Log.logInfo("No SSL response from tracker for all peers");
+                return Collections.emptySet();
+            } else {
+                String[] parts = response.split("\\|");
+                if (parts.length != 3 || !parts[0].equals(RequestInfor.ALL_PEER_RESP)) {
+                    Log.logInfo("Invalid SSL response format from tracker: " + response);
+                    return Collections.emptySet();
+                } else {
+                    int peerCount = Integer.parseInt(parts[1]);
+                    if (peerCount == 0) {
+                        Log.logInfo("No all peers found via SSL");
+                        return Collections.emptySet();
+                    } else {
+                        Type setType = new TypeToken<Set<Peer>>() {
+                        }.getType();
+                        Gson gson = new GsonBuilder()
+                            .registerTypeAdapter(Peer.class, new PeerAdapter())
+                            .registerTypeAdapter(LocalDateTime.class, new LocalDateTimeAdapter())
+                            .create();
+
+                        Set<Peer> peers = gson.fromJson(parts[2], setType);
+                        if (peers.isEmpty()) {
+                            Log.logInfo("No valid all peers found via SSL");
+                            return Collections.emptySet();
+                        } else if (peerCount != peers.size()) {
+                            Log.logInfo("All peer count mismatch via SSL: expected " + peerCount + ", found " + peers.size());
+                            return Collections.emptySet();
+                        } else {
+                            Log.logInfo("Received all peers from tracker via SSL: " + response);
+                            return peers;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.logError("SSL Error getting all peers from tracker", e);
+            return Collections.emptySet();
+        }
+    }
+
+    @Override
+    public Set<PeerInfo> queryAllPeerInfo() {
+        if (!SSLUtils.isSSLSupported()) {
+            Log.logError("SSL certificates not found! SSL is now mandatory for security.", null);
+            throw new IllegalStateException("SSL certificates required for secure communication");
+        }
+
+        try (SSLSocket sslSocket = SSLUtils.createSecureSocket(new PeerInfo(Config.TRACKER_IP, Config.TRACKER_PORT))) {
+            Log.logInfo("Established SSL connection to tracker for getting all peer info");
+
+            String request = RequestInfor.ALL_PEER_INFO + "\n";
+            sslSocket.getOutputStream().write(request.getBytes());
+            Log.logInfo("SSL Requesting all peer info from tracker, message: " + request);
+            BufferedReader buff = new BufferedReader(new InputStreamReader(sslSocket.getInputStream()));
+            String response = buff.readLine();
+            Log.logInfo("ALL_PEER_INFO_RESP: " + response);
+            if (response == null || response.isEmpty()) {
+                Log.logInfo("No SSL response from tracker for all peer info");
+                return Collections.emptySet();
+            } else {
+                String[] parts = response.split("\\|");
+                if (parts.length != 3 || !parts[0].equals(RequestInfor.ALL_PEER_INFO_RESP)) {
+                    Log.logInfo("Invalid SSL response format from tracker: " + response);
+                    return Collections.emptySet();
+                } else {
+                    int peerCount = Integer.parseInt(parts[1]);
+                    if (peerCount == 0) {
+                        Log.logInfo("No all peer info found via SSL");
+                        return Collections.emptySet();
+                    } else {
+                        Type listType = new TypeToken<List<PeerInfo>>() {
+                        }.getType();
+                        Gson gson = new GsonBuilder().registerTypeAdapter(PeerInfo.class, new PeerInfoAdapter()).create();
+
+                        List<PeerInfo> peers = gson.fromJson(parts[2], listType);
+
+                        Log.logInfo(peers.toString());
+                        if (peers.isEmpty()) {
+                            Log.logInfo("No valid all peer info found via SSL");
+                            return Collections.emptySet();
+                        } else if (peerCount != peers.size()) {
+                            Log.logInfo("All peer info count mismatch via SSL: expected " + peerCount + ", found " + peers.size());
+                            return Collections.emptySet();
+                        } else {
+                            Log.logInfo("Received all peer info from tracker via SSL: " + response);
+                            return new HashSet<>(peers);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.logError("SSL Error getting all peer info from tracker", e);
+            return Collections.emptySet();
+        }
     }
 }

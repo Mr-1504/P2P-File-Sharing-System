@@ -1,15 +1,20 @@
 package delivery.controller;
 
-import domain.entity.FileInfo;
-import domain.entity.PeerInfo;
-import domain.entity.ProgressInfo;
+import domain.entity.*;
+import domain.repository.IPeerJpaRepository;
+import infras.repository.PeerJpaRepository;
 import delivery.api.IP2PApi;
 import service.*;
 import utils.AppPaths;
+import utils.Config;
 import utils.Log;
 import utils.LogTag;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
+
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,7 +29,9 @@ import java.util.concurrent.Executors;
 public class P2PController {
     private final IFileService service;
     private final INetworkService networkService;
+    private final IChatService chatService;
     private final IP2PApi api;
+    private final IPeerJpaRepository peerRepository;
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
     private volatile boolean isConnected = false;
     private volatile boolean isLoadSharedFiles = false;
@@ -39,12 +46,15 @@ public class P2PController {
      *
      * @param service        IFileService
      * @param networkService INetworkService
+     * @param chatService    IChatService
      * @param api            IP2PApi
      */
-    public P2PController(IFileService service, INetworkService networkService, IP2PApi api) {
+    public P2PController(IFileService service, INetworkService networkService, IChatService chatService, IP2PApi api) {
         this.service = service;
         this.networkService = networkService;
+        this.chatService = chatService;
         this.api = api;
+        this.peerRepository = new PeerJpaRepository();
         this.username = AppPaths.loadUsername();
         setupApiRoutes();
     }
@@ -54,7 +64,9 @@ public class P2PController {
      * If a username is already set, it proceeds with full initialization.
      */
     public synchronized void start() {
-        if (!checkUsernameExists()) {
+        Map<String, Object> usernameCheck = checkUsernameExists();
+        Boolean hasUsername = (Boolean) usernameCheck.get("hasUsername");
+        if (!hasUsername) {
             return;
         }
         performFullInitialization();
@@ -98,15 +110,15 @@ public class P2PController {
      * Checks if a username already exists for the current session.
      * This method is synchronized to ensure thread safety.
      *
-     * @return boolean indicating if username exists
+     * @return Map containing hasUsername boolean and username string if exists
      */
-    public synchronized boolean checkUsernameExists() {
+    public synchronized Map<String, Object> checkUsernameExists() {
         if (this.username == null) {
             this.username = AppPaths.loadUsername();
             System.out.println("Loaded " + username);
         }
         System.out.println(username);
-        return this.username != null;
+        return Map.of("hasUsername", this.username != null, "username", this.username != null ? this.username : null);
     }
 
     /**
@@ -384,9 +396,32 @@ public class P2PController {
 
         api.setRouteForGetKnownPeers(this::getKnownPeers);
 
+        api.setRouteForGetAllPeers(this::getAllPeers);
+
         api.setRouteForGetSharedPeers(this::getSharedPeers);
 
         api.setRouteForEditPermissions(this::editPermissions);
+
+        // --- Chat API routes ---
+        api.setRouteForSendPrivateMessage(chatService::sendPrivateMessage);
+
+        api.setRouteForSendGroupMessage(chatService::sendGroupMessage);
+
+        api.setRouteForCreatePrivateConversation((receiverId, receiverPublicKey) -> chatService.createPrivateConversation(receiverId, receiverPublicKey));
+
+        api.setRouteForGetAllConversations(chatService::getAllConversations);
+
+        api.setRouteForGetConversationById(chatService::getConversationById);
+
+        api.setRouteForGetMessages(chatService::getMessages);
+
+        api.setRouteForGetOfflineMessages(chatService::getOfflineMessages);
+
+        api.setRouteForAcknowledgeMessages(chatService::acknowledgeMessages);
+
+        api.setRouteForAddGroupMember(chatService::addGroupMember);
+
+        api.setRouteForGetGroupMembers(chatService::getGroupMembers);
 
         // Start periodic timeout checker
         startTimeoutChecker();
@@ -397,11 +432,92 @@ public class P2PController {
 
     /**
      * Gets the list of known peers from the network service.
+     * Filters out the current peer to avoid returning itself in the list.
      *
-     * @return Set of PeerInfo objects representing known peers
+     * @return Set of PeerInfo objects representing known peers except the local one
      */
     public Set<PeerInfo> getKnownPeers() {
-        return networkService.queryOnlinePeerList();
+        Set<PeerInfo> peers = networkService.queryOnlinePeerList();
+        peers.remove(new PeerInfo(Config.SERVER_IP, Config.PEER_PORT));
+        return peers;
+    }
+
+    /**
+     * Gets the list of all peers from the network service.
+     * Filters out the current peer to avoid returning itself in the list.
+     * Saves/updates peers in DB and creates private conversations using public key from Peer in DB.
+     * Conversation name is set to username from PeerInfo if available, else ip:port.
+     *
+     * @return List of Peer objects representing all peers except the local one
+     */
+    public List<Peer> getAllPeers() {
+        Set<PeerInfo> peerInfos = networkService.queryAllPeerInfo();
+        Set<Peer> peers = networkService.queryAllPeers();
+        // Remove current peer if present
+        PeerInfo currentPeer = null;
+        for (PeerInfo pi : peerInfos) {
+            Log.logInfo("PeerInfo: " + pi.getIp() + ":" + pi.getPort() + " Username: " + pi.getUsername());
+            if (pi.getIp().equals(Config.SERVER_IP) && pi.getPort() == Config.PEER_PORT) {
+                currentPeer = pi;
+                break;
+            }
+        }
+        if (currentPeer != null) {
+            peerInfos.remove(currentPeer);
+        }
+
+        List<Peer> result = new ArrayList<>();
+        for (Peer peer : peers) {
+            // Check if peer already exists by tracker peer ID
+            Peer existing = peerRepository.findByTrackerPeerId(peer.getTrackerPeerId());
+
+            Peer peerToSave;
+            if (existing != null) {
+                // Update existing peer with latest info from tracker
+                existing.setIp(peer.getIp());
+                existing.setPort(peer.getPort());
+                existing.setPublicKey(peer.getPublicKey());
+                existing.setOnline(peer.isOnline());
+                existing.setLastSeen(peer.getLastSeen());
+                existing.setCreatedAt(peer.getCreatedAt()); // Keep original, or update if needed
+                existing.setTrackerPeerId(peer.getTrackerPeerId()); // Ensure consistency
+                peerToSave = existing;
+                Log.logInfo("Updating existing peer: " + peer.getTrackerPeerId());
+            } else {
+                // New peer - prepare for insert
+                Log.logInfo("Inserting new peer: " + peer.getTrackerPeerId());
+                peerToSave = peer;
+            }
+
+            // Save/update peer in database
+            try {
+                peerRepository.savePeer(peerToSave);
+            } catch (Exception e) {
+                Log.logError("Failed to save peer: " + peer.getTrackerPeerId(), e);
+                continue; // Skip this peer but continue with others
+            }
+
+            // Find matching PeerInfo for name
+            String name = null;
+            for (PeerInfo peerInfo : peerInfos) {
+                if (peer.getIp().equals(peerInfo.getIp()) && peer.getPort() == peerInfo.getPort()) {
+                    name = (peerInfo.getUsername() != null && !peerInfo.getUsername().isEmpty()) ?
+                           peerInfo.getUsername() : (peerInfo.getIp() + ":" + peerInfo.getPort());
+                    break;
+                }
+            }
+            if (name == null) {
+                name = peer.getIp() + ":" + peer.getPort(); // Fallback
+            }
+
+            // Create or update conversation with public key
+            if (peer.getPublicKey() != null && !peer.getPublicKey().trim().isEmpty()) {
+                chatService.createPrivateConversationIfNotExists(name, peer.getPublicKey());
+            }
+
+            result.add(peerToSave);
+        }
+        return result;
     }
 
     public boolean editPermissions(String filename, String permission, List<PeerInfo> peersList) {

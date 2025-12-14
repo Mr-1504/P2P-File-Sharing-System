@@ -1,10 +1,14 @@
 package delivery.api;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
+import domain.adapter.LocalDateTimeAdapter;
 import com.sun.net.httpserver.HttpServer;
 import domain.entity.FileInfo;
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.entity.ProgressInfo;
 import delivery.dto.CleanupRequest;
@@ -14,9 +18,11 @@ import utils.LogTag;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +30,7 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 import static utils.Log.logError;
 import static utils.Log.logInfo;
@@ -37,12 +44,15 @@ import static utils.Log.logInfo;
 public class P2PApi implements IP2PApi {
     private HttpServer server;
     private List<FileInfo> files = new ArrayList<>();
-    private static final Gson gson = new Gson();
+    private static final Gson gson = new GsonBuilder()
+        .registerTypeAdapter(java.time.LocalDateTime.class, new LocalDateTimeAdapter())
+        .create();
+    private static final Pattern IPV4_PATTERN = Pattern.compile("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$");
 
     // --- Handler Storage ---
     private TriFunction<String, String, List<PeerInfo>, Boolean> editPermissionsHandler;
     private Function<String, List<PeerInfo>> getSharedPeersHandler;
-    private Callable<Boolean> checkUsernameHandler;
+    private Callable<Map<String, Object>> checkUsernameHandler;
     private Function<String, Boolean> setUsernameHandler;
     private Function<String, Boolean> checkFileHandler;
     private Callable<Integer> refreshHandler;
@@ -57,6 +67,20 @@ public class P2PApi implements IP2PApi {
     private Function<String, Boolean> resumeDownloadHandler;
     private TriFunction<String, Integer, List<PeerInfo>, String> sharePrivateFileHandler;
     private Callable<Set<PeerInfo>> getKnownPeersHandler;
+    private Callable<List<Peer>> getAllPeersHandler;
+
+    // --- Chat Handlers ---
+    private BiFunction<String, String, Boolean> sendPrivateMessageHandler;
+    private BiFunction<String, String, Boolean> sendGroupMessageHandler;
+    private BiFunction<String, String, Object> createPrivateConversationHandler;
+    private Callable<Object> getAllConversationsHandler;
+    private Function<String, Object> getConversationByIdHandler;
+    private TriFunction<String, Integer, Integer, Object> getMessagesHandler;
+    private Function<String, Object> getOfflineMessagesHandler;
+    private Consumer<List<String>> acknowledgeMessagesHandler;
+    private TriFunction<String, String, String, Boolean> addGroupMemberHandler;
+    private Function<String, Object> getGroupMembersHandler;
+    private Consumer<String> directMessageHandler; // Handler for direct encrypted messages
 
     /**
      * Constructor to initialize the P2PApi and start the API server.
@@ -105,7 +129,7 @@ public class P2PApi implements IP2PApi {
             }
 
             String path = exchange.getRequestURI().getPath();
-            Log.logInfo("API Request Path: " + path);
+                Log.logInfo("API Request Path: " + path);
             String[] parts = path.split("/");
 
             if (parts.length < 3) {
@@ -136,6 +160,9 @@ public class P2PApi implements IP2PApi {
                     break;
                 case "peers":
                     handlePeersRoutes(exchange, parts);
+                    break;
+                case "chat":
+                    handleChatRoutes(exchange, parts);
                     break;
                 default:
                     sendResponse(exchange, LogTag.NOT_FOUND, jsonError("Unknown API resource: " + resource));
@@ -212,7 +239,7 @@ public class P2PApi implements IP2PApi {
             }
         }
 
-        sendResponse(exchange, LogTag.NOT_FOUND, jsonError("Unknown file route"));
+        sendResponse(exchange, 405, jsonError("Method not allowed for /api/files"));
     }
 
     /**
@@ -257,6 +284,12 @@ public class P2PApi implements IP2PApi {
      */
     private void handlePeersRoutes(HttpExchange exchange, String[] parts) throws Exception {
         String method = exchange.getRequestMethod().toUpperCase();
+
+        // GET /api/peers (all peers)
+        if (method.equals("GET") && parts.length == 3) {
+            handleGetAllPeers(exchange);
+            return;
+        }
 
         // GET /api/peers/known
         if (method.equals("GET") && parts.length == 4 && parts[3].equals("known")) {
@@ -346,12 +379,34 @@ public class P2PApi implements IP2PApi {
 
         logInfo("Share to peers request");
         JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
-        String filePath = body.has("filePath") ? body.get("filePath").getAsString() : null;
-        int isReplace = body.has("isReplace") ? body.get("isReplace").getAsInt() : 0;
-        List<PeerInfo> peers = parsePeers(body);
+        String filePath = getStringSafe(body, "filePath");
+        int isReplace;
+        try {
+            isReplace = getIntSafe(body, "isReplace", 0);
+        } catch (IllegalArgumentException e) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("isReplace must be an integer"));
+            return;
+        }
+        if (isReplace != -1 && isReplace != 0 && isReplace != 1) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("isReplace must be -1, 0, or 1"));
+            return;
+        }
+        List<PeerInfo> peers;
+        try {
+            peers = parsePeers(body);
+        } catch (IllegalArgumentException e) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError(e.getMessage()));
+            return;
+        }
 
-        if (filePath == null || filePath.isEmpty() || peers.isEmpty()) {
+        if (filePath == null || filePath.trim().isEmpty() || peers.isEmpty()) {
             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("filePath and peers are required"));
+            return;
+        }
+
+        File file = new File(filePath);
+        if (!file.exists() || file.isDirectory()) {
+            sendResponse(exchange, LogTag.NOT_FOUND, jsonError("File not found"));
             return;
         }
 
@@ -361,6 +416,9 @@ public class P2PApi implements IP2PApi {
         switch (result) {
             case LogTag.S_NOT_CONNECTION:
                 sendResponse(exchange, LogTag.SERVICE_UNAVAILABLE, jsonError(LogTag.S_NOT_CONNECTION));
+                break;
+            case LogTag.S_NOT_FOUND:
+                sendResponse(exchange, LogTag.NOT_FOUND, jsonError("File not found"));
                 break;
             case LogTag.S_INVALID:
                 sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Invalid peer list"));
@@ -420,7 +478,13 @@ public class P2PApi implements IP2PApi {
             sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Invalid permission"));
             return;
         }
-        List<PeerInfo> peers = parsePeers(body);
+        List<PeerInfo> peers;
+        try {
+            peers = parsePeers(body);
+        } catch (IllegalArgumentException e) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError(e.getMessage()));
+            return;
+        }
 
         Log.logInfo(" Permission: " + permission + ", Peers: " + peers);
         boolean success = editPermissionsHandler.apply(fileName, permission, peers);
@@ -481,8 +545,8 @@ public class P2PApi implements IP2PApi {
         if (checkUsernameHandler == null) throw new UnsupportedOperationException("CheckUsername handler not set");
 
         logInfo("Check username request");
-        boolean hasUsername = checkUsernameHandler.call();
-        String response = gson.toJson(Collections.singletonMap("hasUsername", hasUsername));
+        Map<String, Object> result = checkUsernameHandler.call();
+        String response = gson.toJson(result);
         sendResponse(exchange, LogTag.OK, response);
     }
 
@@ -634,6 +698,19 @@ public class P2PApi implements IP2PApi {
     }
 
     /**
+     * Handles GET /api/peers (all peers)
+     */
+    private void handleGetAllPeers(HttpExchange exchange) throws Exception {
+        if (getAllPeersHandler == null) throw new UnsupportedOperationException("GetAllPeers handler not set");
+
+        logInfo("Get all peers request");
+        List<Peer> peers = getAllPeersHandler.call();
+        String response = gson.toJson(peers);
+        logInfo("All peers response: " + response);
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
      * Handles GET /api/peers/known
      */
     private void handleGetKnownPeers(HttpExchange exchange) throws Exception {
@@ -646,6 +723,312 @@ public class P2PApi implements IP2PApi {
         sendResponse(exchange, LogTag.OK, response);
     }
 
+    /**
+     * Router for /api/chat/
+     * Delegates to specific chat endpoint handlers.
+     */
+    private void handleChatRoutes(HttpExchange exchange, String[] parts) throws Exception {
+        String method = exchange.getRequestMethod().toUpperCase();
+
+        // POST /api/chat/direct-message (receive encrypted message from another peer)
+        if (method.equals("POST") && parts.length == 4 && parts[3].equals("direct-message")) {
+            handleDirectMessage(exchange);
+            return;
+        }
+
+        // POST /api/chat/send-private
+        if (method.equals("POST") && parts.length == 4 && parts[3].equals("send-private")) {
+            handleSendPrivateMessage(exchange);
+            return;
+        }
+
+        // POST /api/chat/send-group
+        if (method.equals("POST") && parts.length == 4 && parts[3].equals("send-group")) {
+            handleSendGroupMessage(exchange);
+            return;
+        }
+
+        // POST /api/chat/conversations
+        if (method.equals("POST") && parts.length == 3) {
+            handleCreatePrivateConversation(exchange);
+            return;
+        }
+
+        // GET /api/chat/conversations
+        if (method.equals("GET") && parts.length == 4 && parts[3].equals("conversations")) {
+            handleGetAllConversations(exchange);
+            return;
+        }
+
+        // GET /api/chat/conversations/{conversationId}
+        if (method.equals("GET") && parts.length == 4 && !parts[3].equals("send-private") && !parts[3].equals("send-group") && !parts[3].equals("messages")) {
+            String conversationId = URLDecoder.decode(parts[3], StandardCharsets.UTF_8);
+            handleGetConversationById(exchange, conversationId);
+            return;
+        }
+
+        // GET /api/chat/messages (with optional conversationId, limit, offset in query params)
+        if (method.equals("GET") && parts.length == 3) {
+            handleGetMessages(exchange, null);
+            return;
+        }
+
+        // GET /api/chat/messages/{conversationId}
+        if (method.equals("GET") && parts.length == 5 && parts[3].equals("messages")) {
+            String conversationId = URLDecoder.decode(parts[4], StandardCharsets.UTF_8);
+            handleGetMessages(exchange, conversationId);
+            return;
+        }
+
+        // GET /api/chat/offline-messages
+        if (method.equals("GET") && parts.length == 4 && parts[3].equals("offline-messages")) {
+            handleGetOfflineMessages(exchange);
+            return;
+        }
+
+        // POST /api/chat/acknowledge
+        if (method.equals("POST") && parts.length == 4 && parts[3].equals("acknowledge")) {
+            handleAcknowledgeMessages(exchange);
+            return;
+        }
+
+        // POST /api/chat/groups/{groupId}/members
+        if (method.equals("POST") && parts.length == 6 && parts[3].equals("groups") && parts[5].equals("members")) {
+            String groupId = URLDecoder.decode(parts[4], StandardCharsets.UTF_8);
+            handleAddGroupMember(exchange, groupId);
+            return;
+        }
+
+        // GET /api/chat/groups/{groupId}/members
+        if (method.equals("GET") && parts.length == 6 && parts[3].equals("groups") && parts[5].equals("members")) {
+            String groupId = URLDecoder.decode(parts[4], StandardCharsets.UTF_8);
+            handleGetGroupMembers(exchange, groupId);
+            return;
+        }
+
+        sendResponse(exchange, LogTag.NOT_FOUND, jsonError("Unknown chat route"));
+    }
+
+
+    // --- Chat Specific Endpoint Handlers ---
+
+    /**
+     * Handles POST /api/chat/direct-message (receive encrypted message from another peer)
+     */
+    private void handleDirectMessage(HttpExchange exchange) {
+        try {
+            logInfo("Direct message received from peer");
+
+            // Read the encrypted payload from request body
+            String encryptedPayload = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+
+            if (encryptedPayload == null || encryptedPayload.trim().isEmpty()) {
+                sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("Encrypted payload is required"));
+                return;
+            }
+
+            if (directMessageHandler == null) throw new UnsupportedOperationException("Direct message handler not set");
+
+            // Enqueue the message for processing via ChatService
+            directMessageHandler.accept(encryptedPayload);
+
+            // Send immediate response
+            Log.logInfo("Direct message accepted, enqueuing for processing");
+            sendResponse(exchange, LogTag.OK, "{\"status\":\"message accepted for processing\"}");
+
+        } catch (Exception e) {
+            Log.logError("Error handling direct message", e);
+            sendResponse(exchange, LogTag.INTERNAL_SERVER_ERROR, jsonError("Failed to process direct message"));
+        }
+    }
+
+    /**
+     * Handles POST /api/chat/send-private
+     */
+    private void handleSendPrivateMessage(HttpExchange exchange) {
+        if (sendPrivateMessageHandler == null) throw new UnsupportedOperationException("Send private message handler not set");
+
+        logInfo("Send private message request");
+        JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
+        String receiverId = body.has("receiverId") ? body.get("receiverId").getAsString() : null;
+        String content = body.has("content") ? body.get("content").getAsString() : null;
+
+        if (receiverId == null || receiverId.isEmpty() || content == null || content.isEmpty()) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("receiverId and content are required"));
+            return;
+        }
+
+        boolean success = sendPrivateMessageHandler.apply(receiverId, content);
+        String response = gson.toJson(Collections.singletonMap("success", success));
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles POST /api/chat/send-group
+     */
+    private void handleSendGroupMessage(HttpExchange exchange) {
+        if (sendGroupMessageHandler == null) throw new UnsupportedOperationException("Send group message handler not set");
+
+        logInfo("Send group message request");
+        JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
+        String groupId = body.has("groupId") ? body.get("groupId").getAsString() : null;
+        String content = body.has("content") ? body.get("content").getAsString() : null;
+
+        if (groupId == null || groupId.isEmpty() || content == null || content.isEmpty()) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("groupId and content are required"));
+            return;
+        }
+
+        boolean success = sendGroupMessageHandler.apply(groupId, content);
+        String response = gson.toJson(Collections.singletonMap("success", success));
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles POST /api/chat/conversations (Create private conversation)
+     */
+    private void handleCreatePrivateConversation(HttpExchange exchange) {
+        if (createPrivateConversationHandler == null) throw new UnsupportedOperationException("Create private conversation handler not set");
+
+        logInfo("Create private conversation request");
+        JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
+        String receiverId = body.has("receiverId") ? body.get("receiverId").getAsString() : null;
+        String receiverPublicKey = body.has("receiverPublicKey") ? body.get("receiverPublicKey").getAsString() : null;
+
+        if (receiverId == null || receiverId.isEmpty()) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("receiverId is required"));
+            return;
+        }
+
+        Object conversation = createPrivateConversationHandler.apply(receiverId, receiverPublicKey);
+        String response = gson.toJson(conversation);
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles GET /api/chat/conversations
+     */
+    private void handleGetAllConversations(HttpExchange exchange) throws Exception {
+        if (getAllConversationsHandler == null) throw new UnsupportedOperationException("Get all conversations handler not set");
+
+        logInfo("Get all conversations request");
+        Object conversations = getAllConversationsHandler.call();
+        String response = gson.toJson(conversations);
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles GET /api/chat/conversations/{conversationId}
+     */
+    private void handleGetConversationById(HttpExchange exchange, String conversationId) {
+        if (getConversationByIdHandler == null) throw new UnsupportedOperationException("Get conversation by ID handler not set");
+
+        logInfo("Get conversation by ID request: " + conversationId);
+        Object conversation = getConversationByIdHandler.apply(conversationId);
+        String response = gson.toJson(conversation);
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles GET /api/chat/messages[/{conversationId}]
+     */
+    private void handleGetMessages(HttpExchange exchange, String pathConversationId) {
+        if (getMessagesHandler == null) throw new UnsupportedOperationException("Get messages handler not set");
+
+        // Parse query parameters
+        String query = exchange.getRequestURI().getRawQuery();
+        Map<String, String> params = parseQuery(query);
+
+        // Priority: path param > query param > empty string
+        String conversationId = pathConversationId != null ? pathConversationId : params.get("conversationId");
+        if (conversationId == null) conversationId = "";
+
+        logInfo("Get messages request for conversation: " + conversationId);
+
+        int limit = Integer.parseInt(params.getOrDefault("limit", "50"));
+        int offset = Integer.parseInt(params.getOrDefault("offset", "0"));
+
+        Object messages = getMessagesHandler.apply(conversationId, limit, offset);
+        String response = gson.toJson(messages);
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles GET /api/chat/offline-messages
+     */
+    private void handleGetOfflineMessages(HttpExchange exchange) {
+        if (getOfflineMessagesHandler == null) throw new UnsupportedOperationException("Get offline messages handler not set");
+
+        logInfo("Get offline messages request");
+        String query = exchange.getRequestURI().getRawQuery();
+        Map<String, String> params = parseQuery(query);
+        String receiverId = params.get("receiverId");
+
+        if (receiverId == null || receiverId.isEmpty()) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("receiverId is required"));
+            return;
+        }
+
+        Object messages = getOfflineMessagesHandler.apply(receiverId);
+        String response = gson.toJson(messages);
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles POST /api/chat/acknowledge
+     */
+    private void handleAcknowledgeMessages(HttpExchange exchange) {
+        if (acknowledgeMessagesHandler == null) throw new UnsupportedOperationException("Acknowledge messages handler not set");
+
+        logInfo("Acknowledge messages request");
+        JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
+        List<String> messageIds = new ArrayList<>();
+        if (body.has("messageIds")) {
+            body.get("messageIds").getAsJsonArray().forEach(id -> messageIds.add(id.getAsString()));
+        }
+
+        if (messageIds.isEmpty()) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("messageIds are required"));
+            return;
+        }
+
+        acknowledgeMessagesHandler.accept(messageIds);
+        String response = gson.toJson(Collections.singletonMap("status", "acknowledged"));
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles POST /api/chat/groups/{groupId}/members
+     */
+    private void handleAddGroupMember(HttpExchange exchange, String groupId) {
+        if (addGroupMemberHandler == null) throw new UnsupportedOperationException("Add group member handler not set");
+
+        logInfo("Add group member request for group: " + groupId);
+        JsonObject body = gson.fromJson(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8), JsonObject.class);
+        String memberId = body.has("memberId") ? body.get("memberId").getAsString() : null;
+        String publicKey = body.has("publicKey") ? body.get("publicKey").getAsString() : null;
+
+        if (memberId == null || memberId.isEmpty()) {
+            sendResponse(exchange, LogTag.BAD_REQUEST, jsonError("memberId is required"));
+            return;
+        }
+
+        boolean success = addGroupMemberHandler.apply(groupId, memberId, publicKey);
+        String response = gson.toJson(Collections.singletonMap("success", success));
+        sendResponse(exchange, LogTag.OK, response);
+    }
+
+    /**
+     * Handles GET /api/chat/groups/{groupId}/members
+     */
+    private void handleGetGroupMembers(HttpExchange exchange, String groupId) {
+        if (getGroupMembersHandler == null) throw new UnsupportedOperationException("Get group members handler not set");
+
+        logInfo("Get group members request for group: " + groupId);
+        Object members = getGroupMembersHandler.apply(groupId);
+        String response = gson.toJson(members);
+        sendResponse(exchange, LogTag.OK, response);
+    }
 
     // --- Route Setter Implementations (Store Handlers) ---
 
@@ -660,7 +1043,7 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
-    public void setRouteForCheckUsername(Callable<Boolean> callable) {
+    public void setRouteForCheckUsername(Callable<Map<String, Object>> callable) {
         this.checkUsernameHandler = callable;
     }
 
@@ -735,31 +1118,128 @@ public class P2PApi implements IP2PApi {
     }
 
     @Override
+    public void setRouteForGetAllPeers(Callable<List<Peer>> callable) {
+        this.getAllPeersHandler = callable;
+    }
+
+    @Override
     public void setFiles(List<FileInfo> files) {
         this.files = files;
+    }
+
+    // --- Chat Route Setter Implementations ---
+
+    @Override
+    public void setRouteForSendPrivateMessage(BiFunction<String, String, Boolean> handler) {
+        this.sendPrivateMessageHandler = handler;
+    }
+
+    @Override
+    public void setRouteForSendGroupMessage(BiFunction<String, String, Boolean> handler) {
+        this.sendGroupMessageHandler = handler;
+    }
+
+    @Override
+    public void setRouteForCreatePrivateConversation(BiFunction<String, String, Object> handler) {
+        this.createPrivateConversationHandler = handler;
+    }
+
+    @Override
+    public void setRouteForGetAllConversations(Callable<Object> handler) {
+        this.getAllConversationsHandler = handler;
+    }
+
+    @Override
+    public void setRouteForGetConversationById(Function<String, Object> handler) {
+        this.getConversationByIdHandler = handler;
+    }
+
+    @Override
+    public void setRouteForGetMessages(TriFunction<String, Integer, Integer, Object> handler) {
+        this.getMessagesHandler = handler;
+    }
+
+    @Override
+    public void setRouteForGetOfflineMessages(Function<String, Object> handler) {
+        this.getOfflineMessagesHandler = handler;
+    }
+
+    @Override
+    public void setRouteForAcknowledgeMessages(Consumer<List<String>> handler) {
+        this.acknowledgeMessagesHandler = handler;
+    }
+
+    @Override
+    public void setRouteForAddGroupMember(TriFunction<String, String, String, Boolean> handler) {
+        this.addGroupMemberHandler = handler;
+    }
+
+    @Override
+    public void setRouteForGetGroupMembers(Function<String, Object> handler) {
+        this.getGroupMembersHandler = handler;
+    }
+
+    @Override
+    public void setRouteForDirectMessage(Consumer<String> handler) {
+        this.directMessageHandler = handler;
     }
 
     // --- Utility Methods ---
 
     /**
-     * Helper to parse PeerInfo list from JSON body
+     * Helper to parse PeerInfo list from JSON body, validating IP and port
      */
-    private List<PeerInfo> parsePeers(JsonObject body) {
+    private List<PeerInfo> parsePeers(JsonObject body) throws IllegalArgumentException {
         List<PeerInfo> peers = new ArrayList<>();
-        if (body.has("peers")) {
-            body.get("peers").getAsJsonArray().forEach(peerJson -> {
-                JsonObject p = peerJson.getAsJsonObject();
-                String ip = p.has("ip") ? p.get("ip").getAsString() : null;
-                int port = p.has("port") ? p.get("port").getAsInt() : 0;
-                String username = p.has("username") ? p.get("username").getAsString() : null;
-                if (username != null) {
-                    peers.add(new PeerInfo(ip, port, username));
-                } else {
-                    peers.add(new PeerInfo(ip, port));
+        if (body.has("peers") && !body.get("peers").isJsonNull() && body.get("peers").isJsonArray()) {
+            for (JsonElement peerJson : body.get("peers").getAsJsonArray()) {
+                if (!peerJson.isJsonObject()) {
+                    throw new IllegalArgumentException("Each peer must be a JSON object");
                 }
-            });
+                JsonObject p = peerJson.getAsJsonObject();
+                String ipStr = getStringSafe(p, "ip");
+                if (ipStr == null || ipStr.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Peer ip is required and cannot be empty");
+                }
+                if (!isValidIPv4(ipStr.trim())) {
+                    throw new IllegalArgumentException("Peer ip must be a valid IPv4 address");
+                }
+                int port;
+                try {
+                    port = getIntSafe(p, "port", 0);
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException("Peer port must be an integer");
+                }
+                if (port <= 0 || port > 65535) {
+                    throw new IllegalArgumentException("Peer port must be between 1 and 65535");
+                }
+                String username = getStringSafe(p, "username");
+                username = username != null ? username.trim() : null;
+                if (username != null) {
+                    peers.add(new PeerInfo(ipStr.trim(), port, username));
+                } else {
+                    peers.add(new PeerInfo(ipStr.trim(), port));
+                }
+            }
         }
         return peers;
+    }
+
+    /**
+     * Validates if the given string is a valid IPv4 address.
+     */
+    private boolean isValidIPv4(String ip) {
+        if (!IPV4_PATTERN.matcher(ip).matches()) return false;
+        String[] parts = ip.split("\\.");
+        try {
+            for (String part : parts) {
+                int num = Integer.parseInt(part);
+                if (num < 0 || num > 255) return false;
+            }
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        return true;
     }
 
     private static void addCorsHeaders(HttpExchange exchange) {
@@ -797,5 +1277,38 @@ public class P2PApi implements IP2PApi {
             result.put(key, value);
         }
         return result;
+    }
+
+    /**
+     * Safely gets a string value from JsonObject, handling absent or null JSON values.
+     */
+    private String getStringSafe(JsonObject obj, String key) {
+        JsonElement el = obj.get(key);
+        if (el == null || el.isJsonNull()) {
+            return null;
+        }
+        return el.getAsString();
+    }
+
+    /**
+     * Safely gets an int value from JsonObject, handling absent or null JSON values.
+     */
+    private int getIntSafe(JsonObject obj, String key, int def) {
+        JsonElement el = obj.get(key);
+        if (el == null || el.isJsonNull()) {
+            return def;
+        }
+        if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("Invalid value for " + key + ": must be a number");
+        }
+        BigDecimal bd = el.getAsBigDecimal();
+        if (bd.scale() != 0) {
+            throw new IllegalArgumentException("Invalid value for " + key + ": must be an integer");
+        }
+        try {
+            return bd.intValueExact();
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid value for " + key + ": must be an integer");
+        }
     }
 }

@@ -1,7 +1,7 @@
 // Centralized configuration for environment variables
 // Ensures a safe fallback and normalization (remove trailing slashes)
 
-const rawApiBase = process.env.REACT_APP_API_BASE_URL;
+const rawApiBase = import.meta.env.REACT_APP_API_BASE_URL;
 
 function normalizeBase(url) {
   return url.replace(/\/+$/, ''); // remove trailing slashes

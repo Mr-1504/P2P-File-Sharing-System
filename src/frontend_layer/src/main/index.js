@@ -10,18 +10,18 @@ const fetch = require('node-fetch');
 function createWindow() {
     const preloadPath = path.join(__dirname, 'preload.js');
     if (!fs.existsSync(preloadPath)) {
-        console.error('Preload file does not exist at:', preloadPath);
-        return;
+        preloadPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'main', 'preload.js');
+        // console.error('Preload file does not exist at:', preloadPath);
+        // return;
     }
 
     const iconPath = path.join(__dirname, '../../public/logo.png');
     const win = new BrowserWindow({
-    width: 1500,
-    height: 700,
-    icon: iconPath,
-    webPreferences: { preload: preloadPath }
+        width: 1500,
+        height: 700,
+        icon: iconPath,
+        webPreferences: { preload: preloadPath, webSecurity: false }
     });
-
 
     // const win = new BrowserWindow({
     //     width: 1500,
@@ -37,15 +37,13 @@ function createWindow() {
     win.webContents.openDevTools();
 
     if (process.env.ELECTRON_START_URL) {
-        win.loadURL(process.env.ELECTRON_START_URL); // Dev server, e.g., http://localhost:3000
+        win.loadURL(process.env.ELECTRON_START_URL);
     } else {
-        const indexPath = path.join(__dirname, 'build', 'index.html');
-        if (!fs.existsSync(indexPath)) {
-            console.error('Index file does not exist at:', indexPath);
-            return;
-        }
-        win.loadFile(indexPath);
+        win.loadFile(path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'index.html'));
     }
+
+
+
 
     Menu.setApplicationMenu(null);
 }

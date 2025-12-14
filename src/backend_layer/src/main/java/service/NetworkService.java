@@ -1,9 +1,12 @@
 package service;
 
+import domain.entity.Message;
+import domain.entity.Peer;
 import domain.entity.PeerInfo;
 import domain.repository.IPeerRepository;
 import utils.AppPaths;
 
+import java.util.List;
 import java.util.Set;
 
 public class NetworkService implements INetworkService {
@@ -25,6 +28,11 @@ public class NetworkService implements INetworkService {
     }
 
     @Override
+    public Set<PeerInfo> queryAllPeerInfo() {
+        return peerModel.queryAllPeerInfo();
+    }
+
+    @Override
     public void startUDPServer() {
         peerModel.startUDPServer();
     }
@@ -37,5 +45,33 @@ public class NetworkService implements INetworkService {
     @Override
     public Set<PeerInfo> queryOnlinePeerList() {
         return peerModel.queryOnlinePeerList();
+    }
+
+    @Override
+    public Set<Peer> queryAllPeers() {
+        return peerModel.queryAllPeers();
+    }
+
+    @Override
+    public String requestPublicKey(String ip, int port) {
+        return peerModel.requestPublicKey(ip, port);
+    }
+
+    @Override
+    public boolean sendMessageToTracker(String receiverId, String senderId, String groupId, String encryptedPayload) {
+        // Note: parameter order different in peerModel, reorder
+        return peerModel.sendMessageToTracker(senderId, receiverId, groupId, encryptedPayload);
+    }
+
+    @Override
+    public List<Message> getOfflineMessagesFromTracker(String receiverId) {
+        // For now, networkService returns List<Message> but INetworkRepository returns String
+        // Need to parse or return null
+        return null; // TODO: parse the response
+    }
+
+    @Override
+    public boolean acknowledgeOfflineMessages(String messageIds) {
+        return peerModel.acknowledgeOfflineMessages(messageIds);
     }
 }

@@ -1,79 +1,280 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Chat from '../components/Chat';
+import * as chatApi from '../utils/chatApi';
 
 const ChatPage = ({ addNotification }) => {
     const { t } = useTranslation();
-    const [peers, setPeers] = useState([
-        { id: 1, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 2, name: 'Peer 2', ip: '192.168.1.100', status: 'Online' },
-        { id: 3, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 4, name: 'Peer 1', ip: '172.16.201.112', status: 'Online' },
-        { id: 5, name: 'Peer 1', ip: '172.16.201.111', status: 'Online' },
-        { id: 6, name: 'Peer 1', ip: '172.16.201.145', status: 'Online' },
-        { id: 7, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 8, name: 'Peer 1', ip: '172.16.201.137', status: 'Online' },
-        { id: 9, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 10, name: 'Peer 1', ip: '172.16.201.145', status: 'Online' },
-        { id: 11, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 12, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 13, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 14, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 15, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 16, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 17, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 18, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 19, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 20, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 21, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 22, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 23, name: 'Peer 1', ip: '172.16.201.135', status: 'Online' },
-        { id: 24, name: 'Peer 3', ip: '10.0.0.50', status: 'Offline' }
-    ]);
-    const [messages, setMessages] = useState({
-        1: [
-            { sender: 'Peer 1', text: 'Hi', timestamp: '10:00 AM' },
-            { sender: 'You', text: 'Hi', timestamp: '10:01 AM' },
-            { sender: 'Peer 1', text: 'Bye', timestamp: '10:02 AM' },
-            { sender: 'Peer 1', text: 'See you next time', timestamp: '10:03 AM' }
-        ],
-        2: [
-            { sender: 'You', text: 'Hello there!', timestamp: '09:00 AM' },
-            { sender: 'Peer 2', text: 'Hi! How are you?', timestamp: '09:01 AM' }
-        ],
-        3: []
-    });
-    const [selectedPeer, setSelectedPeer] = useState(peers[0]); // Select first peer by default
+    const [peers, setPeers] = useState([]);
+    const [conversations, setConversations] = useState([]);
+    const [selectedConversation, setSelectedConversation] = useState(null);
+    const [messages, setMessages] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [messageLimit] = useState(50);
+    const [messageOffset, setMessageOffset] = useState(0);
+    const [paginationOffset, setPaginationOffset] = useState(0); // Separate offset that increments by 1
+    const [currentUsername, setCurrentUsername] = useState('');
 
-    const handleSendMessage = (peerId, text) => {
-        const newMessage = { sender: 'You', text, timestamp: new Date().toLocaleTimeString() };
-        setMessages(prev => ({
-            ...prev,
-            [peerId]: [...(prev[peerId] || []), newMessage]
-        }));
-        addNotification(t('message_sent'), false);
-        
-        // Simulate response
-        setTimeout(() => {
-            const responseMessage = { 
-                sender: `Peer ${peerId}`, 
-                text: 'Tin nhắn nhận được!', 
-                timestamp: new Date().toLocaleTimeString() 
-            };
-            setMessages(prev => ({
-                ...prev,
-                [peerId]: [...prev[peerId], responseMessage]
+    // Load username and peers/conversations on mount
+    useEffect(() => {
+        // Load username from localStorage
+        const storedUsername = localStorage.getItem('p2p_username');
+        if (storedUsername) {
+            setCurrentUsername(storedUsername);
+        }
+        loadChatData();
+    }, []);
+
+    // Poll for new messages every 10 seconds
+    useEffect(() => {
+        if (selectedConversation && currentUsername) {
+            const interval = setInterval(async () => {
+                try {
+                    const newMessages = await chatApi.getMessages(selectedConversation.id, 10, 0);
+                    // Only update if there are new messages
+                    if (newMessages.length > 0 && (!messages.length || !newMessages[0]?.id || !messages[0]?.id || newMessages[0].id !== messages[0].id)) {
+                        // Map API response to expected format for new messages
+                        const mappedNewMessages = newMessages.map(msg => ({
+                            id: msg.id,
+                            text: msg.content || msg.text || '',
+                            sender: msg.senderId === currentUsername ? 'You' : (msg.senderId || 'Unknown'),
+                            timestamp: new Date(msg.createdAt).toISOString(),
+                            read: msg.read || false, // Respect API read status
+                            status: msg.status,
+                            msgType: msg.msgType
+                        }));
+
+                        setMessages(mappedNewMessages);
+
+                        // Update last message in conversations list for better UI responsiveness
+                        const latestMessage = newMessages[0]; // Most recent message (API response, not mapped)
+                        setConversations(prevConversations =>
+                            prevConversations.map(conv =>
+                                conv.id === selectedConversation.id
+                                    ? {
+                                        ...conv,
+                                        lastMessage: latestMessage.content || latestMessage.text || '',
+                                        lastMessageTime: latestMessage.createdAt || latestMessage.timestamp
+                                    }
+                                    : conv
+                            )
+                        );
+
+                        // Acknowledge unread messages - only acknowledge messages NOT sent by current user
+                        const unreadMessageIds = newMessages
+                            .filter(msg => !msg.read && msg.senderId !== currentUsername)
+                            .map(msg => msg.id);
+                        if (unreadMessageIds.length > 0) {
+                            await chatApi.acknowledgeMessages(unreadMessageIds);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error polling messages:', error);
+                }
+            }, 1000); // Poll every 10 seconds
+
+            return () => clearInterval(interval);
+        }
+    }, [selectedConversation, currentUsername, messages]);
+
+    const loadChatData = async () => {
+        try {
+            setLoading(true);
+            const [conversationsData, offlineMessages, peersData] = await Promise.all([
+                chatApi.getConversations(),
+                chatApi.getOfflineMessages(),
+                chatApi.getPeers() // Always fetch peers to show all peers feature
+            ]);
+            // Map conversations to expected format: {id, type, name, participants, lastMessage, unreadCount}
+            // Align with API docs: {id, name, isGroup, peerPublicKey, lastMsgContent, lastMsgTime, unreadCount}
+            const mappedConversations = (conversationsData || []).map(conv => ({
+                id: conv.id,
+                type: conv.isGroup ? 'group' : 'private',
+                name: conv.name,
+                participants: conv.isGroup ? (conv.participants || []) : ['me', conv.name], // For groups use participants array, for private use 'me' and peer name
+                lastMessage: conv.lastMsgContent || '', // Changed from lastMessage to lastMsgContent
+                lastMessageTime: conv.lastMsgTime, // Add timestamp
+                unreadCount: conv.unreadCount || 0,
+                peerPublicKey: conv.peerPublicKey // Store public key for encryption
             }));
-        }, 1000);
+            const mappedPeers = (peersData || []).map(peer => ({
+                id: `${peer.ip}:${peer.port}`,
+                name: peer.username || `${peer.ip}:${peer.port}`,
+                username: peer.username,
+                ip: peer.ip,
+                port: peer.port,
+                taskForDownloadCount: peer.taskForDownloadCount
+            }));
+            setPeers(mappedPeers);
+            setConversations(mappedConversations);
+
+            // Handle offline messages - could show a notification or integrate into conversations
+            if (offlineMessages && offlineMessages.length > 0) {
+                addNotification(`${offlineMessages.length} offline messages received`, false);
+            }
+
+            // Select first conversation if available (safe null check)
+            if (mappedConversations && mappedConversations.length > 0) {
+                setSelectedConversation(mappedConversations[0]);
+            }
+        } catch (error) {
+            console.error('Error loading chat data:', error);
+            addNotification(t('error_loading_chat'), true);
+        } finally {
+            setLoading(false);
+        }
     };
+
+    // Load messages when conversation changes
+    useEffect(() => {
+        if (selectedConversation) {
+            loadMessages(selectedConversation.id);
+        }
+    }, [selectedConversation, messageOffset]);
+
+    const loadMessages = async (conversationId, append = false) => {
+        try {
+            const messagesData = await chatApi.getMessages(conversationId, messageLimit, messageOffset);
+
+            // Map API response to expected format
+            const mappedMessages = (messagesData || []).map(msg => ({
+                id: msg.id,
+                text: msg.content || msg.text || '', // Use content field from API
+                sender: msg.senderId === currentUsername ? 'You' : (msg.senderId || 'Unknown'), // Determine if it's current user's message
+                timestamp: new Date(msg.createdAt).toISOString(), // Convert unix timestamp to ISO string
+                read: true, // Assume loaded messages are read
+                status: msg.status,
+                msgType: msg.msgType
+            }));
+
+            setMessages(prev => append ? [...mappedMessages, ...prev] : mappedMessages);
+
+            // Acknowledge unread messages - use original API data for this
+            const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);
+            if (unreadMessageIds.length > 0) {
+                await chatApi.acknowledgeMessages(unreadMessageIds);
+            }
+        } catch (error) {
+            console.error('Error loading messages:', error);
+            addNotification(t('error_loading_messages'), true);
+        }
+    };
+
+    const handleSendMessage = async (text) => {
+        if (!selectedConversation || !text.trim()) return;
+
+        try {
+            const messageData = {
+                text,
+                conversationId: selectedConversation.id,
+                timestamp: new Date().toISOString()
+            };
+
+            // Send message via API - using "content" parameter name per API docs
+            if (selectedConversation.type === 'group') {
+                await chatApi.sendGroupMessage(selectedConversation.id, text);
+            } else {
+                // For private, use conversation ID as receiverId per user feedback
+                await chatApi.sendPrivateMessage(selectedConversation.id, text);
+            }
+
+            // Optimistically update UI
+            const newMessage = {
+                id: Date.now(), // Temporary ID
+                text,
+                sender: 'You',
+                timestamp: new Date().toISOString(),
+                read: true,
+                content: text // Add content field for consistency
+            };
+            setMessages(prev => [...prev, newMessage]);
+
+            // Update last message in conversations list immediately
+            setConversations(prevConversations =>
+                prevConversations.map(conv =>
+                    conv.id === selectedConversation.id
+                        ? {
+                            ...conv,
+                            lastMessage: text,
+                            lastMessageTime: new Date().toISOString()
+                        }
+                        : conv
+                )
+            );
+
+            addNotification(t('message_sent'), false);
+        } catch (error) {
+            console.error('Error sending message:', error);
+            addNotification(t('error_sending_message'), true);
+        }
+    };
+
+    const handleConversationSelect = (conversation) => {
+        setSelectedConversation(conversation);
+        setMessageOffset(0); // Reset message loading pagination
+        setPaginationOffset(0); // Reset auto-pagination offset
+    };
+
+    const loadOlderMessages = () => {
+        if (selectedConversation && messages.length >= messageLimit) {
+            setMessageOffset(prev => prev + messageLimit);
+        }
+    };
+
+    // Separate function for loading older messages with append=true
+    const loadOlderMessagesWithAppend = async () => {
+        if (selectedConversation) {
+            try {
+                // Increment pagination offset by 1 as requested
+                const nextPaginationOffset = paginationOffset + 1;
+                const messagesData = await chatApi.getMessages(selectedConversation.id, messageLimit, nextPaginationOffset);
+
+                if (messagesData && messagesData.length > 0) {
+                    // Map older messages
+                    const mappedMessages = (messagesData || []).map(msg => ({
+                        id: msg.id,
+                        text: msg.content || msg.text || '',
+                        sender: msg.senderId === currentUsername ? 'You' : (msg.senderId || 'Unknown'),
+                        timestamp: new Date(msg.createdAt).toISOString(),
+                        read: true,
+                        status: msg.status,
+                        msgType: msg.msgType
+                    }));
+
+                    setMessages(prev => [...mappedMessages, ...prev]);
+                    setPaginationOffset(nextPaginationOffset); // Increment by 1
+
+                    // Acknowledge unread messages from older messages
+                    const unreadMessageIds = messagesData.filter(msg => !msg.read).map(msg => msg.id);
+                    if (unreadMessageIds.length > 0) {
+                        await chatApi.acknowledgeMessages(unreadMessageIds);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading older messages:', error);
+                addNotification(t('error_loading_messages'), true);
+            }
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <div className="text-lg">{t('loading')}</div>
+            </div>
+        );
+    }
 
     return (
         <Chat
             peers={peers}
+            conversations={conversations}
+            selectedConversation={selectedConversation}
             messages={messages}
             onSendMessage={handleSendMessage}
-            selectedPeer={selectedPeer}
-            setSelectedPeer={setSelectedPeer}
+            onConversationSelect={handleConversationSelect}
+            onLoadOlderMessages={loadOlderMessagesWithAppend}
+            canLoadMore={messages.length >= messageLimit}
         />
     );
 };

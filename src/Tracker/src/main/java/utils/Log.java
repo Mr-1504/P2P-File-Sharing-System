@@ -83,7 +83,7 @@ public class Log {
         String callerInfo = String.format("(%s:%d#%s)",
                 caller.getFileName(), caller.getLineNumber(), caller.getMethodName());
 
-        System.err.println("[ERROR] " + callerInfo + " " + message);
+        System.err.println("[ERROR] " + callerInfo + " " + message + " Exception: " + e);
         logToFile("ERROR", message, e);
     }
 }
