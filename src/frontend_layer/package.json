@@ -26,7 +26,7 @@
   },
   "scripts": {
     "dev": "concurrently \"cross-env BROWSER=none react-scripts start\" \"npm run electron:wait\"",
-    "electron:wait": "wait-on http://localhost:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 electron .",
+    "electron:wait": "wait-on http://localhost:3000 && cross-env ELECTRON_START_URL=http://localhost:3000 electron --no-sandbox .",
     "build": "react-scripts build"
   },
   "browserslist": {
