@@ -1,0 +1,51 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    implementation libs.io.netty.netty.all
+    implementation libs.com.google.code.gson.gson
+    implementation libs.io.github.cdimascio.dotenv.java
+    implementation libs.org.bouncycastle.bcprov.jdk18on
+    implementation libs.org.bouncycastle.bcpkix.jdk18on
+    implementation libs.org.bouncycastle.bcutil.jdk18on
+
+    compileOnly libs.com.google.errorprone.error.prone.annotations
+}
+
+group = 'main'
+version = '1.0-SNAPSHOT'
+description = 'backend_layer'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'Main'
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+}
